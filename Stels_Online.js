@@ -1,6 +1,4 @@
-//21.05.2026 - Fix
-//02.06.2026 - renamed to Stels_Online; all balancers enabled by default
-
+/* Stels_Online 21.05.2026; renamed 02.06.2026; all balancers enabled by default */
 (function () {
     'use strict';
 
@@ -604,4 +602,4 @@
 
       if (prox) {
         prox_enc += 'param/Origin=' + encodeURIComponent(host) + '/';
-        prox_enc += 'par
+        prox_enc += 'param/Refere
