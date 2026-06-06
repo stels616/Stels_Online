@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.5';
+    var STELS_ONLINE_VERSION = '1.0.6';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
@@ -12580,10 +12580,16 @@
         if (section.type === 'films') filmFolders = ['films', 'movies'];
 
         function addStreamVariants(folder, path, tail) {
-          // Спочатку пробуємо тільки master-manifest. Якщо він правильний, сам містить 1080/720/480,
-          // як у HAR: /vod/serials/from/.../hls/index.m3u8 -> #EXT-X-STREAM-INF.
-          // Так ми не витрачаємо сотні зайвих 404 і встигаємо перевірити slug-и сторінки, а не тільки original_title.
+          // Для фільмів master-manifest йде без сезонної папки.
           add('https://video.zetvideo.net/vod/' + folder + '/' + path + '/' + tail + '/hls/index.m3u8');
+        }
+
+        function addSerialStreamVariants(path, ss, tail) {
+          // Для серіалів ZetVideo використовує папку сезону: /serials/from/s01/from_s01e01_.../hls/index.m3u8.
+          // У 1.0.5 ця папка випадково зникла, через що навіть робочий серіал "Ззовні" почав давати 404.
+          add('https://video.zetvideo.net/vod/serials/' + path + '/s' + ss + '/' + tail + '/hls/index.m3u8');
+          // Залишаємо старий безсезонний варіант тільки як fallback для нетипових розкладок.
+          add('https://video.zetvideo.net/vod/serials/' + path + '/' + tail + '/hls/index.m3u8');
         }
 
         function addSerialTailSet(slugObj, year, ss, ee) {
@@ -12599,7 +12605,7 @@
             tail(slugObj.file_under + '_' + se + '_' + id);
           }
           slugObj.path_forms.slice(0, 3).forEach(function (path) {
-            tails.forEach(function (t) { addStreamVariants('serials', path, t); });
+            tails.forEach(function (t) { addSerialStreamVariants(path, ss, t); });
           });
           if (year) {
             add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.' + year + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
@@ -16817,7 +16823,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix debug 1.0.5: глобальні master-HLS кандидати для серіалів і фільмів; дивись slug_objects/year_candidates/uaflix-fallback-stream-validate-*.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix debug 1.0.6: відновлено сезонну папку /sXX/ у HLS-кандидатах серіалів; глобальні кандидати з 1.0.5 залишені.' });
       stelsInstallImageStyles();
       initStorage();
       initLang();
