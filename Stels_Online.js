@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.1';
+    var STELS_ONLINE_VERSION = '1.0.2';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
@@ -12278,6 +12278,7 @@
         var h = {};
         for (var k in headers) h[k] = headers[k];
         var isZetVod = /https?:\/\/(?:www\.)?zetvideo\.net\/vod\//i.test(url || '');
+        var isZetM3u8 = /https?:\/\/video\.zetvideo\.net\/.+\.m3u8(?:$|\?)/i.test(url || '');
         if (isZetVod) {
           h['User-Agent'] = uaflixBrowserUA;
           h['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8';
@@ -12287,6 +12288,12 @@
           h['Sec-Fetch-Mode'] = 'navigate';
           h['Sec-Fetch-Site'] = 'cross-site';
           delete h['Origin'];
+        } else if (isZetM3u8) {
+          h['User-Agent'] = uaflixBrowserUA;
+          h['Accept'] = 'application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*';
+          h['Accept-Language'] = 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,uk;q=0.6';
+          h['Referer'] = referer || 'https://zetvideo.net/';
+          try { h['Origin'] = 'https://zetvideo.net'; } catch (e) {}
         } else {
           h.Referer = referer || ref;
         }
@@ -12886,11 +12893,64 @@
 
       function stelsApplyUaflixStreamProxy(file) {
         var finalFile = file || '';
+        var skipProxy = /https?:\/\/video\.zetvideo\.net\//i.test(finalFile || '');
         try {
-          finalFile = component.proxyStream ? component.proxyStream(finalFile, 'uaflix') : finalFile;
+          if (!skipProxy) finalFile = component.proxyStream ? component.proxyStream(finalFile, 'uaflix') : finalFile;
         } catch (e) {}
-        stelsLog('uaflix-stream-ready', { raw_file: file || '', final_file: finalFile || '', proxied: !!(file && finalFile && file !== finalFile) });
+        stelsLog('uaflix-stream-ready', {
+          raw_file: file || '',
+          final_file: finalFile || '',
+          proxied: !!(file && finalFile && file !== finalFile),
+          proxy_skipped: !!skipProxy,
+          reason: skipProxy ? 'zetvideo_cors_ok_direct_hls' : ''
+        });
         return finalFile;
+      }
+
+      function uaflixIsValidM3u8(text) {
+        return /^\s*#EXTM3U/m.test((text || '') + '');
+      }
+
+      function uaflixValidateGuessStreams(streams, player, pageReferer, success, fail) {
+        streams = streams || [];
+        var si = 0;
+        function next(lastError) {
+          if (si >= streams.length) {
+            stelsLog('uaflix-fallback-stream-all-invalid', {
+              player: player && player.iframe || player || '',
+              page_referer: pageReferer || '',
+              count: streams.length,
+              last_error: lastError || ''
+            });
+            if (fail) fail(lastError || 'invalid guessed stream');
+            return;
+          }
+          var url = streams[si++];
+          stelsLog('uaflix-fallback-stream-validate', {
+            player: player && player.iframe || player || '',
+            page_referer: pageReferer || '',
+            url: url,
+            index: si - 1
+          });
+          requestText(url, function (txt) {
+            var ok = uaflixIsValidM3u8(txt);
+            stelsLog('uaflix-fallback-stream-validate-result', {
+              url: url,
+              ok: !!ok,
+              length: (txt || '').length,
+              preview: uaflixCompact(txt || '', 250)
+            });
+            if (ok) success(url, txt);
+            else next('not m3u8');
+          }, function (err) {
+            stelsLog('uaflix-fallback-stream-validate-error', {
+              url: url,
+              error: err || 'request error'
+            });
+            next(err || 'request error');
+          }, 'https://zetvideo.net/');
+        }
+        next();
       }
 
       function tryPlayerUrls(players, pageReferer, success, fail) {
@@ -12949,14 +13009,18 @@
                   });
                   var guessedStreams = uaflixBuildGuessStreams(player.iframe, pageReferer || player.referer || rr);
                   if (guessedStreams.length && /404 Not Found|nginx/i.test(playerHtml || '')) {
-                    data.file = guessedStreams[0];
                     stelsLog('uaflix-player-fallback-stream', {
                       reason: 'zetvideo_404',
                       player: player.iframe,
                       page_referer: pageReferer || player.referer || rr,
                       guessed: guessedStreams
                     });
-                    success(data, player);
+                    uaflixValidateGuessStreams(guessedStreams, player, pageReferer || player.referer || rr, function (validUrl) {
+                      data.file = validUrl;
+                      success(data, player);
+                    }, function (err) {
+                      tryRequestUrl(err || 'guessed stream invalid');
+                    });
                     return;
                   }
                   tryRequestUrl('no file');
