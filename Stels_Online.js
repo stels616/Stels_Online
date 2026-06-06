@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.16';
+    var STELS_ONLINE_VERSION = '1.0.17';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
@@ -12512,31 +12512,117 @@
         }, false, { dataType: 'text', headers: addHeaders() });
       }
 
+      function safeDecodeJson(data) {
+        if (typeof data == 'string') return Lampa.Arrays.decodeJson(data, data);
+        return data;
+      }
+
+      function previewUrl(url) {
+        url = url || '';
+        url = String(url);
+        return url.length > 260 ? url.slice(0, 260) + '...' : url;
+      }
+
+      function orUrlReserve(data) {
+        if (data && data.url && typeof data.url == 'string' && data.url.indexOf(' or ') !== -1) {
+          var urls = data.url.split(' or ');
+          data.url = urls[0];
+          data.url_reserve = urls[1];
+        }
+        return data;
+      }
+
+      function normalizeQualityMap(q) {
+        if (!q || typeof q !== 'object') return q;
+        var out = {};
+        for (var k in q) {
+          var val = q[k];
+          if (typeof val == 'string' && val.indexOf(' or ') !== -1) val = val.split(' or ')[0];
+          out[k] = val;
+        }
+        return out;
+      }
+
       function getFileUrl(file, call) {
+        if (!file) return call(false, {});
+
         if (file.method == 'play' || file.stream || file.url && /\.(m3u8|mp4)(\?|$)/i.test(file.url)) {
+          stelsLog('lampaua-getfile-direct', {
+            source: sourceTitle,
+            method: file.method,
+            title: file.title || file.text,
+            season: file.season,
+            episode: file.episode,
+            has_url: !!file.url,
+            has_stream: !!file.stream,
+            url_preview: previewUrl(file.url || file.stream || '')
+          });
           return call(file, file);
         }
-        if (!file.url) return call(false, {});
+
+        if (!file.url) {
+          stelsLog('lampaua-getfile-empty-url', { source: sourceTitle, title: file.title || file.text, method: file.method, season: file.season, episode: file.episode });
+          return call(false, {});
+        }
+
         network.clear();
-        network.timeout(15000);
+        network.timeout(20000);
+        stelsLog('lampaua-getfile-request', {
+          source: sourceTitle,
+          title: file.title || file.text,
+          method: file.method,
+          season: file.season,
+          episode: file.episode,
+          url: previewUrl(file.url)
+        });
         network['native'](account(absolute(file.url)), function (json) {
+          json = safeDecodeJson(json);
           if (json && json.rch) {
-            stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, note: 'Сервер повернув rch. Потрібен NativeWs/RCH як у зразку, якщо це джерело не дасть пряме посилання.' });
+            stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, note: 'Сервер повернув rch. Потрібен NativeWs/RCH як у зразку, якщо це джерело не дасть пряме посилання.' });
             return call(false, {});
           }
+          if (json && json.accsdb) {
+            stelsLog('lampaua-getfile-access-denied', { source: sourceTitle, message: json.msg || json.denymsg || 'Access denied' });
+            return call(false, json || {});
+          }
+          stelsLog('lampaua-getfile-response', {
+            source: sourceTitle,
+            title: file.title || file.text,
+            method: file.method,
+            season: file.season,
+            episode: file.episode,
+            json_type: typeof json,
+            has_url: !!(json && json.url),
+            has_stream: !!(json && json.stream),
+            has_quality: !!(json && json.quality),
+            has_headers: !!(json && json.headers),
+            has_subtitles: !!(json && json.subtitles),
+            has_subtitles_call: !!(json && json.subtitles_call),
+            has_vast: !!(json && json.vast),
+            url_preview: previewUrl(json && (json.url || json.stream) || '')
+          });
           call(json, json || {});
-        }, function () { call(false, {}); }, false, { headers: addHeaders() });
+        }, function (a, c) {
+          var err = network.errorDecode ? network.errorDecode(a, c) : 'LampUA getFile request error';
+          stelsLog('lampaua-getfile-fail', { source: sourceTitle, url: previewUrl(file.url), error: err, status: a && a.status, statusText: a && a.statusText });
+          call(false, {});
+        }, false, { headers: addHeaders() });
       }
 
       function preparePlayable(item, json, json_call) {
-        json = json || {};
+        json = safeDecodeJson(json) || {};
+        json_call = safeDecodeJson(json_call) || {};
         var q = json_call.quality || json.quality || item.qualitys || item.quality || false;
+        q = normalizeQualityMap(q);
         var url = json.url || json.stream || item.stream || item.url || '';
         if (q && typeof q === 'object') url = component.getDefaultQuality(q, url);
-        return {
+        var play = {
           url: url,
           quality: component.renameQualityMap(q),
+          headers: json_call.headers || json.headers || item.headers,
+          hls_manifest_timeout: json_call.hls_manifest_timeout || json.hls_manifest_timeout || item.hls_manifest_timeout,
           subtitles: json.subtitles || item.subtitles,
+          subtitles_call: json_call.subtitles_call || json.subtitles_call || item.subtitles_call,
           segments: json_call.segments || json.segments || item.segments,
           timeline: item.timeline,
           title: item.season ? item.title : select_title + (item.title && item.title != select_title ? ' / ' + item.title : ''),
@@ -12545,6 +12631,29 @@
           voice_name: item.voice_name,
           thumbnail: item.thumbnail
         };
+        if (json.vast && json.vast.url) {
+          play.vast_url = json.vast.url;
+          play.vast_msg = json.vast.msg;
+          play.vast_region = json.vast.region;
+          play.vast_platform = json.vast.platform;
+          play.vast_screen = json.vast.screen;
+        }
+        orUrlReserve(play);
+        stelsLog('lampaua-playable-prepared', {
+          source: sourceTitle,
+          title: play.title,
+          season: play.season,
+          episode: play.episode,
+          has_url: !!play.url,
+          has_reserve: !!play.url_reserve,
+          has_quality: !!play.quality,
+          has_headers: !!play.headers,
+          has_subtitles: !!play.subtitles,
+          has_subtitles_call: !!play.subtitles_call,
+          has_vast: !!play.vast_url,
+          url_preview: previewUrl(play.url || '')
+        });
+        return play;
       }
 
       function display(videos) {
@@ -12591,8 +12700,13 @@
                           if (stream && (stream.url || stream.stream || elem.url || elem.stream)) {
                             var cell = preparePlayable(elem, stream, stream_json || {});
                             this.url = cell.url;
+                            this.url_reserve = cell.url_reserve;
                             this.quality = cell.quality;
+                            this.headers = cell.headers;
+                            this.hls_manifest_timeout = cell.hls_manifest_timeout;
                             this.subtitles = cell.subtitles;
+                            this.subtitles_call = cell.subtitles_call;
+                            this.segments = cell.segments;
                           } else this.url = '';
                           call();
                         }.bind(this));
@@ -12609,6 +12723,13 @@
                 if (playlist.length > 1) first.playlist = playlist;
                 Lampa.Player.play(first);
                 Lampa.Player.playlist(playlist);
+                if (first.subtitles_call) {
+                  try {
+                    network.silent(account(first.subtitles_call), function (subs) { Lampa.Player.subtitles(subs); }, function () {}, false, { headers: addHeaders() });
+                  } catch (e) {
+                    stelsLog('lampaua-subtitles-call-error', { source: sourceTitle, error: e && (e.message || e.toString()) });
+                  }
+                }
                 if (viewed.indexOf(hash_file) == -1) {
                   viewed.push(hash_file);
                   Lampa.Storage.set('online_view', viewed);
