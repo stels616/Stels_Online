@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.11';
+    var STELS_ONLINE_VERSION = '1.0.12';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
@@ -262,15 +262,24 @@
       try {
         if ($('#stels-online-image-style').length) return;
         $('head').append('<style id="stels-online-image-style">' +
-          '.online.stels-online-with-thumb{position:relative;min-height:5.8em;padding-left:8.4em!important;box-sizing:border-box;display:flex;align-items:center;}' +
-          '.online.stels-online-with-thumb .online__body{width:100%;min-height:4.8em;display:flex;flex-direction:column;justify-content:center;}' +
-          '.online.stels-online-with-thumb .online__title{padding-left:0!important;white-space:normal;line-height:1.25;}' +
-          '.online.stels-online-with-thumb .online__quality{padding-left:0!important;opacity:.82;}' +
-          '.stels-online-thumb{position:absolute;left:.15em;top:.55em;width:7.4em;height:4.4em;border-radius:.45em;overflow:hidden;background:rgba(255,255,255,.08);box-shadow:0 0 0 1px rgba(255,255,255,.08);}' +
+          '.online.stels-online-with-thumb{position:relative;min-height:9.95em;margin:.52em 0;padding:.74em .9em .74em 15.05em!important;box-sizing:border-box;display:flex;align-items:stretch;border:.16em solid rgba(255,255,255,.92);border-radius:.42em;background:rgba(77,66,35,.78);overflow:hidden;}' +
+          '.online.stels-online-with-thumb.focus,.online.stels-online-with-thumb.selector:hover{border-color:#fff;background:rgba(90,79,43,.9);}' +
+          '.online.stels-online-with-thumb .online__body{position:relative;width:100%;min-height:8.35em;display:flex;flex-direction:column;justify-content:flex-start;}' +
+          '.online.stels-online-with-thumb .online__body>div[style*="position: absolute"]{display:none!important;}' +
+          '.online.stels-online-with-thumb .online__title{padding-left:0!important;white-space:normal;line-height:1.18;font-size:1.35em;font-weight:600;margin:.12em 4.2em .55em 0;color:#fff;}' +
+          '.online.stels-online-with-thumb .online__quality{padding-left:0!important;opacity:1;display:flex;align-items:center;gap:.65em;margin-top:auto;font-size:.82em;line-height:1.25;color:rgba(255,255,255,.94);white-space:nowrap;}' +
+          '.stels-online-thumb{position:absolute;left:.72em;top:.72em;width:13.45em;height:8.1em;border-radius:.12em;overflow:hidden;background:rgba(255,255,255,.08);box-shadow:none;}' +
           '.stels-online-thumb img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .18s;}' +
           '.stels-online-thumb--loaded img{opacity:1;}' +
           '.stels-online-thumb__loader{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));}' +
-          '.stels-online-with-thumb .torrent-item__viewed{left:6.2em;}' +
+          '.stels-online-episode-badge{position:absolute;right:.45em;top:.28em;z-index:2;color:#fff;font-size:.88em;font-weight:700;text-shadow:0 .08em .25em #000;background:linear-gradient(90deg,rgba(0,0,0,0),rgba(0,0,0,.42));padding:.12em .28em .14em .9em;border-radius:.15em;}' +
+          '.stels-online-progress{height:.3em;width:100%;background:rgba(255,255,255,.34);border-radius:5em;margin:auto 0 .72em 0;overflow:hidden;}' +
+          '.stels-online-progress__bar{height:100%;width:0%;background:rgba(255,255,255,.86);border-radius:5em;}' +
+          '.stels-online-meta-left{min-width:0;overflow:hidden;text-overflow:ellipsis;}' +
+          '.stels-online-meta-dot{opacity:.8;margin:0 .25em;}' +
+          '.stels-online-quality-right{margin-left:auto;text-align:right;font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:45%;}' +
+          '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
+          '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-episode-badge{font-size:.7em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
           '</style>');
         stelsLog('image-style-installed', { ok: true });
       } catch (e) {
@@ -14220,6 +14229,26 @@
         return stelsBuildTmdbImage(movie.backdrop_path || movie.poster_path || '', movie.backdrop_path ? 'w300' : 'w185');
       }
 
+      function stelsFormatUkrDate(date) {
+        date = (date || '').trim();
+        var m = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return '';
+        var months = ['', 'Січня', 'Лютого', 'Березня', 'Квітня', 'Травня', 'Червня', 'Липня', 'Серпня', 'Вересня', 'Жовтня', 'Листопада', 'Грудня'];
+        var mi = parseInt(m[2], 10) || 0;
+        return parseInt(m[3], 10) + ' ' + (months[mi] || '') + ' ' + m[1];
+      }
+
+      function stelsCleanEpisodeTitle(title, season, episode) {
+        var out = component.decodeHtml(title || '').replace(/\s+/g, ' ').trim();
+        out = out.replace(/^\s*S\s*\d+\s*\/\s*/i, '');
+        out = out.replace(/^\s*(?:Сезон|Season)\s*\d+\s*\/\s*/i, '');
+        out = out.replace(/^\s*(?:Серія|Серия|Episode|Епізод|Эпизод)\s*\d+\s*[-–—:]?\s*/i, '');
+        out = out.replace(/^\s*S\s*\d+\s*[:.]\s*E\s*\d+\s*[-–—:]?\s*/i, '');
+        out = out.replace(/^\s*\d+\s*(?:серія|серия|episode)\s*[-–—:]?\s*/i, '');
+        if (!out && episode) out = Lampa.Lang.translate('torrent_serial_episode') + ' ' + episode;
+        return out || title || '';
+      }
+
       function stelsParseEpisodeFromItem(item) {
         var title = '';
         try { title = item.find('.online__title').text() || ''; } catch (e) {}
@@ -14227,39 +14256,67 @@
         var episode = 0;
         var m = title.match(/(?:^|\b)S\s*(\d+)/i) || title.match(/(?:сезон|season)\s*(\d+)/i);
         if (m) season = parseInt(m[1], 10) || 0;
-        m = title.match(/(?:сер[іиіяя]*|эпизод|episode)\s*(\d+)/i);
+        m = title.match(/(?:S\s*\d+\s*[:.]\s*E|сер[іиіяя]*|эпизод|episode|епізод)\s*(\d+)/i);
         if (m) episode = parseInt(m[1], 10) || 0;
         if (!episode) {
           var nums = title.match(/\d+/g) || [];
           if (nums.length >= 2) episode = parseInt(nums[1], 10) || 0;
           else if (nums.length == 1 && !season) episode = parseInt(nums[0], 10) || 0;
         }
-        if (!season && object && object.movie && object.movie.name) season = 1;
-        return { season: season, episode: episode, title: title };
+        if (!season && object && object.movie && object.movie.name && episode) season = 1;
+        return { season: season, episode: episode, title: title, clean_title: stelsCleanEpisodeTitle(title, season, episode) };
       }
 
-      function stelsLoadEpisodeStill(season, episode, call) {
+      function stelsLoadEpisodeMeta(season, episode, call) {
         var movie = object && object.movie || {};
         var tmdb_id = movie.tmdb_id || movie.id;
+        var empty = { still: '', name: '', air_date: '', formatted_date: '' };
         if (!movie.name || !tmdb_id || !season || !episode || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) {
-          call('');
+          call(empty);
           return;
         }
         var cache_key = tmdb_id + ':' + season;
+        function pick(data) {
+          var ep = (data && data.episodes || []).filter(function(e) { return e && parseInt(e.episode_number, 10) == episode; })[0] || {};
+          call({
+            still: stelsBuildTmdbImage(ep.still_path || '', 'w300'),
+            name: ep.name || '',
+            air_date: ep.air_date || '',
+            formatted_date: stelsFormatUkrDate(ep.air_date || '')
+          });
+        }
         var cached = stels_tmdb_season_cache[cache_key];
         if (cached) {
-          var ep = (cached.episodes || []).filter(function(e) { return e && parseInt(e.episode_number, 10) == episode; })[0];
-          call(stelsBuildTmdbImage(ep && ep.still_path || '', 'w300'));
+          pick(cached);
           return;
         }
         Lampa.Api.sources.tmdb.get('tv/' + tmdb_id + '/season/' + season, {}, function(data) {
           stels_tmdb_season_cache[cache_key] = data || { episodes: [] };
-          var ep = (data && data.episodes || []).filter(function(e) { return e && parseInt(e.episode_number, 10) == episode; })[0];
-          call(stelsBuildTmdbImage(ep && ep.still_path || '', 'w300'));
+          pick(stels_tmdb_season_cache[cache_key]);
         }, function() {
           stels_tmdb_season_cache[cache_key] = { episodes: [] };
-          call('');
+          call(empty);
         });
+      }
+
+      function stelsBuildMetaLine(item, dateText) {
+        var q = item.find('.online__quality');
+        if (!q.length) return;
+        if (q.data('stelsFormatted')) {
+          if (dateText) q.find('.stels-online-date').text(dateText).show();
+          return;
+        }
+        var raw = q.text().replace(/\s+/g, ' ').trim();
+        var parts = raw.split(/\s*\/\s*/).filter(function(p) { return !!p; });
+        var quality = parts[0] || raw || '';
+        var voice = parts.slice(1).join(' / ');
+        var left = '';
+        if (dateText) left += '<span class="stels-online-date">' + stelsEscapeHtml(dateText) + '</span>';
+        if (dateText && voice) left += '<span class="stels-online-meta-dot">•</span>';
+        if (voice) left += '<span class="stels-online-voice">' + stelsEscapeHtml(voice) + '</span>';
+        if (!left) left = '<span class="stels-online-voice">' + stelsEscapeHtml(quality || '') + '</span>';
+        q.html('<span class="stels-online-meta-left">' + left + '</span><span class="stels-online-quality-right">' + stelsEscapeHtml(quality || '') + '</span>');
+        q.data('stelsFormatted', true);
       }
 
       function stelsDecorateItemWithImage(item) {
@@ -14267,11 +14324,23 @@
           stelsInstallImageStyles();
           if (!item || !item.find || item.find('.stels-online-thumb').length) return;
           if (!item.hasClass('online')) return;
-          var thumb = $('<div class="stels-online-thumb"><img alt=""><div class="stels-online-thumb__loader"></div></div>');
+          var meta = stelsParseEpisodeFromItem(item);
           item.addClass('stels-online-with-thumb');
+          item.find('.online__body > div').filter(function(){ return $(this).find('svg').length > 0; }).first().remove();
+          if (meta.season && meta.episode) item.addClass('stels-online-episode-card');
+          if (meta.clean_title && item.find('.online__title').length) item.find('.online__title').text(meta.clean_title);
+          var thumb = $('<div class="stels-online-thumb"><img alt=""><div class="stels-online-thumb__loader"></div></div>');
+          if (meta.season && meta.episode) thumb.append('<div class="stels-online-episode-badge">S' + meta.season + ':E' + meta.episode + '</div>');
           item.prepend(thumb);
+          if (!item.find('.stels-online-progress').length) item.find('.online__title').after('<div class="stels-online-progress"><div class="stels-online-progress__bar"></div></div>');
+          stelsBuildMetaLine(item, '');
           var img = thumb.find('img')[0];
-          var finish = function(url, source) {
+          var finish = function(url, source, epMeta) {
+            epMeta = epMeta || {};
+            if (epMeta.name && (!meta.clean_title || /^\s*(?:сер[іиіяя]*|episode|епізод|эпизод)\s*\d+\s*$/i.test(meta.clean_title))) {
+              item.find('.online__title').text(epMeta.name);
+            }
+            if (epMeta.formatted_date) stelsBuildMetaLine(item, epMeta.formatted_date);
             url = url || stelsMovieFallbackImage() || './img/img_broken.svg';
             img.onerror = function() {
               img.src = './img/img_broken.svg';
@@ -14283,15 +14352,14 @@
               thumb.find('.stels-online-thumb__loader').remove();
             };
             img.src = url;
-            stelsLog('thumb-set', { source: source || 'fallback', url_set: !!url, title: item.find('.online__title').text() });
+            stelsLog('thumb-set', { source: source || 'fallback', url_set: !!url, season: meta.season || 0, episode: meta.episode || 0, title: item.find('.online__title').text() });
           };
-          var meta = stelsParseEpisodeFromItem(item);
           if (object && object.movie && object.movie.name && meta.episode) {
-            stelsLoadEpisodeStill(meta.season || 1, meta.episode, function(url) {
-              finish(url, url ? 'tmdb_episode' : 'movie_fallback');
+            stelsLoadEpisodeMeta(meta.season || 1, meta.episode, function(epMeta) {
+              finish(epMeta.still, epMeta.still ? 'tmdb_episode' : 'movie_fallback', epMeta);
             });
           } else {
-            finish('', 'movie_fallback');
+            finish('', 'movie_fallback', {});
           }
         } catch (e) {
           stelsLog('thumb-error', { error: e && (e.message || e.toString()) });
