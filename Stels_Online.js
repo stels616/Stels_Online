@@ -1,10 +1,9 @@
-// Stels_Online based on online_mod.js, adapted 2026-06-06
-// Original online_mod core: 21.05.2026 - Fix
+// Stels_Online based on online_mod.js
 
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '3.2.3-online-mod-hybrid-57-sources-settings';
+    var STELS_ONLINE_VERSION = '3.2.4-sources-modal-position-fix';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
 
@@ -232,42 +231,63 @@
     function stelsOpenSourcesModal() {
       var controller = Lampa.Controller.enabled().name;
       var hidden = stelsGetHiddenSources();
-      var items = STELS_REQUESTED_SOURCE_NAMES.map(function (name) {
-        name = stelsNormalizeSourceKey(name);
-        return {
-          title: (hidden.indexOf(name) === -1 ? '☑ ' : '☐ ') + stelsSourceTitle(name),
-          subtitle: name,
-          source: name,
-          selected: hidden.indexOf(name) === -1
-        };
-      });
+      var active = stelsNormalizeSourceKey(Lampa.Storage.get('stels_online_balanser', ''));
 
-      function redraw() {
-        Lampa.Select.show({
-          title: 'Джерела Stels_Online',
-          items: items,
-          onBack: function () {
-            Lampa.Controller.toggle(controller);
-          },
-          onSelect: function (item) {
-            var key = item.source;
-            hidden = stelsGetHiddenSources();
-            var index = hidden.indexOf(key);
-            if (index === -1) hidden.push(key); else hidden.splice(index, 1);
-            stelsSetHiddenSources(hidden);
-            items.forEach(function (it) {
-              var enabled = hidden.indexOf(it.source) === -1;
-              it.selected = enabled;
-              it.title = (enabled ? '☑ ' : '☐ ') + stelsSourceTitle(it.source);
-            });
-            Lampa.Noty.show((hidden.indexOf(key) === -1 ? 'Увімкнено: ' : 'Вимкнено: ') + stelsSourceTitle(key));
-            setTimeout(redraw, 10);
-          }
-        });
+      function makeRow(name) {
+        name = stelsNormalizeSourceKey(name);
+        var enabled = hidden.indexOf(name) === -1;
+        var is_active = active === name;
+        return '<div class="selector stels-online-source-row" data-source="' + stelsEscapeHtml(name) + '" ' +
+          'style="display:flex;align-items:center;justify-content:space-between;gap:1em;padding:.75em 0;border-bottom:1px solid rgba(255,255,255,.08)">' +
+          '<div style="min-width:0">' +
+            '<div class="stels-online-source-title" style="font-size:1.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+              '<span class="stels-online-source-check">' + (enabled ? '☑' : '☐') + '</span> ' + stelsEscapeHtml(stelsSourceTitle(name)) +
+              (is_active ? ' <span style="font-size:.75em;opacity:.75">АКТИВНЕ</span>' : '') +
+            '</div>' +
+            '<div style="font-size:.78em;opacity:.55;margin-top:.15em">' + stelsEscapeHtml(name) + '</div>' +
+          '</div>' +
+          '<div class="stels-online-source-state" style="opacity:.8;white-space:nowrap">' + (enabled ? 'Увімкнено' : 'Вимкнено') + '</div>' +
+        '</div>';
       }
 
-      stelsLog('sources-modal-opened', { total: items.length, hidden_count: hidden.length, hidden: hidden });
-      redraw();
+      var html = $('<div class="stels-online-sources-modal">' +
+        '<div style="opacity:.75;margin-bottom:.8em">Галочка керує тим, чи буде джерело показуватись у меню «Сортувати». Після зміни позиція списку не скидається.</div>' +
+        '<div class="stels-online-sources-list" style="max-height:62vh;overflow-y:auto;padding-right:.3em">' +
+          STELS_REQUESTED_SOURCE_NAMES.map(makeRow).join('') +
+        '</div>' +
+      '</div>');
+
+      function updateRow(row, key) {
+        hidden = stelsGetHiddenSources();
+        var enabled = hidden.indexOf(key) === -1;
+        row.find('.stels-online-source-check').text(enabled ? '☑' : '☐');
+        row.find('.stels-online-source-state').text(enabled ? 'Увімкнено' : 'Вимкнено');
+        row.toggleClass('stels-online-source-disabled', !enabled);
+      }
+
+      html.find('.stels-online-source-row').on('hover:enter click', function () {
+        var row = $(this);
+        var key = stelsNormalizeSourceKey(row.data('source'));
+        hidden = stelsGetHiddenSources();
+        var index = hidden.indexOf(key);
+        if (index === -1) hidden.push(key); else hidden.splice(index, 1);
+        stelsSetHiddenSources(hidden);
+        updateRow(row, key);
+        Lampa.Noty.show((hidden.indexOf(key) === -1 ? 'Увімкнено: ' : 'Вимкнено: ') + stelsSourceTitle(key));
+      });
+
+      stelsLog('sources-modal-opened', { total: STELS_REQUESTED_SOURCE_NAMES.length, hidden_count: hidden.length, hidden: hidden, active: active });
+      Lampa.Modal.open({
+        title: 'Джерела Stels_Online',
+        html: html,
+        size: 'medium',
+        scroll_to_center: true,
+        select: html.find('.stels-online-source-row')[0],
+        onBack: function () {
+          Lampa.Modal.close();
+          Lampa.Controller.toggle(controller);
+        }
+      });
     }
 
     function startsWith(str, searchString) {
@@ -13863,7 +13883,7 @@
       };
     }
 
-    var mod_version = '21.05.2026';
+    var mod_version = STELS_ONLINE_VERSION;
     var isMSX = !!(window.TVXHost || window.TVXManager);
     var isTizen = navigator.userAgent.toLowerCase().indexOf('tizen') !== -1;
     var isIFrame = window.parent !== window;
