@@ -1065,7 +1065,7 @@
   function stelsBuildLogText() {
     var header = {
       plugin: 'Stels_Online',
-      version: '2.8.5-stels-debug',
+      version: '2.8.5-stels-force-all-sources',
       time: new Date().toISOString(),
       api_base: config.api_base,
       lampac_sources_count: (config.lampac_sources || []).length,
@@ -1587,65 +1587,67 @@
       return text.length < 2 ? '0' + text : text;
     }
     function buildFilterSources(movie) {
-      var sources = getBaseSources();
-      var base_sources_snapshot = sources.slice ? sources.slice(0) : [];
-      var include_anime = shouldIncludeAnimeSources(movie);
-      var include_starlight = shouldIncludeStarlightSource(movie);
-      var include_midnight = shouldIncludeMidnightSource(movie);
-      if (include_anime) {
-        if (sources.indexOf('bambooua') === -1) sources.push('bambooua');
-        if (sources.indexOf('animeon') === -1) sources.push('animeon');
-        if (sources.indexOf('moonanime') === -1) sources.push('moonanime');
-        if (sources.indexOf('mikai') === -1) sources.push('mikai');
-      } else {
-        sources = sources.filter(function (name) {
-          return name !== 'bambooua' && name !== 'animeon' && name !== 'moonanime' && name !== 'mikai';
-        });
+      // Stels_Online: sorting must show every enabled source from settings,
+      // including local Lampac/LampaUaNg imports. Do not remove sources by movie
+      // language/type here; the selected source/API will decide if it has content.
+      var store_sources = mergeLampacSources((sourcesStore && sourcesStore.available_sources) || available_sources || []);
+      available_sources = store_sources;
+      if (sourcesStore) {
+        sourcesStore.available_sources = store_sources;
+        sourcesStore.applyTitles(store_sources);
       }
-      if (include_starlight) {
-        if (sources.indexOf('starlight') === -1) sources.push('starlight');
-      } else {
-        sources = sources.filter(function (name) {
-          return name !== 'starlight';
-        });
+
+      var list = [];
+      function addKey(value) {
+        var key = sourcesStore.normalizeName(value);
+        if (!key || list.indexOf(key) !== -1) return;
+        list.push(key);
+        ensureSource(key);
       }
-      if (include_midnight) {
-        if (sources.indexOf('midnight') === -1) sources.push('midnight');
-      } else {
-        sources = sources.filter(function (name) {
-          return name !== 'midnight';
-        });
-      }
-      sources = filterEnabledSources(sources);
-      sources = sourcesStore.applyUserFilters(sources);
-      stelsLog('build-filter-sources', {
+
+      store_sources.forEach(function (item) {
+        if (!item || item.enabled === false) return;
+        addKey(item.key || item.name);
+      });
+
+      (config.lampac_sources || []).forEach(function (name) {
+        addKey(name);
+      });
+
+      Object.keys(sources || {}).forEach(addKey);
+
+      var before_user_filters = list.slice(0);
+      list = sourcesStore.applyUserFilters(list);
+
+      stelsLog('build-filter-sources-force-all', {
         movie_title: movie && (movie.title || movie.name || movie.original_title || movie.original_name) || '',
         movie_language: movie && movie.original_language || '',
-        include_anime: include_anime,
-        include_starlight: include_starlight,
-        include_midnight: include_midnight,
-        base_count: base_sources_snapshot.length,
-        base_sources: base_sources_snapshot,
-        final_count: sources.length,
-        final_sources: sources,
+        store_count: store_sources.length,
+        configured_count: (config.lampac_sources || []).length,
+        before_user_filters_count: before_user_filters.length,
+        before_user_filters: before_user_filters,
+        final_count: list.length,
+        final_sources: list,
         storage: stelsGetStorageInfo()
       });
-      return sources;
+      return list;
     }
     function getBaseSources() {
-      var from_api = getEnabledSources();
-      if (from_api) {
-        return from_api;
+      var keys = [];
+      function add(value) {
+        var key = sourcesStore.normalizeName(value);
+        if (key && keys.indexOf(key) === -1) keys.push(key);
       }
-      var keys = Object.keys(sources);
-      return keys.length ? keys : [];
+      var enabled = getEnabledSources();
+      if (enabled && enabled.length) enabled.forEach(add);
+      (config.lampac_sources || []).forEach(add);
+      Object.keys(sources || {}).forEach(add);
+      return keys;
     }
     function filterEnabledSources(list) {
-      var enabled = getEnabledSources();
-      if (!enabled) return list;
-      return list.filter(function (name) {
-        return enabled.indexOf(name) !== -1;
-      });
+      // Keep this non-destructive: visibility is controlled by Sources settings
+      // (BO_SOURCES_HIDE) so the Sort menu can display every active source.
+      return Array.isArray(list) ? list.slice(0) : [];
     }
     function getEnabledSources() {
       if (!available_sources || !available_sources.length) return null;
@@ -2986,7 +2988,8 @@
       var saveBtn = $('<div class="stels-online-sources__btn selector" data-action="save" title="Зберегти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></div>');
       var resetBtn = $('<div class="stels-online-sources__btn selector" data-action="reset" title="Скинути"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C8.5 2 6 4.5 6 7.5c0 1.5.5 2.8 1.3 3.8L6 14l2.5 1.5c1 .8 2.2 1.2 3.5 1.2s2.5-.4 3.5-1.2L18 14l-1.3-2.7c.8-1 1.3-2.3 1.3-3.8C18 4.5 15.5 2 12 2z"/><circle cx="9.5" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="8" r="1.2" fill="currentColor" stroke="none"/><path d="M10 11h4v6c0 .6-.4 1-1 1h-2c-.6 0-1-.4-1-1v-6z"/></svg></div>');
       var logBtn = $('<div class="stels-online-sources__btn selector" data-action="log" title="Експорт логу"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>');
-      container.append(syncBtn).append(saveBtn).append(resetBtn).append(logBtn);
+      var logTextBtn = $('<div class="simple-button selector" data-action="log" style="margin-left:.6em;min-height:2.4em;display:flex;align-items:center;">' + Lampa.Lang.translate('stels_online_log_export') + '</div>');
+      container.append(syncBtn).append(saveBtn).append(resetBtn).append(logBtn).append(logTextBtn);
       return container;
     }
     function render(update_modal) {
@@ -3103,10 +3106,34 @@
         type: 'button'
       },
       field: {
-        name: Lampa.Lang.translate('stels_online_log_export')
+        name: 'Експорт логу Stels_Online'
       },
       onChange: function onChange() {
         stelsLog('settings-open-log-modal', { from: 'main-settings' });
+        openStelsLogExportModal();
+      }
+    });
+    SettingsApi.addParam({
+      component: 'stels_online',
+      param: {
+        name: 'stels_online_debug_title',
+        type: 'title'
+      },
+      field: {
+        name: 'Діагностика'
+      }
+    });
+    SettingsApi.addParam({
+      component: 'stels_online',
+      param: {
+        name: 'stels_online_open_log_second',
+        type: 'button'
+      },
+      field: {
+        name: 'Відкрити / скопіювати лог'
+      },
+      onChange: function onChange() {
+        stelsLog('settings-open-log-modal', { from: 'main-settings-second' });
         openStelsLogExportModal();
       }
     });
@@ -3243,7 +3270,7 @@
     window.stels_online = true;
     stelsLog('plugin-start', {
       app_digital: Lampa.Manifest && Lampa.Manifest.app_digital,
-      plugin_version: '2.8.5-stels-debug',
+      plugin_version: '2.8.5-stels-force-all-sources',
       lampac_sources_count: (config.lampac_sources || []).length
     });
     ensureCompanionPlugins();
