@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.4';
+    var STELS_ONLINE_VERSION = '1.0.5';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
@@ -12407,18 +12407,86 @@
         return num < 10 ? '0' + num : '' + num;
       }
 
+      function uaflixSlugifyText(text, sep) {
+        sep = sep || '.';
+        text = component.decodeHtml((text || '') + '').toLowerCase();
+        var map = {
+          'а':'a','б':'b','в':'v','г':'g','ґ':'g','д':'d','е':'e','ё':'e','є':'e','ж':'zh','з':'z','и':'y','і':'i','ї':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'c','ч':'ch','ш':'sh','щ':'sch','ь':'','ъ':'','ы':'y','э':'e','ю':'yu','я':'ya',
+          'А':'a','Б':'b','В':'v','Г':'g','Ґ':'g','Д':'d','Е':'e','Ё':'e','Є':'e','Ж':'zh','З':'z','И':'y','І':'i','Ї':'i','Й':'y','К':'k','Л':'l','М':'m','Н':'n','О':'o','П':'p','Р':'r','С':'s','Т':'t','У':'u','Ф':'f','Х':'h','Ц':'c','Ч':'ch','Ш':'sh','Щ':'sch','Ь':'','Ъ':'','Ы':'y','Э':'e','Ю':'yu','Я':'ya'
+        };
+        text = text.replace(/&/g, ' and ');
+        text = text.replace(/[А-Яа-яІіЇїЄєҐґЁё]/g, function (ch) { return typeof map[ch] !== 'undefined' ? map[ch] : ch; });
+        var parts = text.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ');
+        parts = parts.filter(function (p) { return !!p; });
+        return parts.join(sep).replace(new RegExp('\\' + sep + '{2,}', 'g'), sep).replace(new RegExp('^\\' + sep + '|\\' + sep + '$', 'g'), '');
+      }
+
       function uaflixLatinSlug() {
         var title = object && object.movie && (object.movie.original_title || object.movie.original_name || object.movie.name || object.movie.title) || select_title || '';
-        title = component.decodeHtml(title || '').toLowerCase();
-        title = title.replace(/&/g, ' and ');
-        title = title.replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').replace(/\.{2,}/g, '.');
-        return title || '';
+        return uaflixSlugifyText(title, '.');
+      }
+
+      function uaflixNormalizeYear(value) {
+        value = (value === null || typeof value === 'undefined') ? '' : (value + '');
+        if (!value || value === 'undefined' || value === 'null' || value === 'false') return '';
+        var m = value.match(/(?:^|[^0-9])((?:19|20)\d{2})(?:[^0-9]|$)/);
+        if (!m) return '';
+        return m[1];
       }
 
       function uaflixAddYearCandidate(list, value) {
-        value = (value || '').toString();
-        var m = value.match(/(?:^|[^0-9])((?:19|20)\d{2})(?:[^0-9]|$)/);
-        if (m && list.indexOf(m[1]) === -1) list.push(m[1]);
+        var y = uaflixNormalizeYear(value);
+        if (y && list.indexOf(y) === -1) list.push(y);
+      }
+
+      function uaflixUrlSection(pageReferer) {
+        var u = (pageReferer || '').split('?')[0].split('#')[0];
+        var m = u.match(/\/((?:serials|films|cartoons|multfilms))\/([^\/]+)\//i);
+        return { type: m && m[1] || '', slug: m && m[2] || '' };
+      }
+
+      function uaflixAddSlugObject(list, label, raw) {
+        raw = component.decodeHtml((raw || '') + '').trim();
+        if (!raw || raw === 'undefined' || raw === 'null') return;
+        var candidates = [];
+        function push(x) {
+          x = (x || '').toString().toLowerCase().replace(/^\.+|\.+$/g, '').replace(/^-+|-+$/g, '').replace(/^_+|_+$/g, '');
+          if (x && candidates.indexOf(x) === -1) candidates.push(x);
+        }
+        push(raw.replace(/[^a-z0-9\-_.]+/ig, ''));
+        push(uaflixSlugifyText(raw, '.'));
+        push(uaflixSlugifyText(raw, '-'));
+        push(uaflixSlugifyText(raw, '_'));
+        candidates = candidates.filter(function (x) { return !!x && x.length > 1; });
+        candidates.forEach(function (base) {
+          var dot = base.replace(/[-_]+/g, '.').replace(/\.{2,}/g, '.');
+          var dash = base.replace(/[._]+/g, '-').replace(/-{2,}/g, '-');
+          var under = base.replace(/[.-]+/g, '_').replace(/_{2,}/g, '_');
+          var key = [dot, dash, under].join('|');
+          for (var i = 0; i < list.length; i++) if (list[i].key === key) return;
+          list.push({
+            label: label,
+            raw: raw,
+            key: key,
+            path_forms: [dot, dash, under].filter(function (v, idx, arr) { return v && arr.indexOf(v) === idx; }),
+            file_under: under,
+            file_dot: dot,
+            file_dash: dash
+          });
+        });
+      }
+
+      function uaflixSlugObjects(pageReferer) {
+        var list = [];
+        var movie = object && object.movie || {};
+        var section = uaflixUrlSection(pageReferer || '');
+        uaflixAddSlugObject(list, 'original_title', movie.original_title || movie.original_name || '');
+        uaflixAddSlugObject(list, 'latin_slug', uaflixLatinSlug());
+        uaflixAddSlugObject(list, 'page_slug', section.slug || '');
+        uaflixAddSlugObject(list, 'movie_title', movie.title || movie.name || '');
+        uaflixAddSlugObject(list, 'select_title', select_title || '');
+        if (list.length > 10) list = list.slice(0, 10);
+        return list;
       }
 
       function uaflixExtractYearsFromText(text) {
@@ -12460,8 +12528,9 @@
       function uaflixYearCandidates() {
         var out = [];
         var m = object && object.movie || {};
+        var forced = uaflixNormalizeYear(Lampa.Storage.field('stels_online_uaflix_forced_year') || '');
+        if (forced) uaflixAddYearCandidate(out, forced);
         [
-          Lampa.Storage.field('stels_online_uaflix_forced_year') || '',
           m.year,
           m.release_year,
           m.release_date,
@@ -12472,7 +12541,8 @@
           m.title,
           select_title
         ].forEach(function (v) { uaflixAddYearCandidate(out, v); });
-        (uaflixDetectedYears || []).forEach(function (y) { if (out.indexOf(y) === -1) out.push(y); });
+        (uaflixDetectedYears || []).forEach(function (y) { uaflixAddYearCandidate(out, y); });
+        if (out.length > 6) out = out.slice(0, 6);
         return out;
       }
 
@@ -12487,54 +12557,114 @@
         function add(u) { if (u && !seen[u]) { seen[u] = true; out.push(u); } }
         var id = ((playerUrl || '').match(/\/vod\/(\d+)/i) || [])[1] || '';
         var ep = ((pageReferer || '').match(/season-(\d+)-episode-(\d+)/i) || []);
-        var slug = uaflixLatinSlug();
-        if (!id || !slug || !ep[1] || !ep[2]) {
-          stelsLog('uaflix-build-guess-streams-skip', { player: playerUrl || '', page_referer: pageReferer || '', id: id, slug: slug, ep_match: ep && ep.length ? ep.slice(0, 3) : [] });
+        var section = uaflixUrlSection(pageReferer || '');
+        var slugObjects = uaflixSlugObjects(pageReferer || '');
+        var yearCandidates = uaflixYearCandidates();
+        var isSerial = !!(ep[1] && ep[2]) || section.type === 'serials';
+        var isFilmLike = !ep[1] && !ep[2];
+        if (!id || !slugObjects.length) {
+          stelsLog('uaflix-build-guess-streams-skip', { player: playerUrl || '', page_referer: pageReferer || '', id: id, section: section, slug_objects: slugObjects, ep_match: ep && ep.length ? ep.slice(0, 3) : [] });
           return out;
         }
-        var ss = uaflixPad2(ep[1]);
-        var ee = uaflixPad2(ep[2]);
-        var se = 's' + ss + 'e' + ee;
-        var pathDot = slug;
-        var pathDash = slug.replace(/\./g, '-');
-        var pathUnder = slug.replace(/\./g, '_');
-        var fileUnder = slug.replace(/\./g, '_');
-        var yearCandidates = uaflixYearCandidates();
-        var tails = [];
-        yearCandidates.forEach(function (year) {
-          tails.push(fileUnder + '_' + se + '_' + year + '_webdl_1080p_ukr_eng_hurtom_' + id);
-          tails.push(fileUnder + '_' + se + '_' + year + '_webdl_1080p_ukr_hurtom_' + id);
-          tails.push(fileUnder + '_' + se + '_' + year + '_webrip_1080p_ukr_eng_hurtom_' + id);
-        });
-        tails.push(fileUnder + '_' + se + '_webdl_1080p_ukr_eng_hurtom_' + id);
-        tails.push(fileUnder + '_' + se + '_webdl_1080p_ukr_hurtom_' + id);
-        tails.push(fileUnder + '_' + se + '_' + id);
-        [pathDot, pathDash, pathUnder].forEach(function (path) {
-          tails.forEach(function (tail) {
-            add('https://video.zetvideo.net/vod/serials/' + path + '/s' + ss + '/' + tail + '/hls/index.m3u8');
-            add('https://video.zetvideo.net/content/stream/serials/' + path + '/s' + ss + '/' + tail + '/hls/1080/index.m3u8');
-            add('https://video.zetvideo.net/content/stream/serials/' + path + '/s' + ss + '/' + tail + '/hls/720/index.m3u8');
-            add('https://video.zetvideo.net/content/stream/serials/' + path + '/s' + ss + '/' + tail + '/hls/480/index.m3u8');
+
+        var qualityParts = [
+          'webdl_1080p_ukr_eng_hurtom',
+          'webdl_1080p_ukr_hurtom',
+          'webrip_1080p_ukr_eng_hurtom',
+          'webrip_1080p_ukr_hurtom',
+          'webdl_1080p_ukr',
+          'webrip_1080p_ukr'
+        ];
+        var filmFolders = ['films', 'movies', 'cartoons', 'multfilms'];
+        if (section.type === 'cartoons' || section.type === 'multfilms') filmFolders = [section.type, 'cartoons', 'multfilms', 'films', 'movies'];
+        if (section.type === 'films') filmFolders = ['films', 'movies'];
+
+        function addStreamVariants(folder, path, tail) {
+          // Спочатку пробуємо тільки master-manifest. Якщо він правильний, сам містить 1080/720/480,
+          // як у HAR: /vod/serials/from/.../hls/index.m3u8 -> #EXT-X-STREAM-INF.
+          // Так ми не витрачаємо сотні зайвих 404 і встигаємо перевірити slug-и сторінки, а не тільки original_title.
+          add('https://video.zetvideo.net/vod/' + folder + '/' + path + '/' + tail + '/hls/index.m3u8');
+        }
+
+        function addSerialTailSet(slugObj, year, ss, ee) {
+          var se = 's' + ss + 'e' + ee;
+          var tails = [];
+          function tail(t) { if (t && tails.indexOf(t) === -1) tails.push(t); }
+          if (year) {
+            qualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + se + '_' + year + '_' + q + '_' + id); });
+            tail(slugObj.file_under + '_' + se + '_' + year + '_1080p_webrip_x264_aac_uaflix_' + id);
+            tail(slugObj.file_under + '_' + se + '_' + year + '_1080p_webdl_x264_aac_uaflix_' + id);
+          } else {
+            qualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + se + '_' + q + '_' + id); });
+            tail(slugObj.file_under + '_' + se + '_' + id);
+          }
+          slugObj.path_forms.slice(0, 3).forEach(function (path) {
+            tails.forEach(function (t) { addStreamVariants('serials', path, t); });
           });
-        });
-        yearCandidates.forEach(function (year) {
-          add('https://video.zetvideo.net/vod/serials/' + slug + '.' + se + '.' + year + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
-        });
-        add('https://video.zetvideo.net/vod/serials/' + slug + '.' + se + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
-        add('https://video.zetvideo.net/vod/serials/' + slug + '.' + se + '_' + id + '/hls/index.m3u8');
+          if (year) {
+            add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.' + year + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+            add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.' + year + '.1080p.webdl.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+          } else {
+            add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+            add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '_' + id + '/hls/index.m3u8');
+          }
+        }
+
+        function addFilmTailSet(slugObj, year) {
+          var tails = [];
+          function tail(t) { if (t && tails.indexOf(t) === -1) tails.push(t); }
+          if (year) {
+            qualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + year + '_' + q + '_' + id); });
+            tail(slugObj.file_under + '_' + year + '_1080p_webrip_x264_aac_uaflix_' + id);
+            tail(slugObj.file_under + '_' + year + '_1080p_webdl_x264_aac_uaflix_' + id);
+          } else {
+            qualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + q + '_' + id); });
+            tail(slugObj.file_under + '_' + id);
+          }
+          filmFolders.forEach(function (folder) {
+            slugObj.path_forms.slice(0, 3).forEach(function (path) {
+              tails.forEach(function (t) { addStreamVariants(folder, path, t); });
+            });
+          });
+          if (year) {
+            filmFolders.forEach(function (folder) {
+              add('https://video.zetvideo.net/vod/' + folder + '/' + slugObj.file_dot + '.' + year + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+              add('https://video.zetvideo.net/vod/' + folder + '/' + slugObj.file_dot + '.' + year + '.1080p.webdl.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+            });
+          }
+        }
+
+        if (isSerial && ep[1] && ep[2]) {
+          var ss = uaflixPad2(ep[1]);
+          var ee = uaflixPad2(ep[2]);
+          slugObjects.forEach(function (slugObj) {
+            yearCandidates.forEach(function (year) { addSerialTailSet(slugObj, year, ss, ee); });
+            addSerialTailSet(slugObj, '', ss, ee);
+          });
+        }
+        if (isFilmLike) {
+          slugObjects.forEach(function (slugObj) {
+            yearCandidates.forEach(function (year) { addFilmTailSet(slugObj, year); });
+            addFilmTailSet(slugObj, '');
+          });
+        }
+
+        if (out.length > 500) out = out.slice(0, 500);
         stelsLog('uaflix-har-pattern-candidates', {
           player: playerUrl || '',
           page_referer: pageReferer || '',
           id: id,
-          slug: slug,
-          season: ss,
-          episode: ee,
+          section: section,
+          is_serial: !!(isSerial && ep[1] && ep[2]),
+          is_film_like: !!isFilmLike,
+          slug_objects: slugObjects.map(function (s) { return { label: s.label, raw: s.raw, path_forms: s.path_forms, file_under: s.file_under, file_dot: s.file_dot }; }),
+          season: ep[1] ? uaflixPad2(ep[1]) : '',
+          episode: ep[2] ? uaflixPad2(ep[2]) : '',
           year_candidates: yearCandidates,
           detected_years: uaflixDetectedYears,
-          forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '',
-          tails_sample: tails.slice(0, 12),
+          forced_year: uaflixNormalizeYear(Lampa.Storage.field('stels_online_uaflix_forced_year') || ''),
           count: out.length,
-          sample: out.slice(0, 20),
+          sample: out.slice(0, 30),
           har_example_for_episode_1: 'https://video.zetvideo.net/vod/serials/from/s01/from_s01e01_2022_webdl_1080p_ukr_eng_hurtom_9043/hls/index.m3u8'
         });
         return out;
@@ -15215,8 +15345,9 @@
       Lampa.Params.trigger('stels_online_iframe_proxy', !isTizen || isLocal);
       Lampa.Params.trigger('stels_online_proxy_iframe', false);
       Lampa.Params.trigger('stels_online_use_stream_proxy', false);
-      Lampa.Params.trigger('stels_online_uaflix_mobile_ua',
-        'stels_online_uaflix_forced_year', true);
+      Lampa.Params.trigger('stels_online_uaflix_mobile_ua', true);
+      if ((Lampa.Storage.field('stels_online_uaflix_forced_year') + '') === 'undefined' || (Lampa.Storage.field('stels_online_uaflix_forced_year') + '') === 'null') Lampa.Storage.set('stels_online_uaflix_forced_year', '');
+      Lampa.Params.select('stels_online_uaflix_forced_year', '', '');
       Lampa.Params.trigger('stels_online_proxy_find_ip', false);
       Lampa.Params.trigger('stels_online_proxy_other', false);
       Lampa.Params.trigger('stels_online_proxy_lumex', false);
@@ -16595,6 +16726,7 @@
       }
 
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_uaflix_mobile_ua\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_uaflix_mobile_ua}</div>\n            <div class=\"settings-param__descr\">Вмикає Android User-Agent для запитів до ZetVideo. У HAR сайту /vod/9043 відкривається саме з мобільним UA.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_uaflix_forced_year\" data-type=\"input\" data-string=\"true\" placeholder=\"наприклад 2022\">\n            <div class=\"settings-param__name\">#{stels_online_uaflix_forced_year}</div>\n            <div class=\"settings-param__descr\">Необов\'язково. Використовується тільки для побудови UAflix/ZetVideo HLS, якщо плагін не зміг витягнути рік зі сторінки.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_use_stream_proxy\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_use_stream_proxy}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_rezka2_prx_ukr\" data-type=\"select\">\n            <div class=\"settings-param__name\">#{stels_online_rezka2_prx_ukr}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_find_ip\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_find_ip}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_other\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_other}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_other_url\" data-type=\"input\" placeholder=\"#{settings_cub_not_specified}\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_other_url}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_secret_password\" data-type=\"input\" data-string=\"true\" placeholder=\"#{settings_cub_not_specified}\">\n            <div class=\"settings-param__name\">#{stels_online_secret_password}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
@@ -16685,7 +16817,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix debug: якщо ZetVideo /vod повертає 404, дивись uaflix-request/uaflix-response/uaflix-har-pattern-candidates/uaflix-fallback-stream-validate-*.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix debug 1.0.5: глобальні master-HLS кандидати для серіалів і фільмів; дивись slug_objects/year_candidates/uaflix-fallback-stream-validate-*.' });
       stelsInstallImageStyles();
       initStorage();
       initLang();
