@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.12';
+    var STELS_ONLINE_VERSION = '1.0.13';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
@@ -264,14 +264,14 @@
         $('head').append('<style id="stels-online-image-style">' +
           '.online.stels-online-with-thumb{position:relative;min-height:9.95em;margin:.52em 0;padding:.74em .9em .74em 15.05em!important;box-sizing:border-box;display:flex;align-items:stretch;border:.16em solid rgba(255,255,255,.92);border-radius:.42em;background:rgba(77,66,35,.78);overflow:hidden;}' +
           '.online.stels-online-with-thumb.focus,.online.stels-online-with-thumb.selector:hover{border-color:#fff;background:rgba(90,79,43,.9);}' +
-          '.online.stels-online-with-thumb .online__body{position:relative;width:100%;min-height:8.35em;display:flex;flex-direction:column;justify-content:flex-start;}' +
+          '.online.stels-online-with-thumb .online__body{position:relative;z-index:2;width:100%;min-height:8.35em;display:flex;flex-direction:column;justify-content:flex-start;}' +
           '.online.stels-online-with-thumb .online__body>div[style*="position: absolute"]{display:none!important;}' +
           '.online.stels-online-with-thumb .online__title{padding-left:0!important;white-space:normal;line-height:1.18;font-size:1.35em;font-weight:600;margin:.12em 4.2em .55em 0;color:#fff;}' +
           '.online.stels-online-with-thumb .online__quality{padding-left:0!important;opacity:1;display:flex;align-items:center;gap:.65em;margin-top:auto;font-size:.82em;line-height:1.25;color:rgba(255,255,255,.94);white-space:nowrap;}' +
-          '.stels-online-thumb{position:absolute;left:.72em;top:.72em;width:13.45em;height:8.1em;border-radius:.12em;overflow:hidden;background:rgba(255,255,255,.08);box-shadow:none;}' +
-          '.stels-online-thumb img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .18s;}' +
-          '.stels-online-thumb--loaded img{opacity:1;}' +
-          '.stels-online-thumb__loader{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));}' +
+          '.stels-online-thumb{position:absolute;left:.72em;top:.72em;width:13.45em;height:8.1em;border-radius:.12em;overflow:hidden;background-color:rgba(255,255,255,.08);background-size:cover;background-position:center center;box-shadow:none;z-index:1;}' +
+          '.stels-online-thumb img{width:100%;height:100%;object-fit:cover;display:block;opacity:1!important;visibility:visible!important;}' +
+          '.stels-online-thumb--loaded img{opacity:1!important;visibility:visible!important;}' +
+          '.stels-online-thumb__loader{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));pointer-events:none;}' +
           '.stels-online-episode-badge{position:absolute;right:.45em;top:.28em;z-index:2;color:#fff;font-size:.88em;font-weight:700;text-shadow:0 .08em .25em #000;background:linear-gradient(90deg,rgba(0,0,0,0),rgba(0,0,0,.42));padding:.12em .28em .14em .9em;border-radius:.15em;}' +
           '.stels-online-progress{height:.3em;width:100%;background:rgba(255,255,255,.34);border-radius:5em;margin:auto 0 .72em 0;overflow:hidden;}' +
           '.stels-online-progress__bar{height:100%;width:0%;background:rgba(255,255,255,.86);border-radius:5em;}' +
@@ -14218,10 +14218,18 @@
       var stels_tmdb_season_cache = {};
 
       function stelsBuildTmdbImage(path, size) {
+        path = (path == null ? '' : String(path)).trim();
         if (!path) return '';
-        if ((path + '').indexOf('http') === 0) return path;
-        try { return Lampa.TMDB.image('t/p/' + (size || 'w300') + path); }
-        catch (e) { return ''; }
+        if (/^https?:\/\//i.test(path)) return path;
+        var clean = path.replace(/^\/+/, '');
+        var rel = 't/p/' + (size || 'w300') + '/' + clean;
+        try {
+          if (Lampa.TMDB && Lampa.TMDB.image) {
+            var via_lampa = Lampa.TMDB.image(rel);
+            if (via_lampa) return via_lampa;
+          }
+        } catch (e) {}
+        return 'https://image.tmdb.org/t/p/' + (size || 'w300') + '/' + clean;
       }
 
       function stelsMovieFallbackImage() {
@@ -14341,18 +14349,37 @@
               item.find('.online__title').text(epMeta.name);
             }
             if (epMeta.formatted_date) stelsBuildMetaLine(item, epMeta.formatted_date);
-            url = url || stelsMovieFallbackImage() || './img/img_broken.svg';
-            img.onerror = function() {
-              img.src = './img/img_broken.svg';
-              thumb.addClass('stels-online-thumb--loaded');
-              thumb.find('.stels-online-thumb__loader').remove();
-            };
-            img.onload = function() {
-              thumb.addClass('stels-online-thumb--loaded');
-              thumb.find('.stels-online-thumb__loader').remove();
-            };
-            img.src = url;
-            stelsLog('thumb-set', { source: source || 'fallback', url_set: !!url, season: meta.season || 0, episode: meta.episode || 0, title: item.find('.online__title').text() });
+            var candidates = [];
+            function addCandidate(u) {
+              u = (u == null ? '' : String(u)).trim();
+              if (u && candidates.indexOf(u) === -1) candidates.push(u);
+            }
+            addCandidate(url);
+            addCandidate(stelsMovieFallbackImage());
+            addCandidate('./img/img_broken.svg');
+            var index = 0;
+            var selected = candidates[0] || './img/img_broken.svg';
+            try { img.setAttribute('referrerpolicy', 'no-referrer'); img.setAttribute('loading', 'eager'); img.setAttribute('decoding', 'async'); } catch (e) {}
+            function applyImage(u) {
+              selected = u || './img/img_broken.svg';
+              try { thumb.css('background-image', 'url("' + selected.replace(/"/g, '%22') + '")'); } catch (e) {}
+              img.onload = function() {
+                thumb.addClass('stels-online-thumb--loaded');
+                thumb.find('.stels-online-thumb__loader').remove();
+              };
+              img.onerror = function() {
+                index++;
+                if (index < candidates.length) {
+                  applyImage(candidates[index]);
+                  return;
+                }
+                thumb.addClass('stels-online-thumb--loaded');
+                thumb.find('.stels-online-thumb__loader').remove();
+              };
+              img.src = selected;
+            }
+            applyImage(selected);
+            stelsLog('thumb-set', { source: source || 'fallback', url_set: !!selected, url_preview: selected.slice(0, 180), season: meta.season || 0, episode: meta.episode || 0, title: item.find('.online__title').text() });
           };
           if (object && object.movie && object.movie.name && meta.episode) {
             stelsLoadEpisodeMeta(meta.season || 1, meta.episode, function(epMeta) {
