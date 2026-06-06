@@ -3283,8 +3283,8 @@
     }
     var manifest = {
       type: 'video',
-      version: '2.8.5',
-      name: '[Free] Stels_Online',
+      version: '1.1
+      name: 'Stels_Online',
       //description: 'Плагин для просмотра онлайн сериалов и фильмов',
       component: 'stels_online',
       onContextMenu: function onContextMenu(object) {
