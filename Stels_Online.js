@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.6';
+    var STELS_ONLINE_VERSION = '1.0.7';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
@@ -131,10 +131,17 @@
           'online_last_balanser',
           'stels_online_filter',
           'online_filter',
-          'online_view'
+          'online_view',
+          'online_balanser',
+          'stels_online_balanser',
+          'online_cache',
+          'stels_online_cache',
+          'online_search_cache',
+          'stels_online_uaflix_page_cache',
+          'stels_online_uaflix_stream_cache'
         ];
         keys.forEach(function (key) {
-          var value = key.indexOf('last_balanser') !== -1 || key.indexOf('filter') !== -1 ? {} : [];
+          var value = key.indexOf('last_balanser') !== -1 || key.indexOf('filter') !== -1 || key.indexOf('cache') !== -1 ? {} : (key.indexOf('view') !== -1 ? [] : '');
           Lampa.Storage.set(key, value);
           cleared.push(key);
         });
@@ -143,8 +150,54 @@
           Lampa.Storage.set(key, {});
           cleared.push(key);
         });
-        stelsLog('plugin-cache-cleared', { keys_count: cleared.length, sample: cleared.slice(0, 40) });
-        Lampa.Noty.show('Кеш Stels_Online очищено');
+
+        // Додатково чистимо кешові записи самої Lampa у localStorage/sessionStorage,
+        // але не чіпаємо налаштування джерел, токени, cookie, proxy та інші користувацькі параметри.
+        function clearWebStorage(storage, label) {
+          try {
+            if (!storage) return;
+            var remove = [];
+            for (var i = 0; i < storage.length; i++) {
+              var k = storage.key(i) || '';
+              var low = k.toLowerCase();
+              var protectedKey =
+                low.indexOf('stels_online_sources_hide') !== -1 ||
+                low.indexOf('stels_online_rezka2_cookie') !== -1 ||
+                low.indexOf('stels_online_fancdn_cookie') !== -1 ||
+                low.indexOf('stels_online_proxy') !== -1 ||
+                low.indexOf('stels_online_uaflix_mobile_ua') !== -1 ||
+                low.indexOf('stels_online_uaflix_forced_year') !== -1 ||
+                low.indexOf('stels_online_save_last_balanser') !== -1 ||
+                low.indexOf('stels_online_lampac_token') !== -1 ||
+                low.indexOf('token') !== -1 ||
+                low.indexOf('account') !== -1 ||
+                low.indexOf('profile') !== -1 ||
+                low.indexOf('settings') !== -1 ||
+                low.indexOf('plugins') !== -1;
+              var looksCache =
+                /stels_online_choice_/i.test(k) ||
+                /stels_online_last_balanser/i.test(k) ||
+                /stels_online_filter/i.test(k) ||
+                /online_last_balanser/i.test(k) ||
+                /online_filter/i.test(k) ||
+                /online_view/i.test(k) ||
+                /online_balanser/i.test(k) ||
+                /(lampa|online|stels).*cache/i.test(k) ||
+                /cache.*(lampa|online|stels)/i.test(k);
+              if (!protectedKey && looksCache) remove.push(k);
+            }
+            remove.forEach(function (k) {
+              try { storage.removeItem(k); cleared.push(label + ':' + k); } catch (e) {}
+            });
+          } catch (e) {
+            stelsLog('web-storage-cache-clear-error', { storage: label, error: e && (e.message || e.toString()) });
+          }
+        }
+        clearWebStorage(window.localStorage, 'localStorage');
+        clearWebStorage(window.sessionStorage, 'sessionStorage');
+
+        stelsLog('plugin-cache-cleared', { keys_count: cleared.length, sample: cleared.slice(0, 80), lampa_storage_included: true });
+        Lampa.Noty.show('Кеш Stels_Online і Lampa очищено');
       } catch (e) {
         stelsLog('plugin-cache-clear-error', { error: e && (e.message || e.toString()) });
         Lampa.Noty.show('Не вдалося очистити кеш Stels_Online');
@@ -12275,6 +12328,7 @@
       var uaflixRequestSeq = 0;
       var uaflixDetectedYears = [];
       var uaflixLastDebug = {};
+      var uaflixPageInfoByUrl = {};
       var headers = {
         'User-Agent': uaflixDesktopUA,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -12525,6 +12579,113 @@
         }
       }
 
+
+      function uaflixMetaContent(root, names) {
+        var out = [];
+        (names || []).forEach(function (name) {
+          root.find('meta[name="' + name + '"],meta[property="' + name + '"]').each(function () {
+            var c = ($(this).attr('content') || '').trim();
+            if (c && out.indexOf(c) === -1) out.push(c);
+          });
+        });
+        return out;
+      }
+
+      function uaflixQuotedTexts(text) {
+        var out = [];
+        text = component.decodeHtml((text || '') + '');
+        var patterns = [
+          /[«“„"]([^«»“”„"']{2,120})[»”"]/g,
+          /[']([^']{2,120})[']/g
+        ];
+        patterns.forEach(function (re) {
+          var m;
+          while ((m = re.exec(text))) {
+            var s = cleanText(m[1] || '');
+            if (!s) continue;
+            if (!/[a-z0-9]/i.test(s)) continue;
+            if (/\b(?:сезон|серія|дивитись|онлайн|українською|трейлер)\b/i.test(s)) continue;
+            if (out.indexOf(s) === -1) out.push(s);
+            if (out.length >= 8) break;
+          }
+        });
+        return out;
+      }
+
+      function uaflixEpisodeTitleCandidatesFromHtml(html) {
+        var root = $('<div>' + (html || '') + '</div>');
+        var textBlocks = [];
+        var titleText = cleanText(root.find('title').first().text() || '');
+        if (titleText) textBlocks.push(titleText);
+        uaflixMetaContent(root, ['description', 'og:description', 'twitter:description', 'og:title', 'twitter:title']).forEach(function (s) { textBlocks.push(s); });
+        var h1Text = cleanText(root.find('h1').first().text() || '');
+        if (h1Text) textBlocks.push(h1Text);
+
+        var out = [];
+        textBlocks.forEach(function (t) {
+          uaflixQuotedTexts(t).forEach(function (q) {
+            if (out.indexOf(q) === -1) out.push(q);
+          });
+        });
+
+        // Додатковий fallback для англомовної назви після номера серії, навіть якщо сайт прибере лапки.
+        textBlocks.forEach(function (t) {
+          var m = (t || '').match(/(?:сер[іи]я|episode)\s*\d+\s+([A-Za-z0-9][A-Za-z0-9\s:,'’!\?.\-]{2,90})/i);
+          if (m) {
+            var s = cleanText(m[1]).replace(/\s+(?:дивитись|онлайн|українською).*$/i, '').trim();
+            if (s && /[a-z]/i.test(s) && out.indexOf(s) === -1) out.push(s);
+          }
+        });
+
+        if (out.length > 10) out = out.slice(0, 10);
+        return out;
+      }
+
+      function uaflixRegisterPageInfo(html, pageUrl, element) {
+        try {
+          var root = $('<div>' + (html || '') + '</div>');
+          var titleText = cleanText(root.find('title').first().text() || '');
+          var h1Text = cleanText(root.find('h1').first().text() || '');
+          var metaDescriptions = uaflixMetaContent(root, ['description', 'og:description', 'twitter:description']);
+          var episodeTitles = uaflixEpisodeTitleCandidatesFromHtml(html);
+          var info = {
+            page: pageUrl || '',
+            element_title: element && element.title || '',
+            season: element && element.season || '',
+            episode: element && element.episode || '',
+            title: titleText,
+            h1: h1Text,
+            meta_descriptions: metaDescriptions.slice(0, 4),
+            episode_titles: episodeTitles,
+            episode_title_slugs: episodeTitles.map(function (s) {
+              return {
+                raw: s,
+                dot: uaflixSlugifyText(s, '.'),
+                under: uaflixSlugifyText(s, '_'),
+                dash: uaflixSlugifyText(s, '-')
+              };
+            }).filter(function (s) { return !!(s.dot || s.under || s.dash); })
+          };
+          if (pageUrl) uaflixPageInfoByUrl[pageUrl] = info;
+          stelsLog('uaflix-page-info', {
+            page: pageUrl || '',
+            title: titleText,
+            h1: h1Text,
+            episode_titles: episodeTitles,
+            episode_title_slugs: info.episode_title_slugs,
+            meta_sample: metaDescriptions.slice(0, 2)
+          });
+          return info;
+        } catch (e) {
+          stelsLog('uaflix-page-info-error', { page: pageUrl || '', error: e && (e.message || e.toString()) });
+          return {};
+        }
+      }
+
+      function uaflixPageInfo(pageUrl) {
+        return uaflixPageInfoByUrl[pageUrl || ''] || {};
+      }
+
       function uaflixYearCandidates() {
         var out = [];
         var m = object && object.movie || {};
@@ -12559,11 +12720,12 @@
         var ep = ((pageReferer || '').match(/season-(\d+)-episode-(\d+)/i) || []);
         var section = uaflixUrlSection(pageReferer || '');
         var slugObjects = uaflixSlugObjects(pageReferer || '');
+        var pageInfo = uaflixPageInfo(pageReferer || '');
         var yearCandidates = uaflixYearCandidates();
         var isSerial = !!(ep[1] && ep[2]) || section.type === 'serials';
         var isFilmLike = !ep[1] && !ep[2];
         if (!id || !slugObjects.length) {
-          stelsLog('uaflix-build-guess-streams-skip', { player: playerUrl || '', page_referer: pageReferer || '', id: id, section: section, slug_objects: slugObjects, ep_match: ep && ep.length ? ep.slice(0, 3) : [] });
+          stelsLog('uaflix-build-guess-streams-skip', { player: playerUrl || '', page_referer: pageReferer || '', id: id, section: section, slug_objects: slugObjects, ep_match: ep && ep.length ? ep.slice(0, 3) : [], page_info: pageInfo });
           return out;
         }
 
@@ -12575,38 +12737,101 @@
           'webdl_1080p_ukr',
           'webrip_1080p_ukr'
         ];
+
+        // Новіші релізи UAflix/ZetVideo часто мають іншу схему з крапками і без hurtom:
+        // from.s02e01.strangers.in.a.strange.land.webdl.1080p.ukreng_9053
+        var dotQualityParts = [
+          'webdl.1080p.ukreng',
+          'webrip.1080p.ukreng',
+          'webdl.1080p.ukr',
+          'webrip.1080p.ukr',
+          'web-dl.1080p.ukreng',
+          'web-dl.1080p.ukr'
+        ];
+        var underQualityParts = [
+          'webdl_1080p_ukreng',
+          'webrip_1080p_ukreng',
+          'webdl_1080p_ukr',
+          'webrip_1080p_ukr'
+        ];
+
         var filmFolders = ['films', 'movies', 'cartoons', 'multfilms'];
         if (section.type === 'cartoons' || section.type === 'multfilms') filmFolders = [section.type, 'cartoons', 'multfilms', 'films', 'movies'];
         if (section.type === 'films') filmFolders = ['films', 'movies'];
 
         function addStreamVariants(folder, path, tail) {
-          // Для фільмів master-manifest йде без сезонної папки.
           add('https://video.zetvideo.net/vod/' + folder + '/' + path + '/' + tail + '/hls/index.m3u8');
         }
 
         function addSerialStreamVariants(path, ss, tail) {
-          // Для серіалів ZetVideo використовує папку сезону: /serials/from/s01/from_s01e01_.../hls/index.m3u8.
-          // У 1.0.5 ця папка випадково зникла, через що навіть робочий серіал "Ззовні" почав давати 404.
+          // Для серіалів ZetVideo найчастіше використовує папку сезону:
+          // /vod/serials/from/s02/from.s02e01.../hls/index.m3u8
           add('https://video.zetvideo.net/vod/serials/' + path + '/s' + ss + '/' + tail + '/hls/index.m3u8');
-          // Залишаємо старий безсезонний варіант тільки як fallback для нетипових розкладок.
+          // Резерв для старих/нетипових розкладок.
           add('https://video.zetvideo.net/vod/serials/' + path + '/' + tail + '/hls/index.m3u8');
+        }
+
+        function uniqueTitleSlugs() {
+          var out = [];
+          function addTitleSlug(raw) {
+            raw = (raw || '').trim();
+            if (!raw) return;
+            var obj = {
+              raw: raw,
+              dot: uaflixSlugifyText(raw, '.'),
+              under: uaflixSlugifyText(raw, '_'),
+              dash: uaflixSlugifyText(raw, '-')
+            };
+            var key = obj.dot + '|' + obj.under + '|' + obj.dash;
+            if ((obj.dot || obj.under || obj.dash) && !out.some(function (x) { return x.key === key; })) {
+              obj.key = key;
+              out.push(obj);
+            }
+          }
+          ((pageInfo && pageInfo.episode_titles) || []).forEach(addTitleSlug);
+          ((pageInfo && pageInfo.episode_title_slugs) || []).forEach(function (s) {
+            if (s && s.raw) addTitleSlug(s.raw);
+          });
+          return out.slice(0, 8);
         }
 
         function addSerialTailSet(slugObj, year, ss, ee) {
           var se = 's' + ss + 'e' + ee;
+          var titleSlugs = uniqueTitleSlugs();
           var tails = [];
           function tail(t) { if (t && tails.indexOf(t) === -1) tails.push(t); }
+
           if (year) {
             qualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + se + '_' + year + '_' + q + '_' + id); });
             tail(slugObj.file_under + '_' + se + '_' + year + '_1080p_webrip_x264_aac_uaflix_' + id);
             tail(slugObj.file_under + '_' + se + '_' + year + '_1080p_webdl_x264_aac_uaflix_' + id);
+            dotQualityParts.forEach(function (q) {
+              tail(slugObj.file_dot + '.' + se + '.' + year + '.' + q + '_' + id);
+            });
           } else {
             qualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + se + '_' + q + '_' + id); });
+            underQualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + se + '_' + q + '_' + id); });
+            dotQualityParts.forEach(function (q) { tail(slugObj.file_dot + '.' + se + '.' + q + '_' + id); });
             tail(slugObj.file_under + '_' + se + '_' + id);
+            tail(slugObj.file_dot + '.' + se + '_' + id);
           }
-          slugObj.path_forms.slice(0, 3).forEach(function (path) {
+
+          titleSlugs.forEach(function (et) {
+            dotQualityParts.forEach(function (q) {
+              tail(slugObj.file_dot + '.' + se + '.' + et.dot + '.' + q + '_' + id);
+              if (year) tail(slugObj.file_dot + '.' + se + '.' + et.dot + '.' + year + '.' + q + '_' + id);
+            });
+            underQualityParts.forEach(function (q) {
+              tail(slugObj.file_under + '_' + se + '_' + et.under + '_' + q + '_' + id);
+              if (year) tail(slugObj.file_under + '_' + se + '_' + et.under + '_' + year + '_' + q + '_' + id);
+            });
+          });
+
+          slugObj.path_forms.slice(0, 4).forEach(function (path) {
             tails.forEach(function (t) { addSerialStreamVariants(path, ss, t); });
           });
+
+          // Дуже старі dot-only шляхи без окремої папки title/season.
           if (year) {
             add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.' + year + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
             add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.' + year + '.1080p.webdl.x264.aac.uaflix_' + id + '/hls/index.m3u8');
@@ -12623,12 +12848,20 @@
             qualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + year + '_' + q + '_' + id); });
             tail(slugObj.file_under + '_' + year + '_1080p_webrip_x264_aac_uaflix_' + id);
             tail(slugObj.file_under + '_' + year + '_1080p_webdl_x264_aac_uaflix_' + id);
+            dotQualityParts.forEach(function (q) {
+              tail(slugObj.file_dot + '.' + year + '.' + q + '_' + id);
+              tail(slugObj.file_dot + '.' + q + '.' + year + '_' + id);
+            });
+            underQualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + year + '_' + q + '_' + id); });
           } else {
             qualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + q + '_' + id); });
+            underQualityParts.forEach(function (q) { tail(slugObj.file_under + '_' + q + '_' + id); });
+            dotQualityParts.forEach(function (q) { tail(slugObj.file_dot + '.' + q + '_' + id); });
             tail(slugObj.file_under + '_' + id);
+            tail(slugObj.file_dot + '_' + id);
           }
           filmFolders.forEach(function (folder) {
-            slugObj.path_forms.slice(0, 3).forEach(function (path) {
+            slugObj.path_forms.slice(0, 4).forEach(function (path) {
               tails.forEach(function (t) { addStreamVariants(folder, path, t); });
             });
           });
@@ -12643,19 +12876,21 @@
         if (isSerial && ep[1] && ep[2]) {
           var ss = uaflixPad2(ep[1]);
           var ee = uaflixPad2(ep[2]);
+          // У HAR другого сезону "Ззовні" правильний шлях без року та з назвою серії:
+          // /from/s02/from.s02e01.strangers.in.a.strange.land.webdl.1080p.ukreng_9053/...
           slugObjects.forEach(function (slugObj) {
-            yearCandidates.forEach(function (year) { addSerialTailSet(slugObj, year, ss, ee); });
             addSerialTailSet(slugObj, '', ss, ee);
+            yearCandidates.forEach(function (year) { addSerialTailSet(slugObj, year, ss, ee); });
           });
         }
         if (isFilmLike) {
           slugObjects.forEach(function (slugObj) {
-            yearCandidates.forEach(function (year) { addFilmTailSet(slugObj, year); });
             addFilmTailSet(slugObj, '');
+            yearCandidates.forEach(function (year) { addFilmTailSet(slugObj, year); });
           });
         }
 
-        if (out.length > 500) out = out.slice(0, 500);
+        if (out.length > 700) out = out.slice(0, 700);
         stelsLog('uaflix-har-pattern-candidates', {
           player: playerUrl || '',
           page_referer: pageReferer || '',
@@ -12664,14 +12899,21 @@
           is_serial: !!(isSerial && ep[1] && ep[2]),
           is_film_like: !!isFilmLike,
           slug_objects: slugObjects.map(function (s) { return { label: s.label, raw: s.raw, path_forms: s.path_forms, file_under: s.file_under, file_dot: s.file_dot }; }),
+          page_info: {
+            title: pageInfo && pageInfo.title || '',
+            h1: pageInfo && pageInfo.h1 || '',
+            episode_titles: pageInfo && pageInfo.episode_titles || [],
+            episode_title_slugs: pageInfo && pageInfo.episode_title_slugs || []
+          },
           season: ep[1] ? uaflixPad2(ep[1]) : '',
           episode: ep[2] ? uaflixPad2(ep[2]) : '',
           year_candidates: yearCandidates,
           detected_years: uaflixDetectedYears,
           forced_year: uaflixNormalizeYear(Lampa.Storage.field('stels_online_uaflix_forced_year') || ''),
           count: out.length,
-          sample: out.slice(0, 30),
-          har_example_for_episode_1: 'https://video.zetvideo.net/vod/serials/from/s01/from_s01e01_2022_webdl_1080p_ukr_eng_hurtom_9043/hls/index.m3u8'
+          sample: out.slice(0, 40),
+          har_example_s01: 'https://video.zetvideo.net/vod/serials/from/s01/from_s01e01_2022_webdl_1080p_ukr_eng_hurtom_9043/hls/index.m3u8',
+          har_example_s02: 'https://video.zetvideo.net/vod/serials/from/s02/from.s02e01.strangers.in.a.strange.land.webdl.1080p.ukreng_9053/hls/index.m3u8'
         });
         return out;
       }
@@ -13359,6 +13601,22 @@
                 }
               }, function (err) {
                 stelsLog('uaflix-player-request-error', { player: player.iframe, request_url: req.url, request_mode: req.mode, proxied: req.proxied, referer: rr, error: err });
+                var guessedStreamsOnError = uaflixBuildGuessStreams(player.iframe, pageReferer || player.referer || rr);
+                if (guessedStreamsOnError.length && /404|not found|nginx/i.test((err || '') + '')) {
+                  stelsLog('uaflix-player-fallback-stream', {
+                    reason: 'zetvideo_request_404',
+                    player: player.iframe,
+                    page_referer: pageReferer || player.referer || rr,
+                    guessed_count: guessedStreamsOnError.length,
+                    guessed_sample: guessedStreamsOnError.slice(0, 40)
+                  });
+                  uaflixValidateGuessStreams(guessedStreamsOnError, player, pageReferer || player.referer || rr, function (validUrl) {
+                    success({ file: validUrl, poster: '', subtitles: [] }, player);
+                  }, function (guessErr) {
+                    tryRequestUrl(guessErr || err || 'request error');
+                  });
+                  return;
+                }
                 tryRequestUrl(err || 'request error');
               }, rr);
             }
@@ -13372,6 +13630,7 @@
       function loadEpisodePage(element, success, fail) {
         requestText(element.link, function (html) {
           try { uaflixDetectYearFromHtml(html, element.link); } catch (e) {}
+          try { uaflixRegisterPageInfo(html, element.link, element); } catch (e) {}
           stelsLog('uaflix-episode-page-debug', {
             title: element && element.title || '',
             link: element && element.link || '',
@@ -13455,6 +13714,7 @@
       function loadTitle(link) {
         link = absolute(link);
         requestText(link, function (html) {
+          try { uaflixRegisterPageInfo(html, link, { title: select_title }); } catch (e) {}
           var pageEpisodes = parseEpisodeLinks(html, link);
           title_page_episodes = pageEpisodes.slice(0);
           season_links = parseSeasonLinks(html, link);
