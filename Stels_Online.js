@@ -3,10 +3,10 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.9';
+    var STELS_ONLINE_VERSION = '1.0.10';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
-    var STELS_LOG_MAX = 350;
+    var STELS_LOG_MAX = 1200;
 
     var STELS_SOURCES_HIDE_KEY = 'stels_online_sources_hide';
 
@@ -12343,10 +12343,10 @@
       function requestText(url, success, fail, referer) {
         var requestId = ++uaflixRequestSeq;
         var activeUA = uaflixUaFor(url);
-        var isZetVod = /https?:\/\/(?:www\.)?zetvideo\.net\/vod\//i.test(url || '');
+        var isZetVod = /https?:\/\/(?:www\.)?zetvideo\.net\/(?:vod|serial)\//i.test(url || '');
         var isZetM3u8 = /https?:\/\/video\.zetvideo\.net\/.+\.m3u8(?:$|\?)/i.test(url || '');
         var isUafixPage = /https?:\/\/(?:www\.)?uafix\.net\//i.test(url || '');
-        var requestKind = isZetVod ? 'zet_vod_html' : (isZetM3u8 ? 'zet_hls_manifest' : (isUafixPage ? 'uafix_page' : 'other'));
+        var requestKind = isZetVod ? 'zet_player_html' : (isZetM3u8 ? 'zet_hls_manifest' : (isUafixPage ? 'uafix_page' : 'other'));
         var h = {};
         for (var k in headers) h[k] = headers[k];
         h['User-Agent'] = activeUA;
@@ -12405,7 +12405,7 @@
             length: str.length,
             has_season_links: /\/sezon-\d+\//i.test(str),
             has_episode_links: /\/season-\d+-episode-\d+\//i.test(str),
-            has_zetvideo: /zetvideo\.net\/vod\//i.test(str),
+            has_zetvideo: /zetvideo\.net\/(?:vod|serial)\//i.test(str),
             has_m3u8: /\.m3u8/i.test(str),
             has_playerjs: /Playerjs|new\s+Playerjs/i.test(str),
             has_404_text: /404\s+Not\s+Found|nginx/i.test(str),
@@ -12429,7 +12429,7 @@
           if (fail) fail(error);
         }, false, {
           dataType: 'text',
-          headers: requestHeaders
+          headers: h
         });
       }
 
@@ -12445,6 +12445,30 @@
         text = component.decodeHtml((text || '') + '').replace(/<script[\s\S]*?<\/script>/ig, ' ').replace(/<style[\s\S]*?<\/style>/ig, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         limit = limit || 500;
         return text.length > limit ? text.substring(0, limit) + '…' : text;
+      }
+
+
+      function uaflixMaybeDecodeBase64Html(text, context) {
+        var s = (text || '') + '';
+        if (!s) return s;
+        if (/<(?:html|body|iframe|script)|zetvideo\.net|Playerjs|new\s+Playerjs/i.test(s)) return s;
+        var compact = s.replace(/\s+/g, '');
+        if (compact.length < 200 || !/^[A-Za-z0-9+/=]+$/.test(compact)) return s;
+        try {
+          var decoded = atob(compact);
+          if (/<(?:html|body|iframe|script)|zetvideo\.net|Playerjs|new\s+Playerjs/i.test(decoded)) {
+            stelsLog('uaflix-base64-html-decoded', {
+              context: context || '',
+              input_length: s.length,
+              output_length: decoded.length,
+              preview: uaflixCompact(decoded, 500)
+            });
+            return decoded;
+          }
+        } catch (e) {
+          stelsLog('uaflix-base64-html-decode-fail', { context: context || '', error: e && (e.message || e.toString()) });
+        }
+        return s;
       }
 
       function uaflixCountBySeason(items) {
@@ -12746,7 +12770,10 @@
           'webdl.1080p.ukr',
           'webrip.1080p.ukr',
           'web-dl.1080p.ukreng',
-          'web-dl.1080p.ukr'
+          'web-dl.1080p.ukr',
+          '1080p.webdlrip.x264.aac.uaflix',
+          '1080p.webdl.x264.aac.uaflix',
+          '1080p.webrip.x264.aac.uaflix'
         ];
         var underQualityParts = [
           'webdl_1080p_ukreng',
@@ -12861,8 +12888,11 @@
           if (year) {
             add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.' + year + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
             add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.' + year + '.1080p.webdl.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+            add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.' + year + '.1080p.webdlrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
           } else {
             add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+            add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.1080p.webdl.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+            add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '.1080p.webdlrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
             add('https://video.zetvideo.net/vod/serials/' + slugObj.file_dot + '.s' + ss + 'e' + ee + '_' + id + '/hls/index.m3u8');
           }
         }
@@ -13177,17 +13207,18 @@
       }
 
       function parsePlayers(html, pageUrl) {
+        html = uaflixMaybeDecodeBase64Html(html, 'parsePlayers:' + (pageUrl || ''));
         var root = $('<div>' + html + '</div>');
         var players = [];
         var seen = {};
         root.find('iframe[src], iframe[data-src]').each(function (index) {
           var src = absolute($(this).attr('src') || $(this).attr('data-src'), pageUrl);
           if (!src || seen[src]) return;
-          if (src.indexOf('zetvideo.net/vod/') === -1) return;
+          if (!/zetvideo\.net\/(?:vod|serial)\/\d+(?::\d+)?/i.test(src)) return;
           players.push({ title: index ? 'Плеєр ' + (index + 1) : 'Плеєр 1', iframe: src });
           seen[src] = true;
         });
-        var playerRe = /(?:https?:)?\/\/(?:www\.)?zetvideo\.net\/vod\/\d+/ig;
+        var playerRe = /(?:https?:)?\/\/(?:www\.)?zetvideo\.net\/(?:vod|serial)\/\d+(?::\d+)?/ig;
         var match;
         while ((match = playerRe.exec(html || ''))) {
           var src = absolute(match[0].indexOf('http') === 0 ? match[0] : ('https:' + match[0]), pageUrl);
@@ -13201,32 +13232,82 @@
           players: players.map(function (p) { return p.iframe; }),
           iframe_count: root.find('iframe').length,
           iframe_src_sample: root.find('iframe').map(function () { return $(this).attr('src') || $(this).attr('data-src') || ''; }).get().slice(0, 8),
-          zetvideo_context: uaflixContextSamples(html, /zetvideo\.net\/vod\/\d+/ig, 4, 220),
-          raw_vod_ids: ((html || '').match(/zetvideo\.net\/vod\/(\d+)/ig) || []).slice(0, 20)
+          zetvideo_context: uaflixContextSamples(html, /zetvideo\.net\/(?:vod|serial)\/\d+(?::\d+)?/ig, 4, 220),
+          raw_vod_ids: ((html || '').match(/zetvideo\.net\/(?:vod|serial)\/\d+(?::\d+)?/ig) || []).slice(0, 20)
         });
         return players;
       }
 
-      function parseZetvideo(html, playerUrl) {
+      function parseZetvideo(html, playerUrl, pageReferer) {
+        html = uaflixMaybeDecodeBase64Html(html, 'parseZetvideo:' + (playerUrl || ''));
         function matchValue(name) {
-          var r = new RegExp(name + "\\s*:\\s*[\\\"']([^\\\"']*)[\\\"']", 'i').exec(html || '');
-          return r ? component.decodeHtml(r[1]) : '';
+          // Playerjs може передавати file як звичайний url або як великий JSON-плейлист у лапках.
+          // Для серіалів UAflix правильне посилання не треба вгадувати: воно лежить саме у цьому JSON.
+          var re = new RegExp(name + "\\s*:\\s*([\"'])((?:\\\\.|(?!\\1)[\\s\\S])*?)\\1\\s*(?:,|\\})", 'i');
+          var r = re.exec(html || '');
+          return r ? component.decodeHtml(r[2]).replace(/\\([\"'])/g, '$1') : '';
         }
-        var file = matchValue('file');
-        if (!file) {
-          var fm = (html || '').match(/https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*/i);
-          if (fm) file = fm[0];
+        function safeJsonText(text) {
+          text = component.decodeHtml((text || '') + '').replace(/\\\//g, '/').trim();
+          text = text.replace(/\\&quot;/g, '"').replace(/&quot;/g, '"');
+          return text;
         }
-        var poster = matchValue('poster');
-        if (!poster) {
-          var pm = (html || '').match(/https?:\/\/[^"'\s<>]+?(?:screen|poster)[^"'\s<>]*\.(?:jpg|jpeg|png|webp)/i);
-          if (pm) poster = pm[0];
+        function expectedFromReferer() {
+          var m = ((pageReferer || '') + '').match(/season-(\d+)-episode-(\d+)/i);
+          return {
+            season: m ? (parseInt(m[1], 10) || 0) : 0,
+            episode: m ? (parseInt(m[2], 10) || 0) : 0
+          };
         }
-        var subtitle = matchValue('subtitle');
-        if (file) file = (file + '').replace(/\\//g, '/');
-        if (poster) poster = (poster + '').replace(/\\//g, '/');
-        var subtitles = [];
-        if (subtitle) {
+        function parseNumFromTitle(title, type) {
+          title = component.decodeHtml((title || '') + '');
+          var m = null;
+          if (type === 'season') m = title.match(/(?:сезон|season)\s*(\d+)/i);
+          else m = title.match(/(?:сер[іиіяя]*|episode)\s*(\d+)/i);
+          return m ? (parseInt(m[1], 10) || 0) : 0;
+        }
+        function flattenPlayerList(value, path, inherited) {
+          var out = [];
+          inherited = inherited || {};
+          path = path || [];
+          if (!value) return out;
+          if (typeof value === 'string') return out;
+          if (Object.prototype.toString.call(value) === '[object Array]') {
+            value.forEach(function (v) { out = out.concat(flattenPlayerList(v, path, inherited)); });
+            return out;
+          }
+          var title = value.title || '';
+          var season = inherited.season || parseNumFromTitle(title, 'season');
+          var episode = inherited.episode || parseNumFromTitle(title, 'episode');
+          var nextInherited = { season: season, episode: episode };
+          var nextPath = path.slice(0);
+          if (title) nextPath.push(title);
+          if (value.folder) {
+            out = out.concat(flattenPlayerList(value.folder, nextPath, nextInherited));
+          }
+          if (value.file && typeof value.file === 'string') {
+            var f = safeJsonText(value.file);
+            var fm = f.match(/s(\d+)e(\d+)/i);
+            if (fm) {
+              season = season || (parseInt(fm[1], 10) || 0);
+              episode = episode || (parseInt(fm[2], 10) || 0);
+            }
+            out.push({
+              title: title || nextPath.join(' / '),
+              season: season || 0,
+              episode: episode || 0,
+              file: f,
+              id: value.id || '',
+              poster: safeJsonText(value.poster || ''),
+              subtitle: safeJsonText(value.subtitle || ''),
+              path: nextPath.join(' / ')
+            });
+          }
+          return out;
+        }
+        function parseSubtitles(subtitle) {
+          var subtitles = [];
+          if (!subtitle) return subtitles;
           subtitle.split(',').forEach(function (part, index) {
             var m = part.match(/^\s*\[([^\]]+)\](.+)$/);
             var label = m ? m[1] : 'UA ' + (index + 1);
@@ -13234,15 +13315,64 @@
             url = (url || '').trim();
             if (url) subtitles.push({ label: label, url: absolute(url, playerUrl) });
           });
+          return subtitles;
         }
-        var result = { file: absolute(file, playerUrl), poster: absolute(poster, playerUrl), subtitles: subtitles };
+        var rawFile = matchValue('file');
+        var file = rawFile;
+        var poster = matchValue('poster');
+        var subtitle = matchValue('subtitle');
+        var expected = expectedFromReferer();
+        var playlistItems = [];
+        var selected = null;
+        if (rawFile) {
+          var prepared = safeJsonText(rawFile);
+          if (/^\s*[\[{]/.test(prepared)) {
+            try {
+              playlistItems = flattenPlayerList(JSON.parse(prepared));
+              selected = playlistItems.filter(function (it) {
+                return (!expected.season || it.season == expected.season) && (!expected.episode || it.episode == expected.episode);
+              })[0] || playlistItems[0] || null;
+              if (selected) {
+                file = selected.file;
+                poster = selected.poster || poster;
+                subtitle = selected.subtitle || subtitle;
+              }
+            } catch (e) {
+              stelsLog('uaflix-playerjs-json-error', {
+                player: playerUrl,
+                page_referer: pageReferer || '',
+                error: e && (e.message || e.toString()),
+                raw_preview: uaflixCompact(prepared, 600)
+              });
+            }
+          } else {
+            file = prepared;
+          }
+        }
+        if (!file) {
+          var fm = (html || '').match(/https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*/i);
+          if (fm) file = fm[0];
+        }
+        if (!poster) {
+          var pm = (html || '').match(/https?:\/\/[^"'\s<>]+?(?:screen|poster)[^"'\s<>]*\.(?:jpg|jpeg|png|webp)/i);
+          if (pm) poster = pm[0];
+        }
+        if (file) file = safeJsonText(file);
+        if (poster) poster = safeJsonText(poster);
+        var subtitles = parseSubtitles(subtitle);
+        var result = { file: absolute(file, playerUrl), poster: absolute(poster, playerUrl), subtitles: subtitles, playlist: playlistItems };
         stelsLog('uaflix-zetvideo-parse', {
           player: playerUrl,
+          page_referer: pageReferer || '',
           html_length: (html || '').length,
           has_playerjs: /Playerjs|new\s+Playerjs/i.test(html || ''),
           m3u8_matches: ((html || '').match(/https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*/ig) || []).slice(0, 10),
           file_property_matches: uaflixContextSamples(html, /file\s*:\s*["'][^"']+["']/ig, 4, 220),
           playerjs_context: uaflixContextSamples(html, /Playerjs|new\s+Playerjs/ig, 3, 250),
+          expected: expected,
+          playlist_items_count: playlistItems.length,
+          playlist_sample: playlistItems.slice(0, 12).map(function (it) { return { title: it.title, season: it.season, episode: it.episode, id: it.id, file: it.file }; }),
+          selected: selected ? { title: selected.title, season: selected.season, episode: selected.episode, id: selected.id, file: selected.file } : null,
           file: result.file,
           poster: result.poster,
           subtitles_count: subtitles.length,
@@ -13584,7 +13714,7 @@
             refs: refs,
             request_candidates: requestCandidates.map(function (i) { return { url: i.url, mode: i.mode, proxied: i.proxied }; }),
             attempts_count: attempts.length,
-            note: '1.0.8: спочатку пробуємо отримати реальний file з HTML ZetVideo через усі direct/proxy варіанти, і тільки потім запускаємо HLS fallback. Це прибирає прив’язку до одного серіалу.'
+            note: '1.0.9: спочатку читаємо реальний Playerjs file з HTML ZetVideo. Для serial/{id} це JSON з усіма сезонами/серіями; вибираємо серію за pageReferer season-XX-episode-YY. HLS-вгадування лишається тільки останнім fallback.'
           });
 
           function tryFallback(lastError) {
@@ -13629,7 +13759,7 @@
               referer: rr
             });
             requestText(req.url, function (playerHtml) {
-              var data = parseZetvideo(playerHtml, player.iframe);
+              var data = parseZetvideo(playerHtml, player.iframe, pageReferer || player.referer || rr || ref);
               if (data.file) {
                 stelsLog('uaflix-player-success', {
                   player: player.iframe,
@@ -13700,7 +13830,7 @@
             year_candidates: uaflixYearCandidates(),
             html_length: (html || '').length,
             title_tag: cleanText(($('<div>' + (html || '') + '</div>').find('title').first().text() || '')),
-            has_zetvideo: /zetvideo\.net\/vod\//i.test(html || ''),
+            has_zetvideo: /zetvideo\.net\/(?:vod|serial)\//i.test(html || ''),
             has_playerjs: /Playerjs|new\s+Playerjs/i.test(html || ''),
             has_m3u8: /\.m3u8/i.test(html || ''),
             contexts: uaflixContextSamples(html, /zetvideo\.net\/vod\/\d+|\.m3u8|Playerjs/ig, 8, 220)
@@ -13736,6 +13866,52 @@
         }, fail);
       }
 
+      function uaflixRenderSerialPlaylistFromPlayer(player, titleLink, fail) {
+        stelsLog('uaflix-serial-playlist-load', {
+          player: player && player.iframe || '',
+          title_page: titleLink || '',
+          note: '1.0.10: serial/{id} читаємо через той самий extractor, що і vod/{id}; це дозволяє proxy/direct варіанти і не зривається на CORS.'
+        });
+        tryPlayerUrls([player], titleLink || ref, function (data) {
+          var playlist = data && data.playlist || [];
+          stelsLog('uaflix-serial-playlist-result', {
+            player: player && player.iframe || '',
+            title_page: titleLink || '',
+            playlist_items_count: playlist.length,
+            first_file: data && data.file || '',
+            sample: playlist.slice(0, 30).map(function (it) { return { title: it.title, season: it.season, episode: it.episode, file: it.file, id: it.id }; })
+          });
+          if (!playlist.length) {
+            if (fail) fail('serial playlist empty');
+            return;
+          }
+          extract = playlist.map(function (it) {
+            return {
+              title: component.formatEpisodeTitle(it.season || 1, it.episode || 1, ''),
+              quality: 'UAflix',
+              info: '',
+              season: it.season || 1,
+              episode: it.episode || 1,
+              stream: stelsApplyUaflixStreamProxy(it.file),
+              poster: absolute(it.poster || '', player.iframe),
+              subtitles: [],
+              qualitys: false,
+              link: titleLink || player.iframe,
+              playlist_source: player.iframe
+            };
+          }).filter(function (it) { return !!it.stream; });
+          season_links = [];
+          loaded_seasons = {};
+          title_page_episodes = extract.slice(0);
+          buildFilter();
+          render(currentItems());
+          component.loading(false);
+        }, function (err) {
+          stelsLog('uaflix-serial-playlist-fail', { player: player && player.iframe || '', title_page: titleLink || '', error: err });
+          if (fail) fail(err);
+        });
+      }
+
       function getStream(element, success, fail) {
         if (element.stream) return success(element);
         if (element.iframe) {
@@ -13763,56 +13939,79 @@
       function loadTitle(link) {
         link = absolute(link);
         requestText(link, function (html) {
+          html = uaflixMaybeDecodeBase64Html(html, 'loadTitle:' + link);
           try { uaflixRegisterPageInfo(html, link, { title: select_title }); } catch (e) {}
-          var pageEpisodes = parseEpisodeLinks(html, link);
-          title_page_episodes = pageEpisodes.slice(0);
-          season_links = parseSeasonLinks(html, link);
-          loaded_seasons = {};
-          extract = season_links.length ? [] : pageEpisodes;
-          stelsLog('uaflix-title-page-analysis', {
-            page: link,
-            page_episodes: pageEpisodes.length,
-            page_counts_by_season: uaflixCountBySeason(pageEpisodes),
-            season_links: season_links.map(function (s) { return s.season + '|' + s.link; }),
-            mode: season_links.length ? 'season_pages_required' : 'direct_episode_list'
-          });
-
-          if (season_links.length || extract.length) {
-            buildFilter();
-            loadSelectedSeason(function () {
-              buildFilter();
-              var items = currentItems();
-              if (items.length) {
-                render(items);
-                component.loading(false);
-              } else {
-                stelsLog('uaflix-no-episodes-for-season', {
-                  selected_index: choice.season,
-                  selected_season: currentSeasonNumber(true),
-                  season_links_count: season_links.length,
-                  extract_count: extract.length,
-                  page: link
-                });
-                component.emptyForQuery(select_title);
-              }
-            }, function () { component.emptyForQuery(select_title); });
-            return;
-          }
-
           var players = parsePlayers(html, link);
-          if (players.length) {
-            var poster = (($('<div>' + html + '</div>').find('meta[property="og:image"]').attr('content')) || '').trim();
-            extract = players.map(function (p, index) {
-              return { title: p.title, quality: 'UAflix', info: '', iframe: p.iframe, referer: link, poster: absolute(poster, link) };
+          var serialPlayer = players.filter(function (p) { return /zetvideo\.net\/serial\/\d+/i.test(p.iframe || ''); })[0];
+
+          function fallbackTitleParsing(reason) {
+            var pageEpisodes = parseEpisodeLinks(html, link);
+            title_page_episodes = pageEpisodes.slice(0);
+            season_links = parseSeasonLinks(html, link);
+            loaded_seasons = {};
+            extract = season_links.length ? [] : pageEpisodes;
+            stelsLog('uaflix-title-page-analysis', {
+              page: link,
+              page_episodes: pageEpisodes.length,
+              page_counts_by_season: uaflixCountBySeason(pageEpisodes),
+              season_links: season_links.map(function (s) { return s.season + '|' + s.link; }),
+              players_count: players.length,
+              serial_player: serialPlayer && serialPlayer.iframe || '',
+              serial_playlist_fallback_reason: reason || '',
+              mode: serialPlayer ? 'serial_playlist_failed_fallback' : (season_links.length ? 'season_pages_required' : 'direct_episode_list')
             });
-            filter_items = { season: [], season_num: [], voice: [] };
-            component.filter(filter_items, choice);
-            render(extract);
-            component.loading(false);
+
+            if (season_links.length || extract.length) {
+              buildFilter();
+              loadSelectedSeason(function () {
+                buildFilter();
+                var items = currentItems();
+                if (items.length) {
+                  render(items);
+                  component.loading(false);
+                } else {
+                  stelsLog('uaflix-no-episodes-for-season', {
+                    selected_index: choice.season,
+                    selected_season: currentSeasonNumber(true),
+                    season_links_count: season_links.length,
+                    extract_count: extract.length,
+                    page: link
+                  });
+                  component.emptyForQuery(select_title);
+                }
+              }, function () { component.emptyForQuery(select_title); });
+              return;
+            }
+
+            if (players.length) {
+              var poster = (($('<div>' + html + '</div>').find('meta[property="og:image"]').attr('content')) || '').trim();
+              extract = players.map(function (p, index) {
+                return { title: p.title, quality: 'UAflix', info: '', iframe: p.iframe, referer: link, poster: absolute(poster, link) };
+              });
+              filter_items = { season: [], season_num: [], voice: [] };
+              component.filter(filter_items, choice);
+              render(extract);
+              component.loading(false);
+              return;
+            }
+
+            component.emptyForQuery(select_title);
+          }
+
+          if (serialPlayer) {
+            stelsLog('uaflix-title-serial-player-priority', {
+              page: link,
+              serial_player: serialPlayer.iframe,
+              players: players.map(function (p) { return p.iframe; }),
+              note: '1.0.10: якщо на сторінці є zetvideo.net/serial/{id}, спочатку беремо повний Playerjs JSON зі всіма сезонами, а не парсимо сезонні сторінки.'
+            });
+            uaflixRenderSerialPlaylistFromPlayer(serialPlayer, link, function (err) {
+              fallbackTitleParsing(err || 'serial playlist failed');
+            });
             return;
           }
 
-          component.emptyForQuery(select_title);
+          fallbackTitleParsing('no serial player');
         }, function (err) { component.empty(err); });
       }
 
@@ -17132,7 +17331,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix debug 1.0.8: перероблено порядок ZetVideo — спочатку отримання реального file з HTML /vod через direct/proxy, потім HLS fallback; додано flat-шаблон з player3.har для ua.mvo.dniprofilm.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix debug 1.0.10: пріоритет serial/{id} Playerjs playlist, підтримка vod із webdlrip/uaflix pattern, менше залежності від HLS-вгадування.' });
       stelsInstallImageStyles();
       initStorage();
       initLang();
