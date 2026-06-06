@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '3.2.6-uaflix-season-fix';
+    var STELS_ONLINE_VERSION = '3.2.8-uaflix-deep-diagnostic';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
@@ -12228,7 +12228,9 @@
       var ref = host + '/';
       var select_title = '';
       var extract = [];
+      var title_page_episodes = [];
       var season_links = [];
+      var loaded_seasons = {};
       var filter_items = { season: [], voice: [] };
       var choice = { season: 0, voice: 0, voice_name: 'UAflix' };
       var headers = Lampa.Platform.is('android') ? {
@@ -12252,8 +12254,17 @@
         network.clear();
         network.timeout(15000);
         network['native'](url, function (str) {
-          stelsLog('uaflix-response', { url: url, length: (str || '').length });
-          success(str || '');
+          str = str || '';
+          stelsLog('uaflix-response', {
+            url: url,
+            length: str.length,
+            has_season_links: /\/sezon-\d+\//i.test(str),
+            has_episode_links: /\/season-\d+-episode-\d+\//i.test(str),
+            has_zetvideo: /zetvideo\.net\/vod\//i.test(str),
+            has_m3u8: /\.m3u8/i.test(str),
+            preview: (url.indexOf('uafix.net') !== -1 || url.indexOf('zetvideo.net') !== -1) ? uaflixCompact(str, 700) : ''
+          });
+          success(str);
         }, function (a, c) {
           var error = network.errorDecode ? network.errorDecode(a, c) : (a && (a.status || a.statusText || a.toString && a.toString())) || 'network error';
           stelsLog('uaflix-request-fail', { url: url, error: error, status: a && a.status, statusText: a && a.statusText });
@@ -12268,10 +12279,63 @@
         return component.decodeHtml((text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
       }
 
-      function parseSearchItems(html) {
+      function normalizeForCompare(text) {
+        return (component.decodeHtml(text || '') + '').replace(/<[^>]+>/g, ' ').replace(/[^a-zа-яіїєґё0-9]+/ig, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+      }
+
+      function uaflixCompact(text, limit) {
+        text = component.decodeHtml((text || '') + '').replace(/<script[\s\S]*?<\/script>/ig, ' ').replace(/<style[\s\S]*?<\/style>/ig, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        limit = limit || 500;
+        return text.length > limit ? text.substring(0, limit) + '…' : text;
+      }
+
+      function uaflixCountBySeason(items) {
+        var out = {};
+        (items || []).forEach(function (item) {
+          var s = item && item.season ? item.season : 'none';
+          out[s] = (out[s] || 0) + 1;
+        });
+        return out;
+      }
+
+      function uaflixPad2(num) {
+        num = parseInt(num, 10) || 0;
+        return num < 10 ? '0' + num : '' + num;
+      }
+
+      function isUaflixCategory(url, title) {
+        var u = (url || '').toLowerCase();
+        var t = normalizeForCompare(title || '');
+        var categories = [
+          'action','melodrama','fantastics','fantasy','comedy','multseial','multserial','school','detective','documental','documentary',
+          'drama','horror','thriller','adventure','family','criminal','sport','history','military','biography','music','western','doramy',
+          'бойовики','мелодрами та драми','фантастика','комедії','мультсеріали','про школу','детективні','документальні'
+        ];
+        for (var i = 0; i < categories.length; i++) {
+          if (u.indexOf('/' + categories[i] + '/') !== -1 || t === categories[i]) return true;
+        }
+        return false;
+      }
+
+      function isRelevantSearchItem(item, query) {
+        var title = normalizeForCompare(item.title || '');
+        var q1 = normalizeForCompare(query || '');
+        var q2 = normalizeForCompare(object && object.movie && (object.movie.original_title || object.movie.original_name || '') || '');
+        var q3 = normalizeForCompare(object && object.movie && (object.movie.title || object.movie.name || '') || '');
+        if (!title) return false;
+        if (q1 && title.indexOf(q1) !== -1) return true;
+        if (q2 && title.indexOf(q2) !== -1) return true;
+        if (q3 && title.indexOf(q3) !== -1) return true;
+        return false;
+      }
+
+      function parseSearchItems(html, query) {
         var root = $('<div>' + html + '</div>');
         var items = [];
+        var all_candidates = [];
+        var category_filtered = [];
         var seen = {};
+        var raw_links_count = root.find('a[href]').length;
         root.find('a[href]').each(function () {
           var a = $(this);
           var href = a.attr('href') || '';
@@ -12280,14 +12344,20 @@
           var url = absolute(href);
           if (seen[url]) return;
           var title = cleanText(a.text());
-          var box = a.closest('.short, .th-item, .th, .movie-item, article, .b-content__inline_item');
+          var box = a.closest('.short, .th-item, .th, .movie-item, article, .b-content__inline_item, .story, .shortstory, .short-item, .movie, .item, .video-item, .vi-in');
           if (box.length) {
-            title = cleanText(box.find('.short-title,.th-title,.title,.b-content__inline_item-link a').first().text()) || title;
+            title = cleanText(box.find('.short-title,.th-title,.title,.b-content__inline_item-link a,.story-title,.short-title a,.vi-title,.vi-name,h1,h2,h3').first().text()) || title;
           }
           if (!title) title = cleanText(a.attr('title') || 'UAflix');
+          all_candidates.push(title + '|' + url);
+          if (isUaflixCategory(url, title)) {
+            category_filtered.push(title + '|' + url);
+            seen[url] = true;
+            return;
+          }
           var img = '';
           if (box.length) {
-            img = box.find('img').first().attr('data-src') || box.find('img').first().attr('src') || '';
+            img = box.find('img').first().attr('data-src') || box.find('img').first().attr('data-lazy') || box.find('img').first().attr('src') || '';
           }
           items.push({
             title: title,
@@ -12298,7 +12368,23 @@
           });
           seen[url] = true;
         });
-        stelsLog('uaflix-search-parse', { count: items.length, sample: items.slice(0, 8).map(function (i) { return i.title + '|' + i.link; }) });
+        var before_relevance = items.slice(0);
+        var relevant = items.filter(function (item) { return isRelevantSearchItem(item, query); });
+        if (relevant.length) items = relevant;
+        stelsLog('uaflix-search-parse', {
+          count: items.length,
+          raw_links: raw_links_count,
+          raw_candidates_count: all_candidates.length,
+          after_category_filter_count: before_relevance.length,
+          category_filtered_count: category_filtered.length,
+          relevance_applied: !!relevant.length,
+          query: query,
+          movie_title: object && object.movie && (object.movie.title || object.movie.name),
+          movie_original_title: object && object.movie && (object.movie.original_title || object.movie.original_name),
+          category_filtered_sample: category_filtered.slice(0, 12),
+          raw_sample: all_candidates.slice(0, 15),
+          final_sample: items.slice(0, 12).map(function (i) { return i.title + '|' + i.link; })
+        });
         return items;
       }
 
@@ -12332,7 +12418,13 @@
           seen[url] = true;
         });
         items.sort(function (a, b) { return a.season === b.season ? a.episode - b.episode : a.season - b.season; });
-        stelsLog('uaflix-episodes-parse', { count: items.length, page: pageUrl, sample: items.slice(0, 12).map(function (i) { return i.title + '|' + i.link; }) });
+        stelsLog('uaflix-episodes-parse', {
+          count: items.length,
+          page: pageUrl,
+          counts_by_season: uaflixCountBySeason(items),
+          all_episode_href_count: ((html || '').match(/\/season-\d+-episode-\d+\//ig) || []).length,
+          sample: items.slice(0, 20).map(function (i) { return i.title + '|' + i.link; })
+        });
         return items;
       }
 
@@ -12377,8 +12469,18 @@
           return r ? component.decodeHtml(r[1]) : '';
         }
         var file = matchValue('file');
+        if (!file) {
+          var fm = (html || '').match(/https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*/i);
+          if (fm) file = fm[0];
+        }
         var poster = matchValue('poster');
+        if (!poster) {
+          var pm = (html || '').match(/https?:\/\/[^"'\s<>]+?(?:screen|poster)[^"'\s<>]*\.(?:jpg|jpeg|png|webp)/i);
+          if (pm) poster = pm[0];
+        }
         var subtitle = matchValue('subtitle');
+        if (file) file = (file + '').replace(/\\//g, '/');
+        if (poster) poster = (poster + '').replace(/\\//g, '/');
         var subtitles = [];
         if (subtitle) {
           subtitle.split(',').forEach(function (part, index) {
@@ -12390,7 +12492,16 @@
           });
         }
         var result = { file: absolute(file, playerUrl), poster: absolute(poster, playerUrl), subtitles: subtitles };
-        stelsLog('uaflix-zetvideo-parse', { player: playerUrl, file: result.file, poster: result.poster, subtitles_count: subtitles.length });
+        stelsLog('uaflix-zetvideo-parse', {
+          player: playerUrl,
+          html_length: (html || '').length,
+          has_playerjs: /Playerjs|new\s+Playerjs/i.test(html || ''),
+          m3u8_matches: ((html || '').match(/https?:\/\/[^"'\s<>]+?\.m3u8[^"'\s<>]*/ig) || []).slice(0, 5),
+          file: result.file,
+          poster: result.poster,
+          subtitles_count: subtitles.length,
+          preview: uaflixCompact(html || '', 500)
+        });
         return result;
       }
 
@@ -12413,9 +12524,13 @@
         stelsLog('uaflix-filter-build', {
           season_links_count: season_links.length,
           extract_count: extract.length,
+          title_page_episodes_count: title_page_episodes.length,
+          loaded_seasons: loaded_seasons,
           seasons: filter_items.season_num,
           selected_index: choice.season,
-          selected_season: currentSeasonNumber(true)
+          selected_season: currentSeasonNumber(true),
+          counts_by_season: uaflixCountBySeason(extract),
+          title_page_counts_by_season: uaflixCountBySeason(title_page_episodes)
         });
         component.filter(filter_items, choice);
       }
@@ -12436,13 +12551,38 @@
         if (!filter_items.season_num || !filter_items.season_num.length) return extract.slice(0);
         var season = currentSeasonNumber(true);
         var items = extract.filter(function (item) { return item.season == season; });
-        stelsLog('uaflix-current-items', { season: season, count: items.length, total_extract: extract.length });
+        stelsLog('uaflix-current-items', {
+          season: season,
+          count: items.length,
+          total_extract: extract.length,
+          counts_by_season: uaflixCountBySeason(extract),
+          sample: items.slice(0, 20).map(function (i) { return i.title + '|' + i.link; })
+        });
         return items;
       }
 
       function mergeSeasonEpisodes(season, items) {
-        extract = extract.filter(function (item) { return item.season != season; }).concat(items || []);
+        var seen = {};
+        var filtered = (items || []).filter(function (item) {
+          if (!item || item.season != season) return false;
+          var key = item.link || (item.season + ':' + item.episode + ':' + item.title);
+          if (seen[key]) return false;
+          seen[key] = true;
+          return true;
+        });
+        extract = extract.filter(function (item) { return item.season != season; }).concat(filtered);
         extract.sort(function (a, b) { return a.season === b.season ? a.episode - b.episode : a.season - b.season; });
+      }
+
+      function uaflixFallbackEpisodeForSeason(season, selectedLink) {
+        var candidates = (title_page_episodes || []).filter(function (item) { return item && item.season == season && item.link; });
+        candidates.sort(function (a, b) { return (a.episode || 0) - (b.episode || 0); });
+        if (candidates.length) return { type: 'title_page_episode', link: candidates[0].link, title: candidates[0].title };
+        if (selectedLink) {
+          var guessed = (selectedLink + '').replace(/\/sezon-\d+\/?$/i, '/season-' + uaflixPad2(season) + '-episode-01/');
+          if (guessed !== selectedLink) return { type: 'guessed_episode_01', link: guessed, title: 'season ' + season + ' episode 1' };
+        }
+        return null;
       }
 
       function loadSelectedSeason(done, fail) {
@@ -12456,20 +12596,64 @@
           if (fail) fail('no selected season');
           return;
         }
-        if (hasCurrentSeasonEpisodes()) {
-          stelsLog('uaflix-season-cache-hit', { season: selected.season, index: choice.season });
+        if (loaded_seasons[selected.season] && hasCurrentSeasonEpisodes()) {
+          stelsLog('uaflix-season-cache-hit', { season: selected.season, index: choice.season, counts_by_season: uaflixCountBySeason(extract) });
           if (done) done();
           return;
         }
+
+        function finish(items, source) {
+          items = (items || []).filter(function (item) { return item && item.season == selected.season; });
+          mergeSeasonEpisodes(selected.season, items);
+          loaded_seasons[selected.season] = true;
+          stelsLog('uaflix-season-loaded', {
+            season: selected.season,
+            index: choice.season,
+            source: source,
+            episodes: items.length,
+            total_extract: extract.length,
+            counts_by_season: uaflixCountBySeason(extract),
+            sample: items.slice(0, 20).map(function (i) { return i.title + '|' + i.link; })
+          });
+          if (done) done();
+        }
+
         stelsLog('uaflix-season-load', { season: selected.season, index: choice.season, url: selected.link });
         requestText(selected.link, function (seasonHtml) {
           var items = parseEpisodeLinks(seasonHtml, selected.link);
-          items.forEach(function (item) {
-            if (!item.season) item.season = selected.season;
+          var direct_count = items.filter(function (item) { return item.season == selected.season; }).length;
+          stelsLog('uaflix-season-direct-result', {
+            season: selected.season,
+            url: selected.link,
+            parsed_total: items.length,
+            parsed_for_season: direct_count,
+            counts_by_season: uaflixCountBySeason(items)
           });
-          mergeSeasonEpisodes(selected.season, items);
-          stelsLog('uaflix-season-loaded', { season: selected.season, index: choice.season, episodes: items.length, total_extract: extract.length });
-          if (done) done();
+
+          var fallback = null;
+          if (direct_count < 2) fallback = uaflixFallbackEpisodeForSeason(selected.season, selected.link);
+          if (!fallback) {
+            finish(items, 'season_page');
+            return;
+          }
+
+          stelsLog('uaflix-season-fallback-load', { season: selected.season, reason: 'season_page_has_less_than_2_items', fallback: fallback });
+          requestText(fallback.link, function (episodeHtml) {
+            var epItems = parseEpisodeLinks(episodeHtml, fallback.link);
+            var ep_count = epItems.filter(function (item) { return item.season == selected.season; }).length;
+            stelsLog('uaflix-season-fallback-result', {
+              season: selected.season,
+              fallback: fallback,
+              parsed_total: epItems.length,
+              parsed_for_season: ep_count,
+              counts_by_season: uaflixCountBySeason(epItems)
+            });
+            if (ep_count > direct_count) finish(epItems, 'episode_page_fallback');
+            else finish(items, 'season_page_direct_kept');
+          }, function (err) {
+            stelsLog('uaflix-season-fallback-fail', { season: selected.season, fallback: fallback, error: err });
+            finish(items, 'season_page_fallback_failed');
+          }, selected.link);
         }, function (err) {
           stelsLog('uaflix-season-load-fail', { season: selected.season, index: choice.season, url: selected.link, error: err });
           if (fail) fail(err);
@@ -12552,7 +12736,7 @@
             element.subtitles = data.subtitles;
             element.qualitys = false;
             success(element);
-          }, fail, element.link);
+          }, fail, ref);
         }, fail);
       }
 
@@ -12567,7 +12751,7 @@
             element.subtitles = data.subtitles;
             element.qualitys = false;
             success(element);
-          }, fail, element.link || ref);
+          }, fail, ref);
         } else if (element.link) {
           loadEpisodePage(element, success, fail);
         } else if (fail) fail('no link');
@@ -12576,8 +12760,18 @@
       function loadTitle(link) {
         link = absolute(link);
         requestText(link, function (html) {
-          extract = parseEpisodeLinks(html, link);
+          var pageEpisodes = parseEpisodeLinks(html, link);
+          title_page_episodes = pageEpisodes.slice(0);
           season_links = parseSeasonLinks(html, link);
+          loaded_seasons = {};
+          extract = season_links.length ? [] : pageEpisodes;
+          stelsLog('uaflix-title-page-analysis', {
+            page: link,
+            page_episodes: pageEpisodes.length,
+            page_counts_by_season: uaflixCountBySeason(pageEpisodes),
+            season_links: season_links.map(function (s) { return s.season + '|' + s.link; }),
+            mode: season_links.length ? 'season_pages_required' : 'direct_episode_list'
+          });
 
           if (season_links.length || extract.length) {
             buildFilter();
@@ -12629,11 +12823,11 @@
         var query = component.cleanTitle(select_title);
         var searchUrl = host + '/index.php?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(query);
         requestText(searchUrl, function (html) {
-          var items = parseSearchItems(html);
+          var items = parseSearchItems(html, query);
           if (!items.length && object.movie.original_title && object.movie.original_title !== query) {
             var searchUrl2 = host + '/index.php?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(object.movie.original_title);
             requestText(searchUrl2, function (html2) {
-              items = parseSearchItems(html2);
+              items = parseSearchItems(html2, object.movie.original_title || query);
               showSearchItems(items);
             }, function () { showSearchItems(items); });
           } else {
@@ -12659,6 +12853,7 @@
       this.reset = function () {
         component.reset();
         choice = { season: 0, voice: 0, voice_name: 'UAflix' };
+        loaded_seasons = {};
         buildFilter();
         render(currentItems());
         component.saveChoice(choice);
@@ -12685,6 +12880,8 @@
       this.destroy = function () {
         network.clear();
         extract = [];
+        title_page_episodes = [];
+        loaded_seasons = {};
       };
     }
 
