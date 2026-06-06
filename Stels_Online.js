@@ -3,7 +3,8 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '3.2.4-sources-modal-position-fix';
+    var STELS_ONLINE_VERSION = '3.2.6-uaflix-season-fix';
+    var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
 
@@ -49,7 +50,7 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
-      eneyida: 'rezka2', kinotochka: 'rezka2', uaflix: 'lumex2', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      eneyida: 'rezka2', kinotochka: 'rezka2', uaflix: 'uaflix', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
@@ -265,9 +266,21 @@
         row.toggleClass('stels-online-source-disabled', !enabled);
       }
 
-      html.find('.stels-online-source-row').on('hover:enter click', function () {
+      var stelsLastSourceToggle = { key: '', time: 0 };
+
+      html.find('.stels-online-source-row').on('hover:enter click', function (event) {
         var row = $(this);
         var key = stelsNormalizeSourceKey(row.data('source'));
+        var now = Date.now();
+
+        // На частині платформ Lampa одне натискання приходить як hover:enter + click.
+        // Без цього захисту джерело вимикається і одразу вмикається назад.
+        if (stelsLastSourceToggle.key === key && now - stelsLastSourceToggle.time < 450) {
+          stelsLog('sources-toggle-duplicate-skip', { source: key, event_type: event && event.type || '' });
+          return;
+        }
+
+        stelsLastSourceToggle = { key: key, time: now };
         hidden = stelsGetHiddenSources();
         var index = hidden.indexOf(key);
         if (index === -1) hidden.push(key); else hidden.splice(index, 1);
@@ -12206,6 +12219,475 @@
       }
     }
 
+
+
+    function uaflix(component, _object) {
+      var network = new Lampa.Reguest();
+      var object = _object;
+      var host = 'https://uafix.net';
+      var ref = host + '/';
+      var select_title = '';
+      var extract = [];
+      var season_links = [];
+      var filter_items = { season: [], voice: [] };
+      var choice = { season: 0, voice: 0, voice_name: 'UAflix' };
+      var headers = Lampa.Platform.is('android') ? {
+        'User-Agent': Utils.baseUserAgent(),
+        'Referer': ref,
+        'Origin': host
+      } : {
+        'User-Agent': Utils.baseUserAgent(),
+        'Referer': ref
+      };
+
+      function absolute(link, base) {
+        return component.fixLink(link || '', base || ref);
+      }
+
+      function requestText(url, success, fail, referer) {
+        stelsLog('uaflix-request', { url: url, referer: referer || ref });
+        var h = {};
+        for (var k in headers) h[k] = headers[k];
+        h.Referer = referer || ref;
+        network.clear();
+        network.timeout(15000);
+        network['native'](url, function (str) {
+          stelsLog('uaflix-response', { url: url, length: (str || '').length });
+          success(str || '');
+        }, function (a, c) {
+          var error = network.errorDecode ? network.errorDecode(a, c) : (a && (a.status || a.statusText || a.toString && a.toString())) || 'network error';
+          stelsLog('uaflix-request-fail', { url: url, error: error, status: a && a.status, statusText: a && a.statusText });
+          if (fail) fail(error);
+        }, false, {
+          dataType: 'text',
+          headers: h
+        });
+      }
+
+      function cleanText(text) {
+        return component.decodeHtml((text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+      }
+
+      function parseSearchItems(html) {
+        var root = $('<div>' + html + '</div>');
+        var items = [];
+        var seen = {};
+        root.find('a[href]').each(function () {
+          var a = $(this);
+          var href = a.attr('href') || '';
+          if (!href.match(/\/(serials|films|cartoons|multfilms)\/[a-z0-9\-]+\/?$/i)) return;
+          if (href.match(/\/(serials|films|cartoons|multfilms)\/?$/i)) return;
+          var url = absolute(href);
+          if (seen[url]) return;
+          var title = cleanText(a.text());
+          var box = a.closest('.short, .th-item, .th, .movie-item, article, .b-content__inline_item');
+          if (box.length) {
+            title = cleanText(box.find('.short-title,.th-title,.title,.b-content__inline_item-link a').first().text()) || title;
+          }
+          if (!title) title = cleanText(a.attr('title') || 'UAflix');
+          var img = '';
+          if (box.length) {
+            img = box.find('img').first().attr('data-src') || box.find('img').first().attr('src') || '';
+          }
+          items.push({
+            title: title,
+            orig_title: '',
+            link: url,
+            poster: absolute(img),
+            year: ((cleanText(box.text()).match(/\b(19|20)\d{2}\b/) || [])[0] || '')
+          });
+          seen[url] = true;
+        });
+        stelsLog('uaflix-search-parse', { count: items.length, sample: items.slice(0, 8).map(function (i) { return i.title + '|' + i.link; }) });
+        return items;
+      }
+
+      function parseEpisodeLinks(html, pageUrl) {
+        var root = $('<div>' + html + '</div>');
+        var items = [];
+        var seen = {};
+        root.find('a[href]').each(function () {
+          var a = $(this);
+          var href = a.attr('href') || '';
+          var m = href.match(/\/season-(\d+)-episode-(\d+)\/?/i);
+          if (!m) return;
+          var url = absolute(href, pageUrl);
+          if (seen[url]) return;
+          var season = parseInt(m[1], 10) || 1;
+          var episode = parseInt(m[2], 10) || 1;
+          var text = cleanText(a.text());
+          var box = a.closest('.short, .th-item, .th, article, .episode, .b-content__inline_item');
+          var img = '';
+          if (box.length) img = box.find('img').first().attr('data-src') || box.find('img').first().attr('src') || '';
+          var name = text.replace(/Прем'єра\s*\d{2}\.\d{2}\.\d{4}/i, '').replace(/Сезон\s*\d+/i, '').replace(/Серія\s*\d+/i, '').trim();
+          items.push({
+            title: component.formatEpisodeTitle(season, episode, name),
+            quality: 'UAflix',
+            info: '',
+            season: season,
+            episode: episode,
+            link: url,
+            poster: absolute(img, pageUrl)
+          });
+          seen[url] = true;
+        });
+        items.sort(function (a, b) { return a.season === b.season ? a.episode - b.episode : a.season - b.season; });
+        stelsLog('uaflix-episodes-parse', { count: items.length, page: pageUrl, sample: items.slice(0, 12).map(function (i) { return i.title + '|' + i.link; }) });
+        return items;
+      }
+
+      function parseSeasonLinks(html, pageUrl) {
+        var root = $('<div>' + html + '</div>');
+        var list = [];
+        var seen = {};
+        root.find('a[href]').each(function () {
+          var a = $(this);
+          var href = a.attr('href') || '';
+          var m = href.match(/\/sezon-(\d+)\/?/i);
+          if (!m) return;
+          var season = parseInt(m[1], 10) || 0;
+          var url = absolute(href, pageUrl);
+          if (!season || seen[url]) return;
+          list.push({ season: season, title: Lampa.Lang.translate('torrent_serial_season') + ' ' + season, link: url });
+          seen[url] = true;
+        });
+        list.sort(function (a, b) { return a.season - b.season; });
+        stelsLog('uaflix-seasons-parse', { count: list.length, page: pageUrl, seasons: list.map(function (i) { return i.season + '|' + i.link; }) });
+        return list;
+      }
+
+      function parsePlayers(html, pageUrl) {
+        var root = $('<div>' + html + '</div>');
+        var players = [];
+        var seen = {};
+        root.find('iframe[src]').each(function (index) {
+          var src = absolute($(this).attr('src'), pageUrl);
+          if (!src || seen[src]) return;
+          if (src.indexOf('zetvideo.net/vod/') === -1) return;
+          players.push({ title: index ? 'Плеєр ' + (index + 1) : 'Плеєр 1', iframe: src });
+          seen[src] = true;
+        });
+        stelsLog('uaflix-players-parse', { count: players.length, page: pageUrl, players: players.map(function (p) { return p.iframe; }) });
+        return players;
+      }
+
+      function parseZetvideo(html, playerUrl) {
+        function matchValue(name) {
+          var r = new RegExp(name + "\\s*:\\s*[\\\"']([^\\\"']*)[\\\"']", 'i').exec(html || '');
+          return r ? component.decodeHtml(r[1]) : '';
+        }
+        var file = matchValue('file');
+        var poster = matchValue('poster');
+        var subtitle = matchValue('subtitle');
+        var subtitles = [];
+        if (subtitle) {
+          subtitle.split(',').forEach(function (part, index) {
+            var m = part.match(/^\s*\[([^\]]+)\](.+)$/);
+            var label = m ? m[1] : 'UA ' + (index + 1);
+            var url = m ? m[2] : part;
+            url = (url || '').trim();
+            if (url) subtitles.push({ label: label, url: absolute(url, playerUrl) });
+          });
+        }
+        var result = { file: absolute(file, playerUrl), poster: absolute(poster, playerUrl), subtitles: subtitles };
+        stelsLog('uaflix-zetvideo-parse', { player: playerUrl, file: result.file, poster: result.poster, subtitles_count: subtitles.length });
+        return result;
+      }
+
+      function buildFilter() {
+        var seasons = [];
+        if (season_links && season_links.length) {
+          seasons = season_links.map(function (item) { return item.season; }).filter(function (s) { return !!s; });
+        } else {
+          extract.forEach(function (item) {
+            if (item.season && seasons.indexOf(item.season) === -1) seasons.push(item.season);
+          });
+          seasons.sort(function (a, b) { return a - b; });
+        }
+        filter_items = {
+          season: (season_links && season_links.length ? season_links.map(function (s) { return s.title || (Lampa.Lang.translate('torrent_serial_season') + ' ' + s.season); }) : seasons.map(function (s) { return Lampa.Lang.translate('torrent_serial_season') + ' ' + s; })),
+          season_num: seasons,
+          voice: []
+        };
+        if (choice.season >= filter_items.season.length) choice.season = 0;
+        stelsLog('uaflix-filter-build', {
+          season_links_count: season_links.length,
+          extract_count: extract.length,
+          seasons: filter_items.season_num,
+          selected_index: choice.season,
+          selected_season: currentSeasonNumber(true)
+        });
+        component.filter(filter_items, choice);
+      }
+
+      function currentSeasonNumber(skip_log) {
+        var season = filter_items.season_num && filter_items.season_num.length ? (filter_items.season_num[choice.season] || filter_items.season_num[0]) : 0;
+        if (!skip_log) stelsLog('uaflix-current-season', { selected_index: choice.season, season: season, filter_seasons: filter_items.season_num || [] });
+        return season;
+      }
+
+      function hasCurrentSeasonEpisodes() {
+        var season = currentSeasonNumber(true);
+        if (!season) return extract.length > 0;
+        return extract.some(function (item) { return item.season == season; });
+      }
+
+      function currentItems() {
+        if (!filter_items.season_num || !filter_items.season_num.length) return extract.slice(0);
+        var season = currentSeasonNumber(true);
+        var items = extract.filter(function (item) { return item.season == season; });
+        stelsLog('uaflix-current-items', { season: season, count: items.length, total_extract: extract.length });
+        return items;
+      }
+
+      function mergeSeasonEpisodes(season, items) {
+        extract = extract.filter(function (item) { return item.season != season; }).concat(items || []);
+        extract.sort(function (a, b) { return a.season === b.season ? a.episode - b.episode : a.season - b.season; });
+      }
+
+      function loadSelectedSeason(done, fail) {
+        if (!(season_links && season_links.length)) {
+          if (done) done();
+          return;
+        }
+        if (choice.season >= season_links.length) choice.season = 0;
+        var selected = season_links[choice.season];
+        if (!selected) {
+          if (fail) fail('no selected season');
+          return;
+        }
+        if (hasCurrentSeasonEpisodes()) {
+          stelsLog('uaflix-season-cache-hit', { season: selected.season, index: choice.season });
+          if (done) done();
+          return;
+        }
+        stelsLog('uaflix-season-load', { season: selected.season, index: choice.season, url: selected.link });
+        requestText(selected.link, function (seasonHtml) {
+          var items = parseEpisodeLinks(seasonHtml, selected.link);
+          items.forEach(function (item) {
+            if (!item.season) item.season = selected.season;
+          });
+          mergeSeasonEpisodes(selected.season, items);
+          stelsLog('uaflix-season-loaded', { season: selected.season, index: choice.season, episodes: items.length, total_extract: extract.length });
+          if (done) done();
+        }, function (err) {
+          stelsLog('uaflix-season-load-fail', { season: selected.season, index: choice.season, url: selected.link, error: err });
+          if (fail) fail(err);
+        }, ref);
+      }
+
+      function render(items) {
+        component.reset();
+        var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        var last_episode = component.getLastEpisode(items);
+        items.forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = last_episode;
+            element.translate_voice = 'UAflix';
+          }
+          var hash = Lampa.Utils.hash(element.season ? [element.season, element.episode, object.movie.original_title || object.movie.original_name || object.movie.title].join('') : (object.movie.original_title || object.movie.title || select_title));
+          var view = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', element);
+          var hash_file = Lampa.Utils.hash((element.link || element.title) + 'uaflix');
+          element.timeline = view;
+          item.append(Lampa.Timeline.render(view));
+          if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
+          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+          item.on('hover:enter', function () {
+            if (element.loading) return;
+            if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            element.loading = true;
+            getStream(element, function (element) {
+              element.loading = false;
+              var first = {
+                url: component.getDefaultQuality(element.qualitys, element.stream),
+                quality: component.renameQualityMap(element.qualitys),
+                subtitles: element.subtitles,
+                timeline: element.timeline,
+                title: element.title
+              };
+              Lampa.Player.play(first);
+              Lampa.Player.playlist([first]);
+              if (viewed.indexOf(hash_file) === -1) {
+                viewed.push(hash_file);
+                item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+                Lampa.Storage.set('online_view', viewed);
+              }
+            }, function () {
+              element.loading = false;
+              Lampa.Noty.show(Lampa.Lang.translate('online_mod_nolink'));
+            });
+          });
+          component.append(item);
+          component.contextmenu({
+            item: item,
+            view: view,
+            viewed: viewed,
+            hash_file: hash_file,
+            element: element,
+            file: function (call) {
+              getStream(element, function (el) { call({ file: el.stream, quality: el.qualitys }); }, function () { Lampa.Noty.show(Lampa.Lang.translate('online_mod_nolink')); });
+            }
+          });
+        });
+        component.start(true);
+      }
+
+      function loadEpisodePage(element, success, fail) {
+        requestText(element.link, function (html) {
+          var players = parsePlayers(html, element.link);
+          if (!players.length) {
+            if (fail) fail('no players');
+            return;
+          }
+          var player = players[0];
+          requestText(player.iframe, function (playerHtml) {
+            var data = parseZetvideo(playerHtml, player.iframe);
+            if (!data.file) {
+              if (fail) fail('no file');
+              return;
+            }
+            element.stream = data.file;
+            element.poster = element.poster || data.poster;
+            element.subtitles = data.subtitles;
+            element.qualitys = false;
+            success(element);
+          }, fail, element.link);
+        }, fail);
+      }
+
+      function getStream(element, success, fail) {
+        if (element.stream) return success(element);
+        if (element.iframe) {
+          requestText(element.iframe, function (playerHtml) {
+            var data = parseZetvideo(playerHtml, element.iframe);
+            if (!data.file) return fail && fail('no file');
+            element.stream = data.file;
+            element.poster = element.poster || data.poster;
+            element.subtitles = data.subtitles;
+            element.qualitys = false;
+            success(element);
+          }, fail, element.link || ref);
+        } else if (element.link) {
+          loadEpisodePage(element, success, fail);
+        } else if (fail) fail('no link');
+      }
+
+      function loadTitle(link) {
+        link = absolute(link);
+        requestText(link, function (html) {
+          extract = parseEpisodeLinks(html, link);
+          season_links = parseSeasonLinks(html, link);
+
+          if (season_links.length || extract.length) {
+            buildFilter();
+            loadSelectedSeason(function () {
+              buildFilter();
+              var items = currentItems();
+              if (items.length) {
+                render(items);
+                component.loading(false);
+              } else {
+                stelsLog('uaflix-no-episodes-for-season', {
+                  selected_index: choice.season,
+                  selected_season: currentSeasonNumber(true),
+                  season_links_count: season_links.length,
+                  extract_count: extract.length,
+                  page: link
+                });
+                component.emptyForQuery(select_title);
+              }
+            }, function () { component.emptyForQuery(select_title); });
+            return;
+          }
+
+          var players = parsePlayers(html, link);
+          if (players.length) {
+            var poster = (($('<div>' + html + '</div>').find('meta[property="og:image"]').attr('content')) || '').trim();
+            extract = players.map(function (p, index) {
+              return { title: p.title, quality: 'UAflix', info: '', iframe: p.iframe, poster: absolute(poster, link) };
+            });
+            filter_items = { season: [], season_num: [], voice: [] };
+            component.filter(filter_items, choice);
+            render(extract);
+            component.loading(false);
+            return;
+          }
+
+          component.emptyForQuery(select_title);
+        }, function (err) { component.empty(err); });
+      }
+
+      this.search = function (_object, kinopoisk_id, data) {
+        object = _object;
+        select_title = object.search || object.movie.title || object.movie.name || '';
+        component.loading(true);
+        if (data && data[0] && data[0].link) {
+          loadTitle(data[0].link);
+          return;
+        }
+        var query = component.cleanTitle(select_title);
+        var searchUrl = host + '/index.php?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(query);
+        requestText(searchUrl, function (html) {
+          var items = parseSearchItems(html);
+          if (!items.length && object.movie.original_title && object.movie.original_title !== query) {
+            var searchUrl2 = host + '/index.php?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(object.movie.original_title);
+            requestText(searchUrl2, function (html2) {
+              items = parseSearchItems(html2);
+              showSearchItems(items);
+            }, function () { showSearchItems(items); });
+          } else {
+            showSearchItems(items);
+          }
+        }, function (err) { component.empty(err); });
+      };
+
+      function showSearchItems(items) {
+        if (!items.length) return component.emptyForQuery(select_title);
+        if (items.length == 1 && !object.clarification) {
+          loadTitle(items[0].link);
+          return;
+        }
+        component.similars(items);
+        component.loading(false);
+      }
+
+      this.extendChoice = function (saved) {
+        Lampa.Arrays.extend(choice, saved, true);
+      };
+
+      this.reset = function () {
+        component.reset();
+        choice = { season: 0, voice: 0, voice_name: 'UAflix' };
+        buildFilter();
+        render(currentItems());
+        component.saveChoice(choice);
+      };
+
+      this.filter = function (type, a, b) {
+        choice[a.stype] = b.index;
+        component.reset();
+        if (a.stype == 'season') {
+          component.loading(true);
+          loadSelectedSeason(function () {
+            buildFilter();
+            render(currentItems());
+            component.loading(false);
+          }, function () { component.emptyForQuery(select_title); });
+        } else {
+          buildFilter();
+          render(currentItems());
+        }
+        component.saveChoice(choice);
+        setTimeout(component.closeFilter, 10);
+      };
+
+      this.destroy = function () {
+        network.clear();
+        extract = [];
+      };
+    }
+
     var proxyInitialized = {};
     var proxyWindow = {};
     var proxyCalls = {};
@@ -12392,6 +12874,13 @@
       isAndroid && Utils.checkAndroidVersion(339);
       var collapsBlocked = (!startsWith(window.location.protocol, 'http') || window.location.hostname.indexOf('lampa') !== -1) && disable_dbg;
       var all_sources = [{
+        name: 'uaflix',
+        title: 'UAflix',
+        source: new uaflix(this, object),
+        search: true,
+        kp: false,
+        imdb: false
+      }, {
         name: 'lumex',
         title: 'Lumex',
         source: new lumex(this, object),
@@ -14598,6 +15087,7 @@
         version: mod_version,
         name: Lampa.Lang.translate('stels_online_title_full') + ' - ' + mod_version,
         description: Lampa.Lang.translate('stels_online_watch'),
+        icon: STELS_ICON_URL,
         component: 'stels_online',
         onContextMenu: function onContextMenu(object) {
           return {
@@ -14611,7 +15101,7 @@
         }
       };
       Lampa.Manifest.plugins = manifest;
-      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"stels_online " + mod_version + "\">\n        <svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xmlns:svgjs=\"http://svgjs.com/svgjs\" version=\"1.1\" width=\"512\" height=\"512\" x=\"0\" y=\"0\" viewBox=\"0 0 244 260\" style=\"enable-background:new 0 0 512 512\" xml:space=\"preserve\" class=\"\">\n        <g xmlns=\"http://www.w3.org/2000/svg\">\n            <path d=\"M242,88v170H10V88h41l-38,38h37.1l38-38h38.4l-38,38h38.4l38-38h38.3l-38,38H204L242,88L242,88z M228.9,2l8,37.7l0,0 L191.2,10L228.9,2z M160.6,56l-45.8-29.7l38-8.1l45.8,29.7L160.6,56z M84.5,72.1L38.8,42.4l38-8.1l45.8,29.7L84.5,72.1z M10,88 L2,50.2L47.8,80L10,88z\" fill=\"currentColor\"/>\n        </g></svg>\n\n        <span>#{stels_online_title}</span>\n        </div>";
+      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"stels_online " + mod_version + "\">\n        <img src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
       Lampa.Listener.follow('full', function (e) {
         if (e.type == 'complite') {
           var btn = $(Lampa.Lang.translate(button));
@@ -15207,7 +15697,7 @@
 
     function addSettingsOnlineMod() {
       if (Lampa.Settings.main && Lampa.Settings.main() && !Lampa.Settings.main().render().find('[data-component="stels_online"]').length) {
-        var field = $(Lampa.Lang.translate("<div class=\"settings-folder selector\" data-component=\"stels_online\">\n            <div class=\"settings-folder__icon\">\n                <svg height=\"260\" viewBox=\"0 0 244 260\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n                <path d=\"M242,88v170H10V88h41l-38,38h37.1l38-38h38.4l-38,38h38.4l38-38h38.3l-38,38H204L242,88L242,88z M228.9,2l8,37.7l0,0 L191.2,10L228.9,2z M160.6,56l-45.8-29.7l38-8.1l45.8,29.7L160.6,56z M84.5,72.1L38.8,42.4l38-8.1l45.8,29.7L84.5,72.1z M10,88 L2,50.2L47.8,80L10,88z\" fill=\"white\"/>\n                </svg>\n            </div>\n            <div class=\"settings-folder__name\">#{stels_online_title_full}</div>\n        </div>"));
+        var field = $(Lampa.Lang.translate("<div class=\"settings-folder selector\" data-component=\"stels_online\">\n            <div class=\"settings-folder__icon\">\n                <img src=\"" + STELS_ICON_URL + "\" style=\"width:2.6em;height:2.6em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n            </div>\n            <div class=\"settings-folder__name\">#{stels_online_title_full}</div>\n        </div>"));
         Lampa.Settings.main().render().find('[data-component="more"]').after(field);
         Lampa.Settings.main().update();
       }
