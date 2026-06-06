@@ -936,6 +936,60 @@
     api_base: 'https://bbe.lme.isroot.in/api/v2',
     community_watches_url: 'https://lampame.github.io/main/cw.js',
     community_watches_name: 'CommunityWatches',
+    lampac_sources: [
+      'filmix',
+      'filmixtv',
+      'fxapi',
+      'rezka',
+      'pizdatoehd',
+      'getstv',
+      'kinopub',
+      'zetflixdb',
+      'collaps',
+      'hdvb',
+      'kodik',
+      'bamboo',
+      'eneyida',
+      'kinoukr',
+      'uafilm',
+      'uakino',
+      'kinotochka',
+      'remux',
+      'anilibria',
+      'animedia',
+      'animego',
+      'animevost',
+      'animebesst',
+      'alloha',
+      'mirage',
+      'phantom',
+      'animelib',
+      'moonanime',
+      'vibix',
+      'fancdn',
+      'cdnvideohub',
+      'vokino',
+      'hydraflix',
+      'videasy',
+      'vidsrc',
+      'movpi',
+      'vidlink',
+      'smashystream',
+      'autoembed',
+      'pidtor',
+      'videoseed',
+      'iptvonline',
+      'veoveo',
+      'kinoflix',
+      'leproduction',
+      'vkmovie',
+      'kinogo',
+      'kinobase',
+      'asiage',
+      'geosaitebi',
+      'mikai',
+      'dreamerscast'
+    ],
     qr_url: 'https://lampame.donatik.me',
     qr_poster: 'https://iili.io/fkdGkSj.png',
     storage_prefixes: {
@@ -946,6 +1000,158 @@
       view: 'stels_online_view'
     }
   };
+
+  var STELS_LOG_KEY = 'STELS_ONLINE_DEBUG_LOG';
+  var STELS_LOG_MAX = 250;
+  function stelsLog(event, data) {
+    try {
+      var list = Lampa.Storage.get(STELS_LOG_KEY, []);
+      if (!Array.isArray(list)) list = [];
+      var item = {
+        time: new Date().toISOString(),
+        event: event || 'event',
+        data: data || {}
+      };
+      list.push(item);
+      if (list.length > STELS_LOG_MAX) list = list.slice(list.length - STELS_LOG_MAX);
+      Lampa.Storage.set(STELS_LOG_KEY, list);
+      if (window.console && console.log) console.log('Stels_Online LOG', item);
+    } catch (e) {
+      try {
+        if (window.console && console.warn) console.warn('Stels_Online log error', e);
+      } catch (ignore) {}
+    }
+  }
+  function stelsSafeJson(value) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (e) {
+      return String(value || '');
+    }
+  }
+  function stelsReadLog() {
+    try {
+      var list = Lampa.Storage.get(STELS_LOG_KEY, []);
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function stelsClearLog() {
+    try {
+      Lampa.Storage.set(STELS_LOG_KEY, []);
+      Lampa.Noty.show(Lampa.Lang.translate('stels_online_log_cleared'));
+    } catch (e) {}
+  }
+  function stelsGetStorageInfo() {
+    var info = {};
+    try {
+      ['BO_SOURCES', 'BO_SOURCES_SORT', 'BO_SOURCES_HIDE', 'stels_online_balanser', 'stels_online_last_balanser'].forEach(function (key) {
+        var value = Lampa.Storage.get(key, null);
+        if (Array.isArray(value)) {
+          info[key] = { type: 'array', count: value.length, sample: value.slice(0, 30) };
+        } else if (value && typeof value == 'object') {
+          var keys = Object.keys(value);
+          info[key] = { type: 'object', count: keys.length, keys: keys.slice(0, 30) };
+        } else {
+          info[key] = value;
+        }
+      });
+    } catch (e) {
+      info.error = e && (e.message || e.toString());
+    }
+    return info;
+  }
+  function stelsBuildLogText() {
+    var header = {
+      plugin: 'Stels_Online',
+      version: '2.8.5-stels-debug',
+      time: new Date().toISOString(),
+      api_base: config.api_base,
+      lampac_sources_count: (config.lampac_sources || []).length,
+      lampac_sources: config.lampac_sources || [],
+      storage: stelsGetStorageInfo(),
+      user_agent: (window.navigator && window.navigator.userAgent) || '',
+      location: (window.location && window.location.href) || ''
+    };
+    return 'Stels_Online debug log\n' + stelsSafeJson(header) + '\n\nEvents:\n' + stelsSafeJson(stelsReadLog());
+  }
+  function stelsEscapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (s) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[s];
+    });
+  }
+  function stelsDownloadLog(text) {
+    try {
+      var filename = 'Stels_Online_log_' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+      if (typeof Blob == 'undefined' || !window.URL || !URL.createObjectURL || !document || !document.createElement) return false;
+      var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () {
+        try { document.body.removeChild(a); } catch (e) {}
+        try { URL.revokeObjectURL(url); } catch (e) {}
+      }, 1000);
+      Lampa.Noty.show(Lampa.Lang.translate('stels_online_log_exported'));
+      return true;
+    } catch (e) {
+      stelsLog('log-download-error', { error: e && (e.message || e.toString()) });
+      return false;
+    }
+  }
+  function openStelsLogExportModal() {
+    var controller = Lampa.Controller.enabled().name;
+    var text = stelsBuildLogText();
+    var html = $('<div class="stels-online-log-modal">' +
+      '<div class="settings-param__descr" style="margin-bottom:.8em">' + Lampa.Lang.translate('stels_online_log_descr') + '</div>' +
+      '<textarea readonly style="width:100%;height:18em;box-sizing:border-box;background:rgba(0,0,0,.35);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:.4em;padding:.8em;font-size:.8em;line-height:1.35">' + stelsEscapeHtml(text) + '</textarea>' +
+      '<div style="display:flex;gap:.6em;margin-top:.8em;flex-wrap:wrap">' +
+      '<div class="simple-button selector" data-action="copy">' + Lampa.Lang.translate('copy_link') + '</div>' +
+      '<div class="simple-button selector" data-action="download">' + Lampa.Lang.translate('stels_online_log_export') + '</div>' +
+      '<div class="simple-button selector" data-action="clear">' + Lampa.Lang.translate('stels_online_log_clear') + '</div>' +
+      '</div>' +
+      '</div>');
+    html.find('[data-action="copy"]').on('hover:enter click', function () {
+      if (Lampa.Utils && Lampa.Utils.copyTextToClipboard) {
+        Lampa.Utils.copyTextToClipboard(text, function () {
+          Lampa.Noty.show(Lampa.Lang.translate('copy_secuses'));
+        }, function () {
+          Lampa.Noty.show(Lampa.Lang.translate('copy_error'));
+        });
+      }
+    });
+    html.find('[data-action="download"]').on('hover:enter click', function () {
+      if (!stelsDownloadLog(stelsBuildLogText()) && Lampa.Utils && Lampa.Utils.copyTextToClipboard) {
+        Lampa.Utils.copyTextToClipboard(stelsBuildLogText(), function () {
+          Lampa.Noty.show(Lampa.Lang.translate('stels_online_log_copied_fallback'));
+        }, function () {
+          Lampa.Noty.show(Lampa.Lang.translate('copy_error'));
+        });
+      }
+    });
+    html.find('[data-action="clear"]').on('hover:enter click', function () {
+      stelsClearLog();
+      text = stelsBuildLogText();
+      html.find('textarea').val(text);
+    });
+    Lampa.Modal.open({
+      title: Lampa.Lang.translate('stels_online_log_title'),
+      html: html,
+      size: 'medium',
+      scroll_to_center: true,
+      select: html.find('[data-action="copy"]')[0],
+      onBack: function onBack() {
+        Lampa.Modal.close();
+        Lampa.Controller.toggle(controller);
+      }
+    });
+  }
+
 
   var QR_URL = config.qr_url;
   var QR_TEXT = "<a href=\"".concat(QR_URL, "\">\u041F\u043E\u0441\u0438\u043B\u0430\u043D\u043D\u044F</a>");
@@ -1139,15 +1345,51 @@
     }]);
   }();
 
+
+  function normalizeExtraSourceKey(name) {
+    return (name || '').toString().trim().toLowerCase();
+  }
+  function mergeLampacSources(list) {
+    var result = Array.isArray(list) ? list.slice(0) : [];
+    var exists = {};
+    result.forEach(function (item) {
+      var key = normalizeExtraSourceKey(item && (item.key || item.name));
+      if (key) exists[key] = true;
+    });
+    (config.lampac_sources || []).forEach(function (name) {
+      var key = normalizeExtraSourceKey(name);
+      if (!key || exists[key]) return;
+      result.push({
+        key: key,
+        name: key,
+        display_name: key,
+        enabled: true,
+        imported_from: 'LampaUaNg'
+      });
+      exists[key] = true;
+    });
+    stelsLog('merge-lampac-sources', {
+      input_count: Array.isArray(list) ? list.length : 0,
+      output_count: result.length,
+      imported_count: (config.lampac_sources || []).length,
+      output_keys: result.map(function (item) { return normalizeExtraSourceKey(item && (item.key || item.name)); }).filter(Boolean)
+    });
+    return result;
+  }
+
   var SourcesStore = /*#__PURE__*/function () {
     function SourcesStore() {
       _classCallCheck(this, SourcesStore);
       this.sources_key = 'BO_SOURCES';
       this.sources_sort_key = 'BO_SOURCES_SORT';
       this.sources_hide_key = 'BO_SOURCES_HIDE';
-      this.available_sources = Lampa.Storage.get(this.sources_key, []);
+      this.available_sources = mergeLampacSources(Lampa.Storage.get(this.sources_key, []));
       this.titles = {};
       this.applyTitles(this.available_sources);
+      stelsLog('sources-store-init', {
+        available_count: this.available_sources.length,
+        available_keys: this.available_sources.map(function (item) { return normalizeExtraSourceKey(item && (item.key || item.name)); }).filter(Boolean)
+      });
     }
     return _createClass(SourcesStore, [{
       key: "normalizeName",
@@ -1181,9 +1423,16 @@
     }, {
       key: "saveAvailable",
       value: function saveAvailable(list) {
+        var inputCount = Array.isArray(list) ? list.length : 0;
+        list = mergeLampacSources(list);
         this.available_sources = list;
         this.applyTitles(list);
         Lampa.Storage.set(this.sources_key, list);
+        stelsLog('sources-save-available', {
+          input_count: inputCount,
+          saved_count: list.length,
+          saved_keys: list.map(function (item) { return normalizeExtraSourceKey(item && (item.key || item.name)); }).filter(Boolean)
+        });
       }
     }, {
       key: "saveSorted",
@@ -1226,6 +1475,14 @@
             return hidden.indexOf(name) === -1;
           });
         }
+        stelsLog('sources-apply-user-filters', {
+          input_count: list.length,
+          sorted_count: sorted.length,
+          hidden_count: hidden.length,
+          output_count: result.length,
+          hidden: hidden,
+          output: result
+        });
         return result;
       }
     }, {
@@ -1297,6 +1554,12 @@
       return !!disabled_sources[name];
     }
     function buildSourceSortItems() {
+      stelsLog('build-source-sort-items', {
+        count: filter_sources.length,
+        keys: filter_sources,
+        selected: balanser,
+        disabled: Object.keys(disabled_sources || {})
+      });
       return filter_sources.map(function (key) {
         var disabled = isSourceDisabled(key);
         return {
@@ -1325,6 +1588,7 @@
     }
     function buildFilterSources(movie) {
       var sources = getBaseSources();
+      var base_sources_snapshot = sources.slice ? sources.slice(0) : [];
       var include_anime = shouldIncludeAnimeSources(movie);
       var include_starlight = shouldIncludeStarlightSource(movie);
       var include_midnight = shouldIncludeMidnightSource(movie);
@@ -1354,6 +1618,18 @@
       }
       sources = filterEnabledSources(sources);
       sources = sourcesStore.applyUserFilters(sources);
+      stelsLog('build-filter-sources', {
+        movie_title: movie && (movie.title || movie.name || movie.original_title || movie.original_name) || '',
+        movie_language: movie && movie.original_language || '',
+        include_anime: include_anime,
+        include_starlight: include_starlight,
+        include_midnight: include_midnight,
+        base_count: base_sources_snapshot.length,
+        base_sources: base_sources_snapshot,
+        final_count: sources.length,
+        final_sources: sources,
+        storage: stelsGetStorageInfo()
+      });
       return sources;
     }
     function getBaseSources() {
@@ -1381,11 +1657,27 @@
       enabled.forEach(function (name) {
         return ensureSource(name);
       });
+      stelsLog('get-enabled-sources', {
+        available_count: available_sources.length,
+        enabled_count: enabled.length,
+        enabled: enabled
+      });
       return enabled.length ? enabled : null;
     }
     function loadAvailableSources(call) {
       var cached = Lampa.Storage.get(sourcesStore.sources_key, null);
+      stelsLog('load-available-sources-start', {
+        cached_is_array: Array.isArray(cached),
+        cached_count: Array.isArray(cached) ? cached.length : 0,
+        api: api_client.apiBase() + '/sources'
+      });
       api_client.getSources(function (json) {
+        stelsLog('load-available-sources-success', {
+          ok: !!(json && json.ok),
+          api_count: json && Array.isArray(json.sources) ? json.sources.length : 0,
+          api_sources: json && Array.isArray(json.sources) ? json.sources.map(function (item) { return sourcesStore.normalizeName(item && (item.key || item.name)); }).filter(Boolean) : [],
+          raw_type: typeof json
+        });
         if (json && json.ok && Array.isArray(json.sources)) {
           applyAvailableSources(json.sources);
           sourcesStore.saveAvailable(json.sources);
@@ -1393,13 +1685,26 @@
           applyAvailableSources(cached);
         }
         call();
-      }, function () {
+      }, function (a, c) {
+        stelsLog('load-available-sources-fail', {
+          cached_is_array: Array.isArray(cached),
+          cached_count: Array.isArray(cached) ? cached.length : 0,
+          error: a && (a.status || a.message || a.toString && a.toString()),
+          code: c || ''
+        });
         if (cached && Array.isArray(cached)) applyAvailableSources(cached);
         call();
       });
     }
     function applyAvailableSources(list) {
+      list = mergeLampacSources(list);
       available_sources = list;
+      sourcesStore.available_sources = list;
+      sourcesStore.applyTitles(list);
+      stelsLog('apply-available-sources', {
+        count: list.length,
+        keys: list.map(function (item) { return sourcesStore.normalizeName(item && (item.key || item.name)); }).filter(Boolean)
+      });
       list.forEach(function (item) {
         if (!item || !item.name && !item.key) return;
         var display = extractSourceTitle(item);
@@ -1753,6 +2058,7 @@
         disabled_sources[key] = {
           reason: reason || ''
         };
+        stelsLog('disable-source', { source: key, reason: reason || '' });
         updateSourceSort();
       }
     };
@@ -2443,6 +2749,14 @@
       });
       items = ordered;
     }
+    stelsLog('build-sources-settings-list', {
+      store_count: sources.length,
+      visible_count: items.length,
+      hidden_count: hidden.length,
+      sorted_count: sorted.length,
+      keys: items.map(function (item) { return item.key; }),
+      hidden: hidden
+    });
     var list = $('<div class="menu-edit-list"></div>');
     items.forEach(function (item) {
       var status_key = item.enabled ? 'stels_online_sources_enabled' : 'stels_online_sources_disabled';
@@ -2476,6 +2790,7 @@
     });
     sourcesStore.saveSorted(sort);
     sourcesStore.saveHidden(hide);
+    stelsLog('save-sources-settings', { sort_count: sort.length, hide_count: hide.length, sort: sort, hide: hide });
   }
   function stopFilmixPolling() {
     if (filmixAuthTimer) {
@@ -2651,8 +2966,13 @@
     PLUGIN_STORAGE_KEYS.forEach(function (key) {
       Lampa.Storage.set(key, '');
     });
-    sourcesStore.available_sources = [];
+    sourcesStore.available_sources = mergeLampacSources([]);
     sourcesStore.titles = {};
+    sourcesStore.applyTitles(sourcesStore.available_sources);
+    stelsLog('settings-reset-plugin-storage', {
+      available_count: sourcesStore.available_sources.length,
+      keys: sourcesStore.available_sources.map(function (item) { return sourcesStore.normalizeName(item && (item.key || item.name)); }).filter(Boolean)
+    });
     Lampa.Settings.update();
     Lampa.Noty.show(Lampa.Lang.translate('stels_online_sources_reset_done'));
   }
@@ -2665,7 +2985,8 @@
       var syncBtn = $('<div class="stels-online-sources__btn selector" data-action="sync" title="Синхронізувати"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></div>');
       var saveBtn = $('<div class="stels-online-sources__btn selector" data-action="save" title="Зберегти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></div>');
       var resetBtn = $('<div class="stels-online-sources__btn selector" data-action="reset" title="Скинути"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C8.5 2 6 4.5 6 7.5c0 1.5.5 2.8 1.3 3.8L6 14l2.5 1.5c1 .8 2.2 1.2 3.5 1.2s2.5-.4 3.5-1.2L18 14l-1.3-2.7c.8-1 1.3-2.3 1.3-3.8C18 4.5 15.5 2 12 2z"/><circle cx="9.5" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="8" r="1.2" fill="currentColor" stroke="none"/><path d="M10 11h4v6c0 .6-.4 1-1 1h-2c-.6 0-1-.4-1-1v-6z"/></svg></div>');
-      container.append(syncBtn).append(saveBtn).append(resetBtn);
+      var logBtn = $('<div class="stels-online-sources__btn selector" data-action="log" title="Експорт логу"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>');
+      container.append(syncBtn).append(saveBtn).append(resetBtn).append(logBtn);
       return container;
     }
     function render(update_modal) {
@@ -2686,7 +3007,13 @@
     }
     function sync() {
       var network = new Lampa.Reguest();
+      stelsLog('settings-sync-start', { api: api_base + '/sources' });
       network.silent(api_base + '/sources', function (json) {
+        stelsLog('settings-sync-success', {
+          ok: !!(json && json.ok),
+          api_count: json && Array.isArray(json.sources) ? json.sources.length : 0,
+          api_sources: json && Array.isArray(json.sources) ? json.sources.map(function (item) { return sourcesStore.normalizeName(item && (item.key || item.name)); }).filter(Boolean) : []
+        });
         if (json && json.ok && Array.isArray(json.sources)) {
           sourcesStore.saveAvailable(json.sources);
           render(true);
@@ -2694,7 +3021,11 @@
         } else {
           Lampa.Noty.show(Lampa.Lang.translate('stels_online_sources_sync_error'));
         }
-      }, function () {
+      }, function (a, c) {
+        stelsLog('settings-sync-fail', {
+          error: a && (a.status || a.message || a.toString && a.toString()),
+          code: c || ''
+        });
         Lampa.Noty.show(Lampa.Lang.translate('stels_online_sources_sync_error'));
       });
     }
@@ -2706,6 +3037,10 @@
     render();
     wrapper.on('click hover:enter', '[data-action="sync"]', sync);
     wrapper.on('click hover:enter', '[data-action="save"]', closeAndSave);
+    wrapper.on('click hover:enter', '[data-action="log"]', function () {
+      stelsLog('settings-open-log-modal', { from: 'sources-modal' });
+      openStelsLogExportModal();
+    });
     wrapper.on('click hover:enter', '[data-action="reset"]', function () {
       resetPluginStorage();
       render(true);
@@ -2759,6 +3094,20 @@
       },
       onChange: function onChange() {
         openSourcesModal();
+      }
+    });
+    SettingsApi.addParam({
+      component: 'stels_online',
+      param: {
+        name: 'stels_online_export_log',
+        type: 'button'
+      },
+      field: {
+        name: Lampa.Lang.translate('stels_online_log_export')
+      },
+      onChange: function onChange() {
+        stelsLog('settings-open-log-modal', { from: 'main-settings' });
+        openStelsLogExportModal();
       }
     });
     SettingsApi.addParam({
@@ -2830,31 +3179,31 @@
     });
   }
 
-  var communityWatchesPlugin = {
+  var companionPlugins = [{
     url: config.community_watches_url,
     name: config.community_watches_name,
-    status: 1
-  };
-  var communityWatchesAutoinstallFlag = config.storage_prefixes.cw_autoinstall_done;
+    status: 1,
+    flag: config.storage_prefixes.cw_autoinstall_done
+  }];
   function normalizePluginUrl(url) {
     return (url || '').toString().trim().replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/^https?:\/\//i, '').toLowerCase();
   }
-  function isCommunityWatchesInstalled(plugin) {
-    if (!plugin) return false;
+  function isCompanionPluginInstalled(plugin, target) {
+    if (!plugin || !target) return false;
     if (typeof plugin === 'string') {
-      return normalizePluginUrl(plugin) === normalizePluginUrl(communityWatchesPlugin.url);
+      return normalizePluginUrl(plugin) === normalizePluginUrl(target.url);
     }
-    if (plugin.name === communityWatchesPlugin.name) return true;
-    return normalizePluginUrl(plugin.url) === normalizePluginUrl(communityWatchesPlugin.url);
+    if (plugin.name === target.name) return true;
+    return normalizePluginUrl(plugin.url) === normalizePluginUrl(target.url);
   }
-  function cleanupCommunityWatchesDuplicates(plugins) {
-    var hasCommunityWatches = false;
+  function cleanupCompanionPluginDuplicates(plugins, target) {
+    var hasPlugin = false;
     var duplicates = 0;
     var uniqPlugins = [];
     plugins.forEach(function (plugin) {
-      if (isCommunityWatchesInstalled(plugin)) {
-        if (hasCommunityWatches) duplicates++;else {
-          hasCommunityWatches = true;
+      if (isCompanionPluginInstalled(plugin, target)) {
+        if (hasPlugin) duplicates++;else {
+          hasPlugin = true;
           uniqPlugins.push(plugin);
         }
         return;
@@ -2862,31 +3211,42 @@
       uniqPlugins.push(plugin);
     });
     return {
-      hasCommunityWatches: hasCommunityWatches,
+      hasPlugin: hasPlugin,
       duplicates: duplicates,
       plugins: uniqPlugins
     };
   }
-  function ensureCommunityWatchesPlugin() {
-    if (Lampa.Storage.get(communityWatchesAutoinstallFlag, false)) return;
+  function ensureCompanionPlugin(target) {
+    if (!target || !target.url || !target.flag) return;
+    if (Lampa.Storage.get(target.flag, false)) return;
     var plugins = Lampa.Storage.get('plugins', []);
     if (!Array.isArray(plugins)) plugins = [];
-    var state = cleanupCommunityWatchesDuplicates(plugins);
+    var state = cleanupCompanionPluginDuplicates(plugins, target);
     if (state.duplicates > 0) {
       Lampa.Storage.set('plugins', state.plugins);
     }
-    if (!state.hasCommunityWatches) {
+    if (!state.hasPlugin) {
       Lampa.Plugins.add({
-        url: communityWatchesPlugin.url,
-        name: communityWatchesPlugin.name,
-        status: communityWatchesPlugin.status
+        url: target.url,
+        name: target.name,
+        status: target.status
       });
     }
-    Lampa.Storage.set(communityWatchesAutoinstallFlag, true);
+    Lampa.Storage.set(target.flag, true);
+  }
+  function ensureCompanionPlugins() {
+    companionPlugins.forEach(function (target) {
+      ensureCompanionPlugin(target);
+    });
   }
   function startPlugin() {
     window.stels_online = true;
-    ensureCommunityWatchesPlugin();
+    stelsLog('plugin-start', {
+      app_digital: Lampa.Manifest && Lampa.Manifest.app_digital,
+      plugin_version: '2.8.5-stels-debug',
+      lampac_sources_count: (config.lampac_sources || []).length
+    });
+    ensureCompanionPlugins();
     function resetTemplates() {
       Lampa.Template.add('stels_online_full', "<div class=\"online-prestige online-prestige--full selector\">\n            <div class=\"online-prestige__img\">\n                <img alt=\"\">\n                <div class=\"online-prestige__loader\"></div>\n            </div>\n            <div class=\"online-prestige__body\">\n                <div class=\"online-prestige__head\">\n                    <div class=\"online-prestige__title\">{title}</div>\n                    <div class=\"online-prestige__time\">{time}</div>\n                </div>\n\n                <div class=\"online-prestige__timeline\"></div>\n\n                <div class=\"online-prestige__footer\">\n                    <div class=\"online-prestige__info\">{info}</div>\n                    <div class=\"online-prestige__quality\">{quality}</div>\n                </div>\n            </div>\n        </div>");
       Lampa.Template.add('stels_online_does_not_answer', "<div class=\"online-empty\">\n            <div class=\"online-empty__title\">\n                #{online_balanser_dont_work}\n            </div>\n            <div class=\"online-empty__time\">\n                #{online_balanser_timeout}\n            </div>\n            <div class=\"online-empty__buttons\">\n                <div class=\"online-empty__button selector cancel\">#{cancel}</div>\n                <div class=\"online-empty__button selector change\">#{online_change_balanser}</div>\n                <div class=\"online-empty__button selector search_all\">#{stels_online_search_all}</div>\n            </div>\n            <div class=\"online-empty__templates\">\n                <div class=\"online-empty-template\">\n                    <div class=\"online-empty-template__ico\"></div>\n                    <div class=\"online-empty-template__body\"></div>\n                </div>\n                <div class=\"online-empty-template\">\n                    <div class=\"online-empty-template__ico\"></div>\n                    <div class=\"online-empty-template__body\"></div>\n                </div>\n                <div class=\"online-empty-template\">\n                    <div class=\"online-empty-template__ico\"></div>\n                    <div class=\"online-empty-template__body\"></div>\n                </div>\n            </div>\n        </div>");
@@ -3066,6 +3426,48 @@
         uk: 'Джерела',
         ua: 'Джерела',
         en: 'Sources'
+      },
+      stels_online_log_title: {
+        ru: 'Лог Stels_Online',
+        uk: 'Лог Stels_Online',
+        ua: 'Лог Stels_Online',
+        en: 'Stels_Online log'
+      },
+      stels_online_log_export: {
+        ru: 'Експорт логу',
+        uk: 'Експорт логу',
+        ua: 'Експорт логу',
+        en: 'Export log'
+      },
+      stels_online_log_clear: {
+        ru: 'Очистити лог',
+        uk: 'Очистити лог',
+        ua: 'Очистити лог',
+        en: 'Clear log'
+      },
+      stels_online_log_descr: {
+        ru: 'Цей лог показує, які джерела отримані з API, які додані локально, які приховані та які реально потрапили у меню сортування.',
+        uk: 'Цей лог показує, які джерела отримані з API, які додані локально, які приховані та які реально потрапили у меню сортування.',
+        ua: 'Цей лог показує, які джерела отримані з API, які додані локально, які приховані та які реально потрапили у меню сортування.',
+        en: 'This log shows which sources were received from API, added locally, hidden, and actually shown in the sort menu.'
+      },
+      stels_online_log_exported: {
+        ru: 'Файл логу створено',
+        uk: 'Файл логу створено',
+        ua: 'Файл логу створено',
+        en: 'Log file created'
+      },
+      stels_online_log_copied_fallback: {
+        ru: 'Завантаження недоступне, лог скопійовано',
+        uk: 'Завантаження недоступне, лог скопійовано',
+        ua: 'Завантаження недоступне, лог скопійовано',
+        en: 'Download is unavailable, log copied'
+      },
+      stels_online_log_cleared: {
+        ru: 'Лог очищено',
+        uk: 'Лог очищено',
+        ua: 'Лог очищено',
+        en: 'Log cleared'
       },
       stels_online_sources_sync: {
         ru: 'Синхронізувати джерела',
