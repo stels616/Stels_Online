@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.13';
+    var STELS_ONLINE_VERSION = '1.0.14';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
@@ -260,7 +260,7 @@
 
     function stelsInstallImageStyles() {
       try {
-        if ($('#stels-online-image-style').length) return;
+        $('#stels-online-image-style').remove();
         $('head').append('<style id="stels-online-image-style">' +
           '.online.stels-online-with-thumb{position:relative;min-height:9.95em;margin:.52em 0;padding:.74em .9em .74em 15.05em!important;box-sizing:border-box;display:flex;align-items:stretch;border:.16em solid rgba(255,255,255,.92);border-radius:.42em;background:rgba(77,66,35,.78);overflow:hidden;}' +
           '.online.stels-online-with-thumb.focus,.online.stels-online-with-thumb.selector:hover{border-color:#fff;background:rgba(90,79,43,.9);}' +
@@ -14246,8 +14246,22 @@
         return parseInt(m[3], 10) + ' ' + (months[mi] || '') + ' ' + m[1];
       }
 
+      function stelsSafeDecodeHtml(text) {
+        text = (text == null ? '' : String(text));
+        try {
+          if (component && typeof component.decodeHtml === 'function') return component.decodeHtml(text);
+        } catch (e) {}
+        try {
+          var textarea = document.createElement('textarea');
+          textarea.innerHTML = text;
+          return textarea.value;
+        } catch (e2) {
+          return text;
+        }
+      }
+
       function stelsCleanEpisodeTitle(title, season, episode) {
-        var out = component.decodeHtml(title || '').replace(/\s+/g, ' ').trim();
+        var out = stelsSafeDecodeHtml(title || '').replace(/\s+/g, ' ').trim();
         out = out.replace(/^\s*S\s*\d+\s*\/\s*/i, '');
         out = out.replace(/^\s*(?:Сезон|Season)\s*\d+\s*\/\s*/i, '');
         out = out.replace(/^\s*(?:Серія|Серия|Episode|Епізод|Эпизод)\s*\d+\s*[-–—:]?\s*/i, '');
