@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.15';
+    var STELS_ONLINE_VERSION = '1.0.16';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
@@ -11,7 +11,8 @@
     var STELS_SOURCES_HIDE_KEY = 'stels_online_sources_hide';
 
     var STELS_REQUESTED_SOURCE_NAMES = [
-      'uaflix', 'klonfun', 'batkomakhno', 'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
+      'uaflix', 'klonfun', 'batkomakhno', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
+      'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
       'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'collaps',
       'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'remux',
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
@@ -20,8 +21,7 @@
       'videoseed', 'iptvonline', 'veoveo', 'kinoflix', 'leproduction', 'vkmovie', 'kinogo',
       'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
       'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
-      'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native',
-      'uakino-lampaua', 'uafilmme-lampaua', 'rezka720'
+      'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
     ];
 
     var STELS_SOURCE_TITLES = {
@@ -36,7 +36,7 @@
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
       videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', kinoflix: 'KinoFlix',
       leproduction: 'LeProduction', vkmovie: 'VKMovie', kinogo: 'Kinogo', kinobase: 'Kinobase', asiage: 'AsiaGe',
-      geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
+      geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
       'redheadsound-dash': 'RedHeadSound (DASH)', anilibria2: 'AniLibria.top', 'kinopub-native': 'KinoPub (OnlineMod)', 'uakino-lampaua': 'UAKino', 'uafilmme-lampaua': 'UafilmMe', rezka720: 'Rezka ~ 720'
@@ -12702,7 +12702,7 @@
           return;
         }
         source_url = '';
-        loadSourceUrl(function (url) { request(url); }, function (err) { stelsLog('lampaua-source-error', { source: sourceTitle, error: err }); component.empty(err); });
+        loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { stelsLog('lampaua-source-error', { source: sourceTitle, error: err }); component.empty(err); });
       };
 
       this.extendChoice = function (saved) {
@@ -14910,42 +14910,42 @@
 {
         name: 'lampaua-uaflix',
         title: 'UaFlix',
-        source: new lampauaRemoteSource(this, object, ['uaflix', 'uaflixnet', 'ua flix'], 'UaFlix'),
+        source: new lampauaRemoteSource(this, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix'),
         search: true,
         kp: true,
         imdb: true
       }, {
         name: 'lampaua-klonfun',
         title: 'KlonFun',
-        source: new lampauaRemoteSource(this, object, ['klonfun', 'klon fun'], 'KlonFun'),
+        source: new lampauaRemoteSource(this, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun'),
         search: true,
         kp: true,
         imdb: true
       }, {
         name: 'lampaua-batkomakhno',
         title: 'BatkoMakhno',
-        source: new lampauaRemoteSource(this, object, ['batkomakhno', 'batko makhno', 'batkomahno'], 'BatkoMakhno'),
+        source: new lampauaRemoteSource(this, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno'),
         search: true,
         kp: true,
         imdb: true
       }, {
         name: 'lampaua-uakino',
         title: 'UAKino',
-        source: new lampauaRemoteSource(this, object, ['uakino', 'ua kino'], 'UAKino'),
+        source: new lampauaRemoteSource(this, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino'),
         search: true,
         kp: true,
         imdb: true
       }, {
         name: 'lampaua-uafilmme',
         title: 'UafilmMe',
-        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'uafilm'], 'UafilmMe'),
+        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe'),
         search: true,
         kp: true,
         imdb: true
       }, {
         name: 'lampaua-rezka720',
         title: 'Rezka ~ 720',
-        source: new lampauaRemoteSource(this, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720'], 'Rezka ~ 720'),
+        source: new lampauaRemoteSource(this, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720'),
         search: true,
         kp: true,
         imdb: true
@@ -15179,7 +15179,10 @@
 
         stels_force_source_order.forEach(pushDisplaySource);
         (list || []).forEach(function (s) {
-          if (s && s.name) pushDisplaySource(s.name);
+          if (!s || !s.name) return;
+          var internal_key = stelsNormalizeSourceKey(s.name);
+          if (internal_key.indexOf('lampaua-') === 0) return;
+          pushDisplaySource(s.name);
         });
 
         stelsLog('sources-hybrid-build', {
@@ -17979,7 +17982,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix debug 1.0.10: пріоритет serial/{id} Playerjs playlist, підтримка vod із webdlrip/uaflix pattern, менше залежності від HLS-вгадування.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix/LampUA debug 1.0.16: пріоритет serial/{id} Playerjs playlist, підтримка vod із webdlrip/uaflix pattern, менше залежності від HLS-вгадування.' });
       stelsInstallImageStyles();
       initStorage();
       initLang();
