@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.2';
+    var STELS_ONLINE_VERSION = '1.0.3';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
@@ -159,6 +159,7 @@
         'stels_online_proxy_other',
         'stels_online_proxy_other_url',
         'stels_online_use_stream_proxy',
+        'stels_online_uaflix_mobile_ua',
         'stels_online_rezka2_mirror',
         'stels_online_rezka2_cookie',
         'stels_online_fancdn_cookie',
@@ -12254,7 +12255,15 @@
       var object = _object;
       var host = 'https://uafix.net';
       var ref = host + '/';
-      var uaflixBrowserUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+      var uaflixDesktopUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+      var uaflixMobileUA = 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36';
+      function uaflixUseMobileUaForZet() {
+        return Lampa.Storage.field('stels_online_uaflix_mobile_ua') !== false;
+      }
+      function uaflixUaFor(url) {
+        var isZet = /https?:\/\/(?:www\.)?(?:zetvideo\.net|video\.zetvideo\.net)\//i.test(url || '');
+        return isZet && uaflixUseMobileUaForZet() ? uaflixMobileUA : uaflixDesktopUA;
+      }
       var select_title = '';
       var extract = [];
       var title_page_episodes = [];
@@ -12263,7 +12272,7 @@
       var filter_items = { season: [], voice: [] };
       var choice = { season: 0, voice: 0, voice_name: 'UAflix' };
       var headers = {
-        'User-Agent': uaflixBrowserUA,
+        'User-Agent': uaflixDesktopUA,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'uk-UA,uk;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5',
         'Referer': ref
@@ -12274,13 +12283,15 @@
       }
 
       function requestText(url, success, fail, referer) {
-        stelsLog('uaflix-request', { url: url, referer: referer || ref, ua_spoof: uaflixBrowserUA });
-        var h = {};
-        for (var k in headers) h[k] = headers[k];
+        var activeUA = uaflixUaFor(url);
         var isZetVod = /https?:\/\/(?:www\.)?zetvideo\.net\/vod\//i.test(url || '');
         var isZetM3u8 = /https?:\/\/video\.zetvideo\.net\/.+\.m3u8(?:$|\?)/i.test(url || '');
+        stelsLog('uaflix-request', { url: url, referer: referer || ref, ua_mode: activeUA === uaflixMobileUA ? 'mobile_android' : 'desktop', ua_spoof: activeUA });
+        var h = {};
+        for (var k in headers) h[k] = headers[k];
+        h['User-Agent'] = activeUA;
         if (isZetVod) {
-          h['User-Agent'] = uaflixBrowserUA;
+          h['User-Agent'] = activeUA;
           h['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8';
           h['Accept-Language'] = 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,uk;q=0.6';
           h['Referer'] = referer || ref;
@@ -12289,7 +12300,7 @@
           h['Sec-Fetch-Site'] = 'cross-site';
           delete h['Origin'];
         } else if (isZetM3u8) {
-          h['User-Agent'] = uaflixBrowserUA;
+          h['User-Agent'] = activeUA;
           h['Accept'] = 'application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*';
           h['Accept-Language'] = 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,uk;q=0.6';
           h['Referer'] = referer || 'https://zetvideo.net/';
@@ -12357,15 +12368,41 @@
         return title || '';
       }
 
+      function uaflixMovieYear() {
+        var m = object && object.movie || {};
+        return (m.year || m.release_year || ((m.release_date || m.first_air_date || '').match(/(19|20)\d{2}/) || [])[0] || '').toString();
+      }
+
       function uaflixBuildGuessStreams(playerUrl, pageReferer) {
         var out = [];
+        var seen = {};
+        function add(u) { if (u && !seen[u]) { seen[u] = true; out.push(u); } }
         var id = ((playerUrl || '').match(/\/vod\/(\d+)/i) || [])[1] || '';
         var ep = ((pageReferer || '').match(/season-(\d+)-episode-(\d+)/i) || []);
         var slug = uaflixLatinSlug();
         if (!id || !slug || !ep[1] || !ep[2]) return out;
-        var se = 's' + uaflixPad2(ep[1]) + 'e' + uaflixPad2(ep[2]);
-        out.push('https://video.zetvideo.net/vod/serials/' + slug + '.' + se + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
-        out.push('https://video.zetvideo.net/vod/serials/' + slug + '.' + se + '_' + id + '/hls/index.m3u8');
+        var ss = uaflixPad2(ep[1]);
+        var ee = uaflixPad2(ep[2]);
+        var se = 's' + ss + 'e' + ee;
+        var pathDot = slug;
+        var pathDash = slug.replace(/\./g, '-');
+        var pathUnder = slug.replace(/\./g, '_');
+        var fileUnder = slug.replace(/\./g, '_');
+        var year = uaflixMovieYear();
+        var tails = [];
+        if (year) tails.push(fileUnder + '_' + se + '_' + year + '_webdl_1080p_ukr_eng_hurtom_' + id);
+        tails.push(fileUnder + '_' + se + '_webdl_1080p_ukr_eng_hurtom_' + id);
+        tails.push(fileUnder + '_' + se + '_' + id);
+        [pathDot, pathDash, pathUnder].forEach(function (path) {
+          tails.forEach(function (tail) {
+            add('https://video.zetvideo.net/vod/serials/' + path + '/s' + ss + '/' + tail + '/hls/index.m3u8');
+            add('https://video.zetvideo.net/content/stream/serials/' + path + '/s' + ss + '/' + tail + '/hls/1080/index.m3u8');
+            add('https://video.zetvideo.net/content/stream/serials/' + path + '/s' + ss + '/' + tail + '/hls/720/index.m3u8');
+            add('https://video.zetvideo.net/content/stream/serials/' + path + '/s' + ss + '/' + tail + '/hls/480/index.m3u8');
+          });
+        });
+        add('https://video.zetvideo.net/vod/serials/' + slug + '.' + se + '.1080p.webrip.x264.aac.uaflix_' + id + '/hls/index.m3u8');
+        add('https://video.zetvideo.net/vod/serials/' + slug + '.' + se + '_' + id + '/hls/index.m3u8');
         return out;
       }
 
@@ -14968,6 +15005,7 @@
       Lampa.Params.trigger('stels_online_iframe_proxy', !isTizen || isLocal);
       Lampa.Params.trigger('stels_online_proxy_iframe', false);
       Lampa.Params.trigger('stels_online_use_stream_proxy', false);
+      Lampa.Params.trigger('stels_online_uaflix_mobile_ua', true);
       Lampa.Params.trigger('stels_online_proxy_find_ip', false);
       Lampa.Params.trigger('stels_online_proxy_other', false);
       Lampa.Params.trigger('stels_online_proxy_lumex', false);
@@ -15162,6 +15200,13 @@
           be: 'Праксіраваць відэаструмень (Укр)',
           en: 'Proxy video stream (Ukr)',
           zh: '代理视频流 （乌克兰）'
+        },
+        stels_online_uaflix_mobile_ua: {
+          ru: 'UAflix: Android User-Agent для ZetVideo',
+          uk: 'UAflix: Android User-Agent для ZetVideo',
+          be: 'UAflix: Android User-Agent для ZetVideo',
+          en: 'UAflix: Android User-Agent for ZetVideo',
+          zh: 'UAflix：ZetVideo Android User-Agent'
         },
         stels_online_proxy_find_ip: {
           ru: 'Передавать свой IP прокси',
@@ -16331,6 +16376,7 @@
         template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_fancdn_token\" data-type=\"input\" data-string=\"true\" placeholder=\"#{settings_cub_not_specified}\">\n            <div class=\"settings-param__name\">#{stels_online_fancdn_token}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       }
 
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_uaflix_mobile_ua\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_uaflix_mobile_ua}</div>\n            <div class=\"settings-param__descr\">Вмикає Android User-Agent для запитів до ZetVideo. У HAR сайту /vod/9043 відкривається саме з мобільним UA.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_use_stream_proxy\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_use_stream_proxy}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_rezka2_prx_ukr\" data-type=\"select\">\n            <div class=\"settings-param__name\">#{stels_online_rezka2_prx_ukr}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_find_ip\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_find_ip}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_other\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_other}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_other_url\" data-type=\"input\" placeholder=\"#{settings_cub_not_specified}\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_other_url}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_secret_password\" data-type=\"input\" data-string=\"true\" placeholder=\"#{settings_cub_not_specified}\">\n            <div class=\"settings-param__name\">#{stels_online_secret_password}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
