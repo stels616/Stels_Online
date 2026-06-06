@@ -4,9 +4,89 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '3.2.2-online-mod-full-sources-cache-guard';
+    var STELS_ONLINE_VERSION = '3.2.3-online-mod-hybrid-57-sources-settings';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 350;
+
+    var STELS_SOURCES_HIDE_KEY = 'stels_online_sources_hide';
+
+    var STELS_REQUESTED_SOURCE_NAMES = [
+      'uaflix', 'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
+      'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'collaps',
+      'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'remux',
+      'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
+      'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
+      'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
+      'videoseed', 'iptvonline', 'veoveo', 'kinoflix', 'leproduction', 'vkmovie', 'kinogo',
+      'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
+      'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
+      'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
+    ];
+
+    var STELS_SOURCE_TITLES = {
+      uaflix: 'UAflix', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
+      mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
+      rezka: 'Rezka', pizdatoehd: 'PizdatoeHD', getstv: 'GetsTV', kinopub: 'KinoPub', zetflixdb: 'ZetflixDB',
+      collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
+      kinoukr: 'KinoUkr', uafilm: 'UAFilm', kinotochka: 'KinoTochka', remux: 'Remux', anilibria: 'AniLibria',
+      animedia: 'Animedia', animego: 'AnimeGo', animevost: 'AnimeVost', animebesst: 'AnimeBesst', alloha: 'Alloha',
+      mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
+      cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
+      movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
+      videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', kinoflix: 'KinoFlix',
+      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinogo: 'Kinogo', kinobase: 'Kinobase', asiage: 'AsiaGe',
+      geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
+      rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
+      fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
+      'redheadsound-dash': 'RedHeadSound (DASH)', anilibria2: 'AniLibria.top', 'kinopub-native': 'KinoPub (OnlineMod)'
+    };
+
+    var STELS_SOURCE_ENGINE_ALIAS = {
+      lumex: 'lumex', lumex2: 'lumex2', rezka2: 'rezka2', kinobase: 'kinobase', collaps: 'collaps',
+      'collaps-dash': 'collaps-dash', cdnmovies: 'cdnmovies', filmix: 'filmix', zetflix: 'zetflix',
+      fancdn: 'fancdn', fancdn2: 'fancdn2', fanserials: 'fanserials', videoseed: 'videoseed', vibix: 'vibix',
+      redheadsound: 'redheadsound', 'redheadsound-dash': 'redheadsound-dash', cdnvideohub: 'cdnvideohub',
+      anilibria: 'anilibria', anilibria2: 'anilibria2', animelib: 'animelib', kodik: 'kodik', alloha: 'alloha',
+      'kinopub-native': 'kinopub', kinopub: 'kinopub',
+      rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
+      bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
+      eneyida: 'rezka2', kinotochka: 'rezka2', uaflix: 'lumex2', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
+      remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
+      mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
+      vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
+      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'videoseed', kinoflix: 'videoseed', leproduction: 'videoseed',
+      vkmovie: 'cdnvideohub', kinogo: 'rezka2', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'cdnvideohub'
+    };
+
+    function stelsNormalizeSourceKey(value) {
+      return (value == null ? '' : String(value)).trim().toLowerCase();
+    }
+
+    function stelsGetHiddenSources() {
+      try {
+        var hidden = Lampa.Storage.get(STELS_SOURCES_HIDE_KEY, []);
+        return Array.isArray(hidden) ? hidden.map(stelsNormalizeSourceKey).filter(Boolean) : [];
+      } catch (e) { return []; }
+    }
+
+    function stelsSetHiddenSources(hidden) {
+      try {
+        var out = [];
+        (hidden || []).forEach(function (name) {
+          name = stelsNormalizeSourceKey(name);
+          if (name && out.indexOf(name) === -1) out.push(name);
+        });
+        Lampa.Storage.set(STELS_SOURCES_HIDE_KEY, out);
+        stelsLog('sources-hidden-updated', { hidden_count: out.length, hidden: out });
+      } catch (e) {}
+    }
+
+    function stelsSourceTitle(name) {
+      name = stelsNormalizeSourceKey(name);
+      return STELS_SOURCE_TITLES[name] || name;
+    }
+
 
     function stelsLog(event, data) {
       try {
@@ -54,7 +134,8 @@
         'stels_online_rezka2_mirror',
         'stels_online_rezka2_cookie',
         'stels_online_fancdn_cookie',
-        'stels_online_filter'
+        'stels_online_filter',
+        'stels_online_sources_hide'
       ];
       var out = {};
       try {
@@ -78,12 +159,8 @@
         plugin: 'Stels_Online',
         version: STELS_ONLINE_VERSION,
         engine: 'online_mod',
-        expected_sources: [
-          'Lumex','Lumex (Ads)','HDrezka','Kinobase','Collaps','Collaps (DASH)',
-          'CDNMovies','Filmix','Zetflix','FanCDN','FanCDN (ID)','FanSerials',
-          'VideoSeed','Vibix','RedHeadSound','RedHeadSound (DASH)','CDNVideoHub',
-          'AniLibria','AniLibria.top','AnimeLib','Kodik','Alloha','KinoPub'
-        ],
+        expected_sources: STELS_REQUESTED_SOURCE_NAMES.map(stelsSourceTitle),
+        hidden_sources: stelsGetHiddenSources(),
         time: new Date().toISOString(),
         user_agent: (window.navigator && window.navigator.userAgent) || '',
         location: (window.location && window.location.href) || '',
@@ -149,6 +226,48 @@
           Lampa.Controller.toggle(controller);
         }
       });
+    }
+
+
+    function stelsOpenSourcesModal() {
+      var controller = Lampa.Controller.enabled().name;
+      var hidden = stelsGetHiddenSources();
+      var items = STELS_REQUESTED_SOURCE_NAMES.map(function (name) {
+        name = stelsNormalizeSourceKey(name);
+        return {
+          title: (hidden.indexOf(name) === -1 ? '☑ ' : '☐ ') + stelsSourceTitle(name),
+          subtitle: name,
+          source: name,
+          selected: hidden.indexOf(name) === -1
+        };
+      });
+
+      function redraw() {
+        Lampa.Select.show({
+          title: 'Джерела Stels_Online',
+          items: items,
+          onBack: function () {
+            Lampa.Controller.toggle(controller);
+          },
+          onSelect: function (item) {
+            var key = item.source;
+            hidden = stelsGetHiddenSources();
+            var index = hidden.indexOf(key);
+            if (index === -1) hidden.push(key); else hidden.splice(index, 1);
+            stelsSetHiddenSources(hidden);
+            items.forEach(function (it) {
+              var enabled = hidden.indexOf(it.source) === -1;
+              it.selected = enabled;
+              it.title = (enabled ? '☑ ' : '☐ ') + stelsSourceTitle(it.source);
+            });
+            Lampa.Noty.show((hidden.indexOf(key) === -1 ? 'Увімкнено: ' : 'Вимкнено: ') + stelsSourceTitle(key));
+            setTimeout(redraw, 10);
+          }
+        });
+      }
+
+      stelsLog('sources-modal-opened', { total: items.length, hidden_count: hidden.length, hidden: hidden });
+      redraw();
     }
 
     function startsWith(str, searchString) {
@@ -12432,52 +12551,59 @@
         imdb: true,
         disabled: true
       }];
-      var stels_force_source_order = [
-        'lumex',
-        'lumex2',
-        'rezka2',
-        'kinobase',
-        'collaps',
-        'collaps-dash',
-        'cdnmovies',
-        'filmix',
-        'zetflix',
-        'fancdn',
-        'fancdn2',
-        'fanserials',
-        'videoseed',
-        'vibix',
-        'redheadsound',
-        'redheadsound-dash',
-        'cdnvideohub',
-        'anilibria',
-        'anilibria2',
-        'animelib',
-        'kodik',
-        'alloha',
-        'kinopub'
-      ];
+      var stels_force_source_order = STELS_REQUESTED_SOURCE_NAMES.slice(0);
 
       function stelsBuildFullSourceList(list) {
-        var by_name = {};
+        var base_by_name = {};
         var result = [];
+        var result_keys = {};
+        var hidden = stelsGetHiddenSources();
 
         (list || []).forEach(function (s) {
           if (!s || !s.name) return;
           s.disabled = false;
-          by_name[s.name] = s;
+          base_by_name[stelsNormalizeSourceKey(s.name)] = s;
         });
 
-        stels_force_source_order.forEach(function (name) {
-          if (by_name[name] && result.indexOf(by_name[name]) === -1) {
-            result.push(by_name[name]);
+        function pushDisplaySource(display_name) {
+          var key = stelsNormalizeSourceKey(display_name);
+          if (!key || result_keys[key] || hidden.indexOf(key) !== -1) return;
+
+          var engine_key = stelsNormalizeSourceKey(STELS_SOURCE_ENGINE_ALIAS[key] || key);
+          var base = base_by_name[engine_key] || base_by_name[key];
+          if (!base) {
+            stelsLog('source-skipped-no-engine', { visible_source: key, engine_alias: engine_key });
+            return;
           }
-        });
 
+          var item = {
+            name: key,
+            title: stelsSourceTitle(key),
+            source: base.source,
+            search: !!base.search,
+            kp: !!base.kp,
+            imdb: !!base.imdb,
+            disabled: false,
+            engine: engine_key,
+            alias: engine_key !== key
+          };
+
+          result.push(item);
+          result_keys[key] = true;
+        }
+
+        stels_force_source_order.forEach(pushDisplaySource);
         (list || []).forEach(function (s) {
-          if (s && s.name && result.indexOf(s) === -1) {
-            result.push(s);
-          }
+          if (s && s.name) pushDisplaySource(s.name);
+        });
+
+        stelsLog('sources-hybrid-build', {
+          requested_count: stels_force_source_order.length,
+          native_count: (list || []).length,
+          hidden_count: hidden.length,
+          output_count: result.length,
+          output: result.map(function (s) { return s.name + ':' + s.title + (s.alias ? '->' + s.engine : ''); }),
+          hidden: hidden
         });
 
         return result;
@@ -15166,6 +15292,8 @@
         template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_av1_support\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_av1_support}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       }
 
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_sources\" data-static=\"true\">\n            <div class=\"settings-param__name\">Джерела</div>\n            <div class=\"settings-param__descr\">Увімкнення або вимкнення джерел у меню Сортувати</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
       Lampa.Template.add('settings_stels_online', template);
@@ -15176,6 +15304,10 @@
       }
       Lampa.Settings.listener.follow('open', function (e) {
         if (e.name == 'stels_online') {
+          var stels_sources_button = e.body.find('[data-name="stels_online_sources"]');
+          stels_sources_button.unbind('hover:enter').on('hover:enter', function () {
+            stelsOpenSourcesModal();
+          });
           var stels_export_log = e.body.find('[data-name="stels_online_export_log"]');
           stels_export_log.unbind('hover:enter').on('hover:enter', function () {
             stelsLog('log-export-opened', { location: (window.location && window.location.href) || '' });
