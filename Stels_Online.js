@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.10';
+    var STELS_ONLINE_VERSION = '1.0.11';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
@@ -13717,14 +13717,15 @@
             note: '1.0.9: спочатку читаємо реальний Playerjs file з HTML ZetVideo. Для serial/{id} це JSON з усіма сезонами/серіями; вибираємо серію за pageReferer season-XX-episode-YY. HLS-вгадування лишається тільки останнім fallback.'
           });
 
-          function tryFallback(lastError) {
+          function tryFallback(lastError, onFail) {
             var guessedStreams = uaflixBuildGuessStreams(player.iframe, pageReferer || player.referer || ref);
             if (!guessedStreams.length) {
-              nextPlayer(lastError || 'no guessed streams');
+              if (onFail) onFail(lastError || 'no guessed streams');
+              else nextPlayer(lastError || 'no guessed streams');
               return;
             }
             stelsLog('uaflix-player-fallback-stream', {
-              reason: 'player_html_attempts_failed',
+              reason: onFail ? 'direct_player_failed_fast_path' : 'player_html_attempts_failed',
               player: player.iframe,
               page_referer: pageReferer || player.referer || ref,
               player_html_attempts_count: attempts.length,
@@ -13735,7 +13736,8 @@
             uaflixValidateGuessStreams(guessedStreams, player, pageReferer || player.referer || ref, function (validUrl) {
               success({ file: validUrl, poster: '', subtitles: [] }, player);
             }, function (guessErr) {
-              nextPlayer(guessErr || lastError || 'guessed stream invalid');
+              if (onFail) onFail(guessErr || lastError || 'guessed stream invalid');
+              else nextPlayer(guessErr || lastError || 'guessed stream invalid');
             });
           }
 
@@ -13773,6 +13775,7 @@
                 });
                 success(data, player);
               } else {
+                var isDirect404Like = req.mode === 'direct' && (/404\s+Not\s+Found|nginx/i.test(playerHtml || '') || ((playerHtml || '').length > 0 && (playerHtml || '').length < 500 && !/Playerjs|new\s+Playerjs|\.m3u8/i.test(playerHtml || '')));
                 stelsLog('uaflix-player-no-file', {
                   player: player.iframe,
                   request_url: req.url,
@@ -13783,11 +13786,18 @@
                   has_404_text: /404\s+Not\s+Found|nginx/i.test(playerHtml || ''),
                   has_playerjs: /Playerjs|new\s+Playerjs/i.test(playerHtml || ''),
                   has_m3u8: /\.m3u8/i.test(playerHtml || ''),
+                  fast_fallback: !!isDirect404Like,
                   preview: uaflixCompact(playerHtml || '', 350)
                 });
-                tryAttempt('no file in player html');
+                if (isDirect404Like) {
+                  stelsLog('uaflix-direct-fallback-fast-path', { player: player.iframe, reason: 'direct_html_has_no_player', html_length: (playerHtml || '').length });
+                  tryFallback('direct html has no Playerjs', function (fbErr) { tryAttempt(fbErr || 'direct fallback failed'); });
+                } else {
+                  tryAttempt('no file in player html');
+                }
               }
             }, function (err) {
+              var isDirect404Error = req.mode === 'direct' && /404|not\s*found|Запрошеної сторінки не знайдено/i.test(err || '');
               stelsLog('uaflix-player-request-error', {
                 player: player.iframe,
                 request_url: req.url,
@@ -13796,9 +13806,15 @@
                 referer: rr,
                 attempt_index: ai - 1,
                 attempts_count: attempts.length,
+                fast_fallback: !!isDirect404Error,
                 error: err
               });
-              tryAttempt(err || 'request error');
+              if (isDirect404Error) {
+                stelsLog('uaflix-direct-fallback-fast-path', { player: player.iframe, reason: 'direct_request_404', error: err || '' });
+                tryFallback(err || 'direct request 404', function (fbErr) { tryAttempt(fbErr || err || 'request error'); });
+              } else {
+                tryAttempt(err || 'request error');
+              }
             }, rr);
           }
           tryAttempt();
@@ -13849,6 +13865,7 @@
           }
           tryPlayerUrls(players, element.link, function (data) {
             element.stream = stelsApplyUaflixStreamProxy(data.file);
+            uaflixSetCachedStream(element, data.file, element.stream);
             element.poster = element.poster || data.poster;
             element.subtitles = data.subtitles;
             element.qualitys = false;
@@ -13912,11 +13929,56 @@
         });
       }
 
+      function uaflixStreamCacheKey(element) {
+        if (!element) return '';
+        var base = element.link || element.iframe || element.playlist_source || '';
+        var ep = (element.season || '') + ':' + (element.episode || '');
+        return base ? (base + '|' + ep) : '';
+      }
+
+      function uaflixGetCachedStream(element) {
+        var key = uaflixStreamCacheKey(element);
+        if (!key) return '';
+        try {
+          var cache = Lampa.Storage.get('stels_online_uaflix_stream_cache', {});
+          var item = cache && cache[key];
+          if (item && item.stream && item.time && (Date.now() - item.time < 1000 * 60 * 60 * 24 * 7)) {
+            stelsLog('uaflix-stream-cache-hit', { key: key, stream: item.stream, age_ms: Date.now() - item.time });
+            return item.stream;
+          }
+        } catch (e) {}
+        return '';
+      }
+
+      function uaflixSetCachedStream(element, rawFile, finalStream) {
+        var key = uaflixStreamCacheKey(element);
+        if (!key || !finalStream) return;
+        try {
+          var cache = Lampa.Storage.get('stels_online_uaflix_stream_cache', {});
+          if (!cache || typeof cache !== 'object' || Array.isArray(cache)) cache = {};
+          cache[key] = { stream: finalStream, raw_file: rawFile || finalStream, time: Date.now() };
+          var keys = Object.keys(cache);
+          if (keys.length > 200) {
+            keys.sort(function (a, b) { return (cache[a].time || 0) - (cache[b].time || 0); });
+            keys.slice(0, keys.length - 200).forEach(function (k) { delete cache[k]; });
+          }
+          Lampa.Storage.set('stels_online_uaflix_stream_cache', cache);
+          stelsLog('uaflix-stream-cache-save', { key: key, stream: finalStream });
+        } catch (e) {}
+      }
+
       function getStream(element, success, fail) {
         if (element.stream) return success(element);
+        var cachedStream = uaflixGetCachedStream(element);
+        if (cachedStream) {
+          element.stream = cachedStream;
+          element.qualitys = false;
+          return success(element);
+        }
         if (element.iframe) {
           tryPlayerUrls([{ iframe: element.iframe, referer: element.referer || ref }], element.referer || ref, function (data) {
             element.stream = stelsApplyUaflixStreamProxy(data.file);
+            uaflixSetCachedStream(element, data.file, element.stream);
             element.poster = element.poster || data.poster;
             element.subtitles = data.subtitles;
             element.qualitys = false;
