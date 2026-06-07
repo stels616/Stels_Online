@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.32';
+    var STELS_ONLINE_VERSION = '1.0.33';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -12947,6 +12947,42 @@
         return found || videos[0];
       }
 
+      function lampauaFindSameSeasonLink(items, element) {
+        var links = (items || []).filter(function (v) { return v && v.method == 'link' && v.url; });
+        if (!links.length) return null;
+        var season = parseInt(element.season || 0, 10);
+        var found = null;
+        links.forEach(function (v) {
+          if (found) return;
+          var vs = parseInt(v.season || 0, 10);
+          if (!vs && v.text) {
+            var m = String(v.text).match(/(\d+)/);
+            if (m) vs = parseInt(m[1], 10);
+          }
+          if (!season || vs == season) found = v;
+        });
+        return found || links[0];
+      }
+
+      function lampauaRequestUrlItems(url, tag, call) {
+        if (!url) return call([]);
+        var req = new Lampa.Reguest();
+        req.timeout(15000);
+        req['native'](account(absolute(url)), function (str) {
+          var items = parseJsonDate(str, '.videos__item');
+          stelsLog('lampaua-rezka720-' + (tag || 'url') + '-items', {
+            source: sourceTitle,
+            count: items.length,
+            sample: items.slice(0, 8).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, url: previewUrl(i.url || '') }; })
+          });
+          call(items || []);
+        }, function (a, c) {
+          var err = req.errorDecode ? req.errorDecode(a, c) : 'LampUA request error';
+          stelsLog('lampaua-rezka720-' + (tag || 'url') + '-items-fail', { source: sourceTitle, url: previewUrl(url), error: err, status: a && a.status });
+          call([]);
+        }, false, { dataType: 'text', headers: addHeaders() });
+      }
+
       function lampauaRequestVoiceItems(voice, call) {
         if (!voice || !voice.url) return call([]);
         var req = new Lampa.Reguest();
@@ -12983,7 +13019,21 @@
         };
         if (use_current) return finish(element);
         lampauaRequestVoiceItems(voice, function (items) {
-          finish(lampauaFindSameEpisode(items, element));
+          var same = lampauaFindSameEpisode(items, element);
+          if (same) return finish(same);
+          var season_link = lampauaFindSameSeasonLink(items, element);
+          if (!season_link) return call(false);
+          stelsLog('lampaua-rezka720-voice-season-link', {
+            source: sourceTitle,
+            voice: voice.title,
+            season: element.season,
+            episode: element.episode,
+            link_text: season_link.text,
+            link_url: previewUrl(season_link.url || '')
+          });
+          lampauaRequestUrlItems(season_link.url, 'voice-season', function (season_items) {
+            finish(lampauaFindSameEpisode(season_items, element));
+          });
         });
       }
 
@@ -18800,7 +18850,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.30: precheck тепер проходить усі джерела без ліміту 18, live-оновлення меню продовжується до завершення, іконку Stels_Online підігнано під стандартний розмір налаштувань.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.33: виправлено перемикання доріжок Rezka ~ 720 через проміжний вибір сезону: voice -> season link -> episode -> stream.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
