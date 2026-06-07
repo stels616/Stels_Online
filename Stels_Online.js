@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.39';
+    var STELS_ONLINE_VERSION = '1.0.40';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -12707,6 +12707,199 @@
         return kit ? { 'X-Kit-AesGcm': kit } : {};
       }
 
+
+      function remoteHostBase() {
+        return (host || '').replace(/\/$/, '');
+      }
+
+      function remoteHostKey() {
+        return remoteHostBase().replace('http://', '').replace('https://', '');
+      }
+
+      function remoteAndroidVersion() {
+        if (!Lampa.Platform.is('android')) return 0;
+        try {
+          var current = AndroidJS.appVersion().split('-');
+          return parseInt(current.pop(), 10) || 0;
+        } catch (e) {
+          return 0;
+        }
+      }
+
+      function remoteRchEnsure() {
+        var hkey = remoteHostKey();
+        if (!window.rch_nws) window.rch_nws = {};
+        if (!window.rch_nws[hkey]) {
+          window.rch_nws[hkey] = {
+            type: Lampa.Platform.is('android') ? 'apk' : Lampa.Platform.is('tizen') ? 'cors' : undefined,
+            startTypeInvoke: false,
+            rchRegistry: false,
+            apkVersion: remoteAndroidVersion()
+          };
+        }
+        return window.rch_nws[hkey];
+      }
+
+      function remoteRchTypeInvoke(call) {
+        var hkey = remoteHostKey();
+        var base = remoteHostBase();
+        var state = remoteRchEnsure();
+        state.typeInvoke = state.typeInvoke || function (host_arg, cb) {
+          if (!state.startTypeInvoke) {
+            state.startTypeInvoke = true;
+            var check = function (good) {
+              state.type = Lampa.Platform.is('android') ? 'apk' : good ? 'cors' : 'web';
+              cb();
+            };
+            if (Lampa.Platform.is('android') || Lampa.Platform.is('tizen')) check(true);
+            else {
+              var net = new Lampa.Reguest();
+              net.silent(base.indexOf(location.host) >= 0 ? 'https://github.com/' : base + '/cors/check', function () {
+                check(true);
+              }, function () {
+                check(false);
+              }, false, { dataType: 'text' });
+            }
+          } else cb();
+        };
+        state.typeInvoke(base, call);
+      }
+
+      function remoteRchRegistry(client, startConnection) {
+        var hkey = remoteHostKey();
+        var base = remoteHostBase();
+        var state = remoteRchEnsure();
+        remoteRchTypeInvoke(function () {
+          try {
+            client.invoke('RchRegistry', {
+              host: location.host,
+              rchtype: Lampa.Platform.is('android') ? 'apk' : Lampa.Platform.is('tizen') ? 'cors' : (state.type || 'web'),
+              apkVersion: Lampa.Platform.is('android') ? (state.apkVersion || 0) : 0,
+              player: Lampa.Storage.field('player')
+            });
+          } catch (e) {
+            stelsLog('remote-rch-registry-invoke-error', { source: sourceTitle, host: base, error: e && (e.message || e.toString()) });
+          }
+
+          if (state.rchRegistry) return;
+          state.rchRegistry = true;
+
+          var handled = false;
+          client.on('RchRegistry', function () {
+            if (startConnection && !handled) {
+              handled = true;
+              startConnection();
+            }
+          });
+
+          client.on('RchClient', function (rchId, url, data, headers, returnHeaders) {
+            var net = new Lampa.Reguest();
+            function sendResult(uri, html) {
+              $.ajax({
+                url: base + '/rch/' + uri + '?id=' + rchId,
+                type: 'POST',
+                data: html,
+                async: true,
+                cache: false,
+                contentType: false,
+                processData: false,
+                success: function () {},
+                error: function () {
+                  try { client.invoke('RchResult', rchId, ''); } catch (e) {}
+                }
+              });
+            }
+            function result(html) {
+              if (Lampa.Arrays.isObject(html) || Lampa.Arrays.isArray(html)) html = JSON.stringify(html);
+              if (typeof CompressionStream !== 'undefined' && html && html.length > 1000) {
+                try {
+                  var compressionStream = new CompressionStream('gzip');
+                  var encoder = new TextEncoder();
+                  var readable = new ReadableStream({
+                    start: function (controller) {
+                      controller.enqueue(encoder.encode(html));
+                      controller.close();
+                    }
+                  });
+                  var compressedStream = readable.pipeThrough(compressionStream);
+                  new Response(compressedStream).arrayBuffer().then(function (compressedBuffer) {
+                    var compressedArray = new Uint8Array(compressedBuffer);
+                    if (compressedArray.length > html.length) sendResult('result', html);
+                    else sendResult('gzresult', compressedArray);
+                  })['catch'](function () { sendResult('result', html); });
+                } catch (e) {
+                  sendResult('result', html);
+                }
+              } else sendResult('result', html);
+            }
+
+            if (url == 'eval') {
+              try { result(eval(data)); } catch (e) { result(''); }
+            } else if (url == 'evalrun') {
+              try { eval(data); } catch (e) {}
+            } else if (url == 'ping') {
+              result('pong');
+            } else {
+              stelsLog('remote-rch-client-request', { source: sourceTitle, host: base, url: previewUrl(url || '') });
+              net['native'](url, result, function (e) {
+                stelsLog('remote-rch-client-empty', { source: sourceTitle, status: e && e.status, url: previewUrl(url || '') });
+                result('');
+              }, data, {
+                dataType: 'text',
+                timeout: 1000 * 8,
+                headers: headers,
+                returnHeaders: returnHeaders
+              });
+            }
+          });
+
+          client.on('Connected', function (connectionId) {
+            stelsLog('remote-rch-connected', { source: sourceTitle, host: base, connectionId: connectionId });
+            state.connectionId = connectionId;
+          });
+          client.on('Closed', function () { stelsLog('remote-rch-closed', { source: sourceTitle, host: base }); });
+          client.on('Error', function (err) { stelsLog('remote-rch-error', { source: sourceTitle, host: base, error: err && (err.message || err.toString ? err.toString() : err) }); });
+        });
+      }
+
+      function remoteRchInvoke(json, call) {
+        var hkey = remoteHostKey();
+        if (!window.nwsClient) window.nwsClient = {};
+        var client = window.nwsClient[hkey];
+        if (client && client.connectionId != null) return call();
+        if (client) {
+          stelsLog('remote-rch-reconnecting', { source: sourceTitle, host: remoteHostBase() });
+          try {
+            client.reconnect(function () { call(); });
+          } catch (e) {
+            call();
+          }
+          return;
+        }
+        if (typeof NativeWsClient == 'undefined') return call(false);
+        window.nwsClient[hkey] = new NativeWsClient(json.nws, { autoReconnect: true });
+        client = window.nwsClient[hkey];
+        client.on('Connected', function () {
+          remoteRchRegistry(client, function () { call(); });
+        });
+        client.connect();
+      }
+
+      function remoteRchRun(json, call) {
+        stelsLog('remote-rch-run', { source: sourceTitle, host: remoteHostBase(), has_nws: !!(json && json.nws) });
+        if (!json || !json.nws) return call(false);
+        if (typeof NativeWsClient == 'undefined') {
+          try {
+            Lampa.Utils.putScript([remoteHostBase() + '/js/nws-client-es5.js?v21042026'], function () {}, false, function () {
+              remoteRchInvoke(json, call);
+            }, true);
+          } catch (e) {
+            stelsLog('remote-rch-script-error', { source: sourceTitle, host: remoteHostBase(), error: e && (e.message || e.toString()) });
+            call(false);
+          }
+        } else remoteRchInvoke(json, call);
+      }
+
       function absolute(url) {
         if (!url) return '';
         return component.fixLink(url, host);
@@ -12945,8 +13138,17 @@
         network['native'](account(absolute(file.url)), function (json) {
           json = safeDecodeJson(json);
           if (json && json.rch) {
-            stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, note: 'Сервер повернув rch. Потрібен NativeWs/RCH як у зразку, якщо це джерело не дасть пряме посилання.' });
-            return call(false, {});
+            stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, stage: 'getfile' });
+            return remoteRchRun(json, function (ok) {
+              if (!ok) return call(false, {});
+              var retry = new Lampa.Reguest();
+              retry.timeout(20000);
+              retry['native'](account(absolute(file.url)), function (json2) {
+                json2 = safeDecodeJson(json2);
+                if (json2 && json2.rch) return call(false, {});
+                call(json2, json2 || {});
+              }, function () { call(false, {}); }, false, { headers: addHeaders() });
+            });
           }
           if (json && json.accsdb) {
             stelsLog('lampaua-getfile-access-denied', { source: sourceTitle, message: json.msg || json.denymsg || 'Access denied' });
@@ -13339,7 +13541,11 @@
         if (json && json.accsdb) return component.empty(json.msg || 'Access denied');
         if (json && json.rch) {
           stelsLog('lampaua-rch-needed', { source: sourceTitle, stage: 'parse', json: json });
-          return component.empty('Джерело потребує RCH/NativeWs. Дивись лог Stels_Online.');
+          return remoteRchRun(json, function (ok) {
+            if (!ok) return component.empty('Джерело потребує RCH/NativeWs, але NativeWs не запустився. Дивись лог Stels_Online.');
+            if (source_url) request(requestParams(source_url));
+            else loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { component.empty(err); });
+          });
         }
         try {
           var items = parseJsonDate(str, '.videos__item');
