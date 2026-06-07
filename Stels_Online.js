@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.23';
+    var STELS_ONLINE_VERSION = '1.0.25';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -388,6 +388,8 @@
           '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
           '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-episode-badge{font-size:.7em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
+          '.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{font-size:0!important;color:transparent!important;overflow:hidden!important;}' +
+          '.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{font-size:1rem!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
           '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
@@ -18136,12 +18138,40 @@
     } ///////Онлайн Мод/////////
 
 
+    function stelsBuildSettingsFolder() {
+      return $(Lampa.Lang.translate('<div class="settings-folder selector stels-online-settings-folder" data-component="stels_online">' +
+        '<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true">' +
+          '<img src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block" alt="">' +
+        '</div>' +
+        '<div class="settings-folder__name">#{stels_online_title_full}</div>' +
+      '</div>'));
+    }
+
+    function stelsPlaceSettingsFolder() {
+      if (!(Lampa.Settings.main && Lampa.Settings.main())) return;
+      var body = Lampa.Settings.main().render();
+      if (!body || !body.length) return;
+
+      var field = body.find('[data-component="stels_online"]').first();
+      if (!field.length) field = stelsBuildSettingsFolder();
+      else field.detach();
+
+      // На деяких збірках Lampa замість іконки зліва підставляється службовий текст data-component.
+      // Примусово лишаємо тільки SVG-іконку, без напису "stels_online".
+      field.find('.settings-folder__icon').html('<img src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block" alt="">');
+      field.find('.settings-folder__name').text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
+
+      var folders = body.find('.settings-folder.selector, .settings-folder').not(field);
+      if (folders.length) folders.eq(0).after(field); // завжди другий пункт у загальному списку налаштувань
+      else body.prepend(field);
+
+      try { Lampa.Settings.main().update(); } catch (e) {}
+    }
+
     function addSettingsOnlineMod() {
-      if (Lampa.Settings.main && Lampa.Settings.main() && !Lampa.Settings.main().render().find('[data-component="stels_online"]').length) {
-        var field = $(Lampa.Lang.translate("<div class=\"settings-folder selector\" data-component=\"stels_online\">\n            <div class=\"settings-folder__icon\">\n                <img src=\"" + STELS_ICON_URL + "\" style=\"width:2.6em;height:2.6em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n            </div>\n            <div class=\"settings-folder__name\">#{stels_online_title_full}</div>\n        </div>"));
-        Lampa.Settings.main().render().find('[data-component="more"]').after(field);
-        Lampa.Settings.main().update();
-      }
+      stelsPlaceSettingsFolder();
+      setTimeout(stelsPlaceSettingsFolder, 100);
+      setTimeout(stelsPlaceSettingsFolder, 500);
     }
 
     function initSettings() {
@@ -18260,6 +18290,7 @@
         });
       }
       Lampa.Settings.listener.follow('open', function (e) {
+        if (!e.name || e.name == 'main') stelsPlaceSettingsFolder();
         if (e.name == 'stels_online') {
           var stels_sources_button = e.body.find('[data-name="stels_online_sources"]');
           stels_sources_button.unbind('hover:enter').on('hover:enter', function () {
@@ -18350,7 +18381,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.24: проблемне джерело і його логіку повністю видалено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.25: виправлено версію, позицію Stels_Online у налаштуваннях і прибрано службовий напис stels_online зліва.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
