@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.35';
+    var STELS_ONLINE_VERSION = '1.0.38';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -101,7 +101,7 @@
       key = stelsNormalizeSourceKey(key);
       if (!title) return false;
       if (/^ua/i.test(title)) return true;
-      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'KlonFun'].indexOf(key) !== -1;
+      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino'].indexOf(key) !== -1;
     }
 
     function stelsIsUaPrioritySource(source) {
@@ -123,7 +123,7 @@
 
     function stelsPatchUaFlagIcons(root) {
       try {
-        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'KlonFun'];
+        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino'];
         var scope = root ? $(root) : $(document.body);
         scope.find('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').each(function () {
           var el = $(this);
@@ -259,6 +259,100 @@
       } catch (e) {}
     }
 
+
+    function stelsIsAndroidRuntime() {
+      try { if (Lampa && Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('android')) return true; } catch (e) {}
+      try { return /Android/i.test((navigator && navigator.userAgent) || ''); } catch (e2) { return false; }
+    }
+
+    function stelsAndroidPlayerFixEnabled() {
+      try { return stelsIsAndroidRuntime() && Lampa.Storage.get('stels_online_android_player_fix', false) === true; }
+      catch (e) { return false; }
+    }
+
+    function stelsPreviewUrl(url) {
+      url = (url == null ? '' : String(url));
+      return url.length > 220 ? url.slice(0, 220) + '...' : url;
+    }
+
+    function stelsSanitizeAndroidPlayable(play, ctx) {
+      if (!stelsAndroidPlayerFixEnabled() || !play || typeof play !== 'object') return play;
+      try {
+        var out = play;
+        var url = out.url || out.file || '';
+        if (typeof url == 'string' && url.indexOf(' or ') !== -1) {
+          var parts = url.split(' or ');
+          out.url = parts[0];
+          if (!out.url_reserve && parts[1]) out.url_reserve = parts[1];
+          url = out.url;
+        }
+        if (typeof url == 'string' && /^https?:\/\//i.test(url)) {
+          if (/^https:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
+            out.url = url.replace(/^https:/i, 'http:');
+            if (!out.url_reserve) out.url_reserve = url;
+            url = out.url;
+          }
+          else if (/^http:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
+            if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
+          }
+        }
+        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
+          out._stels_original_quality = out.quality;
+          out.quality = false;
+        }
+        var timeout = parseInt(out.hls_manifest_timeout || 0, 10) || 0;
+        if (!timeout || timeout < 30000) out.hls_manifest_timeout = 30000;
+        stelsLog('android-player-fix-playable', {
+          ctx: ctx || '',
+          title: out.title || '',
+          season: out.season || 0,
+          episode: out.episode || 0,
+          has_url: !!(out.url || out.file),
+          has_reserve: !!out.url_reserve,
+          quality_disabled: !!out._stels_original_quality,
+          url_preview: stelsPreviewUrl(out.url || out.file || '')
+        });
+      } catch (e) {
+        stelsLog('android-player-fix-playable-error', { ctx: ctx || '', error: e && (e.message || e.toString()) });
+      }
+      return play;
+    }
+
+    function stelsInstallAndroidPlayerFixPatch() {
+      try {
+        if (!Lampa || !Lampa.Player || Lampa.Player.__stelsAndroidFixPatched) return;
+        var nativePlay = Lampa.Player.play;
+        var nativePlaylist = Lampa.Player.playlist;
+        if (typeof nativePlay == 'function') {
+          Lampa.Player.play = function (data) {
+            if (stelsAndroidPlayerFixEnabled()) data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
+            return nativePlay.apply(this, arguments.length ? [data] : arguments);
+          };
+        }
+        if (typeof nativePlaylist == 'function') {
+          Lampa.Player.playlist = function (list) {
+            if (stelsAndroidPlayerFixEnabled() && Array.isArray(list)) {
+              var original_len = list.length;
+              var safe = [];
+              list.forEach(function (item) {
+                if (!item) return;
+                if (typeof item.url === 'function') return;
+                safe.push(stelsSanitizeAndroidPlayable(item, 'Lampa.Player.playlist'));
+              });
+              if (!safe.length && list[0]) safe = [stelsSanitizeAndroidPlayable(list[0], 'Lampa.Player.playlist-first')];
+              list = safe;
+              stelsLog('android-player-fix-playlist', { original_count: original_len, safe_count: list.length, lazy_removed: original_len - list.length });
+            }
+            return nativePlaylist.apply(this, arguments.length ? [list] : arguments);
+          };
+        }
+        Lampa.Player.__stelsAndroidFixPatched = true;
+        stelsLog('android-player-fix-patch-installed', { android: stelsIsAndroidRuntime() });
+      } catch (e) {
+        stelsLog('android-player-fix-patch-error', { error: e && (e.message || e.toString()) });
+      }
+    }
+
     function stelsSafeJson(value) {
       try { return JSON.stringify(value, null, 2); }
       catch (e) { return String(value || ''); }
@@ -323,6 +417,7 @@
                 low.indexOf('stels_online_uaflix_mobile_ua') !== -1 ||
                 low.indexOf('stels_online_uaflix_forced_year') !== -1 ||
                 low.indexOf('stels_online_save_last_balanser') !== -1 ||
+                low.indexOf('stels_online_android_player_fix') !== -1 ||
                 low.indexOf('stels_online_lampac_token') !== -1 ||
                 low.indexOf('token') !== -1 ||
                 low.indexOf('account') !== -1 ||
@@ -373,6 +468,7 @@
         'stels_online_rezka2_cookie',
         'stels_online_fancdn_cookie',
         'stels_online_log_enabled',
+        'stels_online_android_player_fix',
         'stels_online_filter',
         'stels_online_sources_hide'
       ];
@@ -17395,6 +17491,7 @@
       Lampa.Params.trigger('stels_online_av1_support', true);
       Lampa.Params.trigger('stels_online_save_last_balanser', false);
       Lampa.Params.trigger('stels_online_log_enabled', true);
+      Lampa.Params.trigger('stels_online_android_player_fix', false);
       Lampa.Params.trigger('stels_online_rezka2_fix_stream', false);
       Lampa.Params.select('stels_online_kinobase_mirror', '', '');
       Lampa.Params.select('stels_online_kinobase_cookie', '', '');
@@ -18797,6 +18894,7 @@
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_plugin_cache\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити кеш Stels_Online</div>\n            <div class=\"settings-param__descr\">Скинути збережені сезони, вибір озвучки, останні джерела та позначки перегляду. Налаштування джерел, проксі та cookie не очищаються.</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Android: сумісний запуск відео</div>\n            <div class=\"settings-param__descr\">Вмикати, якщо на Android у вбудованому плеєрі Lampa серії/фільми не стартують, хоча на Windows працюють. Режим прибирає lazy-плейлист сезону, відключає quality-map для m3u8 і залишає один конкретний потік.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
@@ -18898,7 +18996,8 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.35: виправлено відкриття налаштувань після додавання перемикача запису логу; параметр stels_online_log_enabled зареєстровано через Lampa.Params.trigger.' });
+      stelsInstallAndroidPlayerFixPatch();
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.38: база 1.0.35 + перемикач Android: сумісний запуск відео. Режим прибирає lazy playlist і quality-map для m3u8 у вбудованому Android-плеєрі.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
