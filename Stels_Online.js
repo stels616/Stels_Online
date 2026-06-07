@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.26';
+    var STELS_ONLINE_VERSION = '1.0.27';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -154,19 +154,19 @@
         if (el.closest('.settings-param, .settings-folder, .full-start__button').length) return false;
         var component = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-        return component === 'stels_online' || text.indexOf('Stels_Online') !== -1;
+        return component === 'stels_online' || el.hasClass('view--stels_online') || el.hasClass('stels-online-settings-folder') || text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text);
       }
 
       function patch(root) {
         try {
           var scope = root ? $(root) : $(document.body);
-          scope.find('.selector, [data-component="stels_online"]').addBack('.selector, [data-component="stels_online"]').each(function () {
+          scope.find('[data-component="stels_online"], .view--stels_online, .selector').addBack('[data-component="stels_online"], .view--stels_online, .selector').each(function () {
             var el = $(this);
-            if (el.attr('data-subtitle') && /^stels_online/i.test(String(el.attr('data-subtitle')))) el.attr('data-subtitle', STELS_ONLINE_VERSION);
+            if (el.attr('data-subtitle') && /^stels_online\b/i.test(String(el.attr('data-subtitle')))) el.attr('data-subtitle', STELS_ONLINE_VERSION);
             el.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
-              return /^stels_online/i.test(($(this).text() || '').trim());
+              return /^stels_online\b/i.test(($(this).text() || '').trim());
             }).text(STELS_ONLINE_VERSION);
-            if (el.hasClass('stels-online-settings-folder') || el.hasClass('settings-folder')) {
+            if (el.hasClass('stels-online-settings-folder') || component === 'stels_online') {
               var iconBox = el.find('.settings-folder__icon').first();
               if (iconBox.length) iconBox.html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
             }
@@ -404,6 +404,7 @@
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
           '.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{font-size:0!important;color:transparent!important;overflow:hidden!important;}' +
           '.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{font-size:1rem!important;}' +
+          '.stels-online-settings-folder .full-start__subtitle,.stels-online-settings-folder .selector__subtitle,.stels-online-settings-folder .settings-folder__subtitle{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
           '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
@@ -18201,12 +18202,15 @@
       var field = body.find('[data-component="stels_online"]').first();
       if (!field.length) field = stelsBuildSettingsFolder();
       else field.detach();
+      field.addClass('stels-online-settings-folder');
+      if (!field.find('.settings-folder__icon').length) field.prepend('<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true"></div>');
+      if (!field.find('.settings-folder__name').length) field.append('<div class="settings-folder__name"></div>');
 
       // На деяких збірках Lampa замість іконки/підпису зліва підставляється службовий data-component.
       // Примусово лишаємо тільки іконку та чисту назву без "stels_online".
       field.attr('data-subtitle', STELS_ONLINE_VERSION);
       field.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
-        return /^stels_online/i.test(($(this).text() || '').trim());
+        return /^stels_online\b/i.test(($(this).text() || '').trim());
       }).text(STELS_ONLINE_VERSION);
       field.find('.settings-folder__icon').html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
       field.find('.settings-folder__name').text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
