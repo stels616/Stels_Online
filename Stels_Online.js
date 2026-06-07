@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.25';
+    var STELS_ONLINE_VERSION = '1.0.26';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -104,6 +104,12 @@
       return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino'].indexOf(key) !== -1;
     }
 
+    function stelsIsUaPrioritySource(source) {
+      var key = stelsNormalizeSourceKey(source && source.name || source);
+      var title = stelsSourceBaseTitle(key);
+      return stelsNeedsUaFlag(title, key);
+    }
+
     function stelsSourceTitle(name) {
       return stelsSourceBaseTitle(name);
     }
@@ -156,12 +162,20 @@
           var scope = root ? $(root) : $(document.body);
           scope.find('.selector, [data-component="stels_online"]').addBack('.selector, [data-component="stels_online"]').each(function () {
             var el = $(this);
+            if (el.attr('data-subtitle') && /^stels_online/i.test(String(el.attr('data-subtitle')))) el.attr('data-subtitle', STELS_ONLINE_VERSION);
+            el.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
+              return /^stels_online/i.test(($(this).text() || '').trim());
+            }).text(STELS_ONLINE_VERSION);
+            if (el.hasClass('stels-online-settings-folder') || el.hasClass('settings-folder')) {
+              var iconBox = el.find('.settings-folder__icon').first();
+              if (iconBox.length) iconBox.html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
+            }
             if (!shouldPatch(el)) return;
             var display = el.css('display');
             if (display === 'inline') el.css('display', 'inline-flex');
             else if (display === 'block') el.css('display', 'flex');
             el.css('align-items', 'center');
-            el.prepend(STELS_ICON_HTML);
+            if (!el.find('.stels-online-plugin-icon').length) el.prepend(STELS_ICON_HTML);
           });
           stelsPatchUaFlagIcons(scope);
         } catch (e) {
@@ -15527,6 +15541,13 @@
           pushDisplaySource(s.name);
         });
 
+        result.sort(function (a, b) {
+          var au = stelsIsUaPrioritySource(a) ? 1 : 0;
+          var bu = stelsIsUaPrioritySource(b) ? 1 : 0;
+          if (au !== bu) return bu - au;
+          return 0;
+        });
+
         stelsLog('sources-hybrid-build', {
           requested_count: stels_force_source_order.length,
           native_count: (list || []).length,
@@ -15543,6 +15564,29 @@
       var filter_sources = obj_filter_sources.map(function (s) {
         return s.name;
       });
+      var stelsSourceStatus = {};
+      var stelsSourceStatusStorageKey = 'stels_online_source_status_' + (object && object.movie && (object.movie.id || object.movie.tmdb_id || object.movie.imdb_id) || 'unknown');
+      try {
+        var saved_status = Lampa.Storage.get(stelsSourceStatusStorageKey, {});
+        if (saved_status && typeof saved_status === 'object') stelsSourceStatus = saved_status;
+      } catch (e) {}
+      function stelsSaveSourceStatus() {
+        try { Lampa.Storage.set(stelsSourceStatusStorageKey, stelsSourceStatus); } catch (e) {}
+      }
+      function stelsMarkSourceStatus(source, status, message) {
+        source = stelsNormalizeSourceKey(source || balanser);
+        if (!source) return;
+        stelsSourceStatus[source] = { status: status, message: message || '', time: Date.now() };
+        stelsSaveSourceStatus();
+      }
+      function stelsSourceTitleWithStatus(source) {
+        var key = stelsNormalizeSourceKey(source && source.name || source);
+        var title = source && source.title || stelsSourceTitle(key);
+        var status = stelsSourceStatus[key] && stelsSourceStatus[key].status;
+        if (status === 'ok') return title + ' ✅';
+        if (status === 'empty' || status === 'error') return title + ' ❌';
+        return title;
+      }
       var sources = {};
       obj_filter_sources.forEach(function (s) {
         sources[s.name] = s.source;
@@ -16477,7 +16521,7 @@
           reset: true
         });
         filter_items.source = obj_filter_sources.map(function (s) {
-          return s.title;
+          return stelsSourceTitleWithStatus(s);
         });
         add('source', Lampa.Lang.translate('stels_online_balanser'));
         if (filter_items.voice && filter_items.voice.length) add('voice', Lampa.Lang.translate('torrent_parser_voice'));
@@ -16490,7 +16534,7 @@
         filter.set('sort', obj_filter_sources.map(function (e) {
           return {
             source: e.name,
-            title: e.title,
+            title: stelsSourceTitleWithStatus(e),
             selected: e.name === balanser
           };
         }));
@@ -16525,7 +16569,7 @@
           return e.name === balanser;
         })[0];
         filter.chosen('filter', select);
-        filter.chosen('sort', [source_obj ? source_obj.title : balanser]);
+        filter.chosen('sort', [source_obj ? stelsSourceTitleWithStatus(source_obj) : balanser]);
       };
       /**
        * Добавить файл
@@ -16533,6 +16577,7 @@
 
 
       this.append = function (item) {
+        stelsMarkSourceStatus(balanser, 'ok');
         stelsDecorateItemWithImage(item);
         item.on('hover:focus', function (e) {
           last = e.target;
@@ -16711,6 +16756,7 @@
 
 
       this.empty = function (msg) {
+        stelsMarkSourceStatus(balanser, msg ? 'error' : 'empty', msg || '');
         stelsLog('empty', { balanser: balanser, message: msg || '' });
         var empty = Lampa.Template.get('list_empty');
         if (msg) empty.find('.empty__descr').text(msg);
@@ -17544,7 +17590,7 @@
         }
       };
       Lampa.Manifest.plugins = manifest;
-      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"stels_online " + mod_version + "\">\n        <img src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
+      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"" + mod_version + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
       Lampa.Listener.follow('full', function (e) {
         if (e.type == 'complite') {
           var btn = $(Lampa.Lang.translate(button));
@@ -18156,9 +18202,13 @@
       if (!field.length) field = stelsBuildSettingsFolder();
       else field.detach();
 
-      // На деяких збірках Lampa замість іконки зліва підставляється службовий текст data-component.
-      // Примусово лишаємо тільки SVG-іконку, без напису "stels_online".
-      field.find('.settings-folder__icon').html('<img src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block" alt="">');
+      // На деяких збірках Lampa замість іконки/підпису зліва підставляється службовий data-component.
+      // Примусово лишаємо тільки іконку та чисту назву без "stels_online".
+      field.attr('data-subtitle', STELS_ONLINE_VERSION);
+      field.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
+        return /^stels_online/i.test(($(this).text() || '').trim());
+      }).text(STELS_ONLINE_VERSION);
+      field.find('.settings-folder__icon').html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
       field.find('.settings-folder__name').text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
 
       var folders = body.find('.settings-folder.selector, .settings-folder').not(field);
@@ -18172,6 +18222,7 @@
       stelsPlaceSettingsFolder();
       setTimeout(stelsPlaceSettingsFolder, 100);
       setTimeout(stelsPlaceSettingsFolder, 500);
+      setTimeout(stelsPlaceSettingsFolder, 1200);
     }
 
     function initSettings() {
@@ -18381,7 +18432,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.25: виправлено версію, позицію Stels_Online у налаштуваннях і прибрано службовий напис stels_online зліва.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.26: відновлено іконку в налаштуваннях, прибрано службовий stels_online з підпису, UA-джерела піднято в сортуванні, додано ✅/❌ статус джерел.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
