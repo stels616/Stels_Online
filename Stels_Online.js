@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.40';
+    var STELS_ONLINE_VERSION = '1.0.41';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -60,7 +60,7 @@
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
-      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'videoseed', kinoflix: 'videoseed', leproduction: 'videoseed',
+      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', kinoflix: 'videoseed', leproduction: 'videoseed',
       vkmovie: 'cdnvideohub', kinogo: 'rezka2', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'cdnvideohub'
     };
 
@@ -13085,6 +13085,44 @@
         return typeof value == 'string' && value && (/^https?:\/\//i.test(value) || /\.(m3u8|mp4)(\?|$)/i.test(value));
       }
 
+
+      function remotePickPlayableFromHtml(str, originalFile) {
+        if (typeof str != 'string' || str.indexOf('videos__') === -1) return null;
+        var nested = parseJsonDate(str, '.videos__item') || [];
+        var playable = nested.filter(function (v) { return v && (v.method == 'play' || v.method == 'call' || v.stream || isPlayableUrl(v.url)); });
+        if (!playable.length) return null;
+        var found = lampauaFindSameEpisode(playable, originalFile || {}) || playable[0];
+        stelsLog('remote-html-playable-picked', {
+          source: sourceTitle,
+          count: playable.length,
+          picked_text: found && (found.text || found.title),
+          picked_method: found && found.method,
+          season: found && found.season,
+          episode: found && found.episode,
+          url_preview: previewUrl(found && found.url || '')
+        });
+        return found || null;
+      }
+
+      function normalizeRemotePlayableJson(json) {
+        if (!json || typeof json != 'object') return json;
+        if (!json.url && json.file) {
+          if (typeof json.file == 'string') json.url = json.file;
+          else if (typeof json.file == 'object') {
+            json.quality = json.quality || json.file;
+            var keys = Lampa.Arrays.getKeys(json.file || {});
+            if (keys.length) json.url = json.file[keys[0]];
+          }
+        }
+        if (!json.url && json.stream && typeof json.stream == 'string') json.url = json.stream;
+        if (!json.url && json.links && typeof json.links == 'object') {
+          json.quality = json.quality || json.links;
+          var lkeys = Lampa.Arrays.getKeys(json.links || {});
+          if (lkeys.length) json.url = json.links[lkeys[0]];
+        }
+        return json;
+      }
+
       function getFileUrl(file, call) {
         if (!file) return call(false, {});
 
@@ -13137,6 +13175,15 @@
         });
         network['native'](account(absolute(file.url)), function (json) {
           json = safeDecodeJson(json);
+          var htmlPlayable = remotePickPlayableFromHtml(json, file);
+          if (htmlPlayable) {
+            if (htmlPlayable.method == 'call' && htmlPlayable.url && htmlPlayable.url !== file.url) {
+              stelsLog('remote-html-playable-recursive-call', { source: sourceTitle, from: previewUrl(file.url), to: previewUrl(htmlPlayable.url) });
+              return getFileUrl(htmlPlayable, call);
+            }
+            return call(htmlPlayable, htmlPlayable);
+          }
+          json = normalizeRemotePlayableJson(json);
           if (json && json.rch) {
             stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, stage: 'getfile' });
             return remoteRchRun(json, function (ok) {
@@ -13145,6 +13192,12 @@
               retry.timeout(20000);
               retry['native'](account(absolute(file.url)), function (json2) {
                 json2 = safeDecodeJson(json2);
+                var htmlPlayable2 = remotePickPlayableFromHtml(json2, file);
+                if (htmlPlayable2) {
+                  if (htmlPlayable2.method == 'call' && htmlPlayable2.url && htmlPlayable2.url !== file.url) return getFileUrl(htmlPlayable2, call);
+                  return call(htmlPlayable2, htmlPlayable2);
+                }
+                json2 = normalizeRemotePlayableJson(json2);
                 if (json2 && json2.rch) return call(false, {});
                 call(json2, json2 || {});
               }, function () { call(false, {}); }, false, { headers: addHeaders() });
@@ -15892,6 +15945,13 @@
         kp: true,
         imdb: true
       }, {
+        name: 'rc-veoveo',
+        title: 'VeoVeo',
+        source: new lampauaRemoteSource(this, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
         name: 'uaflix',
         title: 'UAflix',
         source: new uaflix(this, object),
@@ -16260,6 +16320,7 @@
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'remux'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
