@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.48';
+    var STELS_ONLINE_VERSION = '1.0.49';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9614,7 +9614,17 @@
         var ot = norm(m.original_title || m.original_name || '');
         var lt = norm(m.title || m.name || '');
         var url = (item.link || '').toLowerCase();
+        var slug = norm(titleFromEneyidaUrl(url));
         var score = 0;
+        if (slug) {
+          if (q && slug === q) score += 125;
+          if (q && (slug.indexOf(q) !== -1 || q.indexOf(slug) !== -1)) score += 70;
+          if (lt && (slug === lt || slug.indexOf(lt) !== -1 || lt.indexOf(slug) !== -1)) score += 110;
+          if (ot && (slug === ot || slug.indexOf(ot) !== -1 || ot.indexOf(slug) !== -1)) score += 70;
+          if (ot === 'from' && /zzovni|zovni|izvne/.test(slug + ' ' + url)) score += 160;
+          if (ot === 'the boys' && /pacany|patsany|the boys/.test(slug + ' ' + url)) score += 140;
+          if (ot === 'the flash' && /flesh|flash/.test(slug + ' ' + url)) score += 130;
+        }
         if (q && t === q) score += 130;
         if (q && t.indexOf(q) !== -1) score += 80;
         if (lt && t === lt) score += 120;
@@ -9663,6 +9673,8 @@
           var title = cleanText(a.attr('title') || a.text());
           if (box.length) title = cleanText(box.find('.short_title,.short-title,.title,h1,h2,h3,a').first().text()) || title;
           if (!title) title = cleanText(a.text());
+          var slugTitle = titleFromEneyidaUrl(url);
+          if (slugTitle && (!title || /^\+?\d+\s*(?:FHD|HD|4K|1080|720|480|\d)/i.test(title) || title.length < 4)) title = slugTitle;
           if (!title) return;
           seen[url] = true;
           items.push({ title: title, link: url, score: scoreCandidate({ title: title, link: url }, query) });
@@ -9723,6 +9735,13 @@
       function parseEpisodeNumber(title, fallback) {
         var m = String(title || '').match(/(\d+)/);
         return m ? parseInt(m[1], 10) || fallback : fallback;
+      }
+
+      function titleFromEneyidaUrl(url) {
+        url = (url || '') + '';
+        var m = url.match(/\/\d+-([^\/?#]+)\.html/i);
+        if (!m) return '';
+        return m[1].replace(/[-_]+/g, ' ').trim();
       }
 
       function flattenPlayerNode(node, state, out) {
@@ -9807,14 +9826,14 @@
               searchDone = true;
               filter();
               append(filtred());
-            } else { searchDone = true; component.emptyForQuery(select_title); }
-          }, function () { searchDone = true; component.emptyForQuery(select_title); }, host + '/');
+            } else if (fail) fail('player parse empty'); else { searchDone = true; component.emptyForQuery(select_title); }
+          }, function () { if (fail) fail('player request fail'); else { searchDone = true; component.emptyForQuery(select_title); } }, host + '/');
         }, function () { if (fail) fail('page request fail'); else { searchDone = true; component.emptyForQuery(select_title); } }, host + '/');
       }
 
       function selectSearchItem(items, q, next) {
         var best = items && items[0];
-        if (best && (best.score >= 45 || items.length === 1)) {
+        if (best && (best.score >= 20 || items.length === 1)) {
           stelsLog('eneyida-search-selected', { query: q, score: best.score, title: best.title, link: best.link });
           loadPage(best.link, next);
         } else next();
@@ -13503,7 +13522,9 @@
         query.push('source=' + card_source);
         query.push('clarification=' + (object.clarification ? 1 : 0));
         query.push('similar=' + (object.similar ? true : false));
-        query.push('rchtype=' + (Lampa.Platform.is('android') ? 'apk' : ''));
+        var rch_state = remoteRchEnsure();
+        var rch_type = Lampa.Platform.is('android') ? 'apk' : (Lampa.Platform.is('tizen') ? 'cors' : (rch_state.type || 'web'));
+        query.push('rchtype=' + encodeURIComponent(rch_type));
         if (Lampa.Storage.get('account_email', '')) query.push('cub_id=' + Lampa.Utils.hash(Lampa.Storage.get('account_email', '')));
         return url + (url.indexOf('?') >= 0 ? '&' : '?') + query.join('&');
       }
