@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.42';
+    var STELS_ONLINE_VERSION = '1.0.43';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -12938,9 +12938,21 @@
 
       function sourceKey(j) {
         var raw = (j && (j.balanser || j.key || j.name || j.title || '')) + '';
+        var name = (j && j.name) || '';
+        var title = (j && j.title) || '';
+        var display = (j && j.display_name) || '';
         var first = raw.split(' ')[0];
-        var all = [raw, first, (j && j.display_name) || '', (j && j.title) || ''].map(norm).filter(Boolean);
-        return all;
+        var name_first = (name + '').split(' ')[0];
+        var title_first = (title + '').split(' ')[0];
+        var all = [
+          raw, first,
+          name, name_first,
+          title, title_first,
+          display,
+          (j && j.balanser) || '',
+          (j && j.key) || ''
+        ].map(norm).filter(Boolean);
+        return Lampa.Arrays.unique ? Lampa.Arrays.unique(all) : all.filter(function (v, i, a) { return a.indexOf(v) === i; });
       }
 
       function isWanted(j) {
@@ -16015,7 +16027,7 @@
       }, {
         name: 'rc-iremux',
         title: 'iRemux',
-        source: new lampauaRemoteSource(this, object, ['iremux', 'i remux', 'remux'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'remux', preferDirect: true }),
+        source: new lampauaRemoteSource(this, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
         search: true,
         kp: true,
         imdb: true
@@ -16394,7 +16406,7 @@
           if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'remux'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
