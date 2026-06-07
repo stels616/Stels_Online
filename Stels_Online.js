@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.41';
+    var STELS_ONLINE_VERSION = '1.0.42';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -12668,6 +12668,16 @@
       var current_videos = [];
       var current_source = null;
 
+      function remoteDirectUrl() {
+        var direct = remoteOptions.directPath || remoteOptions.directBalanser || '';
+        if (!direct) return '';
+        return host + 'lite/' + String(direct).replace(/^\/+/, '');
+      }
+
+      function remoteUseDirectFirst() {
+        return !!remoteOptions.preferDirect;
+      }
+
       function norm(value) {
         return (value == null ? '' : String(value)).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-яіїєґ0-9]+/ig, '');
       }
@@ -12960,6 +12970,17 @@
 
       function loadSourceUrl(done, fail) {
         if (source_url) return done(source_url);
+        var direct = remoteDirectUrl();
+        function useDirect(reason) {
+          if (direct) {
+            current_source = { name: sourceTitle, balanser: remoteOptions.directPath || sourceTitle, url: direct, show: true };
+            source_url = direct;
+            stelsLog('remote-direct-source-url', { source: sourceTitle, direct: direct, reason: reason || '', prefer: remoteUseDirectFirst() });
+            return done(source_url);
+          }
+          fail(reason || ('Джерело ' + sourceTitle + ' не знайдено на сервері LampUA'));
+        }
+        if (remoteUseDirectFirst() && direct) return useDirect('preferDirect');
         life_wait_times = 0;
         var url = requestParams(host + 'lite/events?life=true');
         network.clear();
@@ -12968,17 +12989,18 @@
           if (json && json.accsdb) return fail(json.msg || 'Access denied');
           if (json && json.life) {
             memkey = json.memkey || '';
-            pollLife(done, fail);
+            pollLife(done, function (err) { useDirect(err || 'lifeevents fallback'); });
           } else {
             var src = pickSource(json);
             if (src && src.url) {
               current_source = src;
               source_url = src.url;
               done(source_url);
-            } else fail('Джерело ' + sourceTitle + ' не знайдено на сервері LampUA');
+            } else useDirect('events source not found');
           }
         }, function (a, c) {
-          fail(network.errorDecode ? network.errorDecode(a, c) : 'LampUA events error');
+          var err = network.errorDecode ? network.errorDecode(a, c) : 'LampUA events error';
+          useDirect(err);
         }, false, { headers: addHeaders() });
       }
 
@@ -13106,6 +13128,11 @@
 
       function normalizeRemotePlayableJson(json) {
         if (!json || typeof json != 'object') return json;
+        if (json.url && typeof json.url == 'object') {
+          json.quality = json.quality || json.url;
+          var ukeys = Lampa.Arrays.getKeys(json.url || {});
+          json.url = ukeys.length ? json.url[ukeys[0]] : '';
+        }
         if (!json.url && json.file) {
           if (typeof json.file == 'string') json.url = json.file;
           else if (typeof json.file == 'object') {
@@ -13120,7 +13147,29 @@
           var lkeys = Lampa.Arrays.getKeys(json.links || {});
           if (lkeys.length) json.url = json.links[lkeys[0]];
         }
+        if (!json.url && json.sources && typeof json.sources == 'object') {
+          json.quality = json.quality || json.sources;
+          var skeys = Lampa.Arrays.getKeys(json.sources || {});
+          if (skeys.length) json.url = json.sources[skeys[0]];
+        }
+        if (!json.url && json.hls) json.url = json.hls;
+        if (!json.url && json.src) json.url = json.src;
+        if (json.url === true || json.url === false) json.url = '';
         return json;
+      }
+
+      function remoteLooksLikeEndpoint(data) {
+        var url = data && (data.url || data.link || '') || '';
+        if (typeof url != 'string' || !url) return false;
+        if (isPlayableUrl(url)) return false;
+        return /(?:\/lite\/|\/movie(?:\?|$)|[?&]rjson=|[?&]href=|[?&]voice=)/i.test(url) || url.indexOf(remoteHostBase()) === 0;
+      }
+
+      function remotePickStreamFromText(text) {
+        if (typeof text != 'string') return null;
+        var m = text.match(/https?:\/\/[^'"\s<>]+?\.(?:m3u8|mp4)(?:\?[^'"\s<>]*)?/i);
+        if (!m) return null;
+        return { method: 'play', url: m[0], text: sourceTitle };
       }
 
       function getFileUrl(file, call) {
@@ -13175,10 +13224,12 @@
         });
         network['native'](account(absolute(file.url)), function (json) {
           json = safeDecodeJson(json);
-          var htmlPlayable = remotePickPlayableFromHtml(json, file);
+          var htmlPlayable = remotePickPlayableFromHtml(json, file) || remotePickStreamFromText(json);
           if (htmlPlayable) {
-            if (htmlPlayable.method == 'call' && htmlPlayable.url && htmlPlayable.url !== file.url) {
-              stelsLog('remote-html-playable-recursive-call', { source: sourceTitle, from: previewUrl(file.url), to: previewUrl(htmlPlayable.url) });
+            htmlPlayable = normalizeRemotePlayableJson(htmlPlayable) || htmlPlayable;
+            if ((htmlPlayable.method == 'call' || remoteLooksLikeEndpoint(htmlPlayable)) && htmlPlayable.url && htmlPlayable.url !== file.url) {
+              stelsLog('remote-html-playable-recursive-call', { source: sourceTitle, from: previewUrl(file.url), to: previewUrl(htmlPlayable.url), method: htmlPlayable.method || '', endpoint: remoteLooksLikeEndpoint(htmlPlayable) });
+              htmlPlayable.method = 'call';
               return getFileUrl(htmlPlayable, call);
             }
             return call(htmlPlayable, htmlPlayable);
@@ -13192,9 +13243,13 @@
               retry.timeout(20000);
               retry['native'](account(absolute(file.url)), function (json2) {
                 json2 = safeDecodeJson(json2);
-                var htmlPlayable2 = remotePickPlayableFromHtml(json2, file);
+                var htmlPlayable2 = remotePickPlayableFromHtml(json2, file) || remotePickStreamFromText(json2);
                 if (htmlPlayable2) {
-                  if (htmlPlayable2.method == 'call' && htmlPlayable2.url && htmlPlayable2.url !== file.url) return getFileUrl(htmlPlayable2, call);
+                  htmlPlayable2 = normalizeRemotePlayableJson(htmlPlayable2) || htmlPlayable2;
+                  if ((htmlPlayable2.method == 'call' || remoteLooksLikeEndpoint(htmlPlayable2)) && htmlPlayable2.url && htmlPlayable2.url !== file.url) {
+                    htmlPlayable2.method = 'call';
+                    return getFileUrl(htmlPlayable2, call);
+                  }
                   return call(htmlPlayable2, htmlPlayable2);
                 }
                 json2 = normalizeRemotePlayableJson(json2);
@@ -13233,11 +13288,16 @@
       }
 
       function preparePlayable(item, json, json_call) {
-        json = safeDecodeJson(json) || {};
-        json_call = safeDecodeJson(json_call) || {};
+        json = normalizeRemotePlayableJson(safeDecodeJson(json) || {}) || {};
+        json_call = normalizeRemotePlayableJson(safeDecodeJson(json_call) || {}) || {};
         var q = json_call.quality || json.quality || item.qualitys || item.quality || false;
         q = normalizeQualityMap(q);
         var url = json.url || json.stream || json.file || '';
+        if (url && typeof url == 'object') {
+          q = q || url;
+          var pkeys = Lampa.Arrays.getKeys(url || {});
+          url = pkeys.length ? url[pkeys[0]] : '';
+        }
         // Для method=call не можна брати item.url/item.stream як запасний варіант:
         // item.url — це LampUA endpoint, а item.stream часто boolean true.
         if (!url && item.method != 'call') url = isRealStreamValue(item.stream) ? item.stream : item.url || '';
@@ -13601,6 +13661,21 @@
           });
         }
         try {
+          if (json && typeof json == 'object' && !json.rch && !json.accsdb && str && String(str).charAt(0) !== '<') {
+            var jkeys = Lampa.Arrays.getKeys(json || {});
+            if (json.type == 'similar' && json.data && json.data.length) {
+              var jitems = json.data.map(function (elem) { elem.title = elem.title || elem.text; elem.link = elem.url || elem.link; elem.balanser = elem.balanser || (remoteOptions.directPath || sourceTitle); return elem; });
+              stelsLog('remote-json-similar', { source: sourceTitle, count: jitems.length });
+              component.similars(jitems);
+              component.loading(false);
+              return;
+            }
+            if (jkeys.length && typeof json[jkeys[0]] == 'string' && /^https?:\/\//i.test(json[jkeys[0]])) {
+              stelsLog('remote-json-link-follow', { source: sourceTitle, key: jkeys[0], url: previewUrl(json[jkeys[0]]) });
+              request(json[jkeys[0]]);
+              return;
+            }
+          }
           var items = parseJsonDate(str, '.videos__item');
           var buttons = parseJsonDate(str, '.videos__button');
           stelsLog('lampaua-parse', { source: sourceTitle, items_count: items.length, buttons_count: buttons.length, methods: items.slice(0, 20).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, similar: !!i.similar, url: i.url }; }) });
@@ -15933,14 +16008,14 @@
       }, {
         name: 'rc-kinotochka',
         title: 'KinoTochka',
-        source: new lampauaRemoteSource(this, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
+        source: new lampauaRemoteSource(this, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka' }),
         search: true,
         kp: true,
         imdb: true
       }, {
         name: 'rc-iremux',
         title: 'iRemux',
-        source: new lampauaRemoteSource(this, object, ['iremux', 'i remux', 'remux'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
+        source: new lampauaRemoteSource(this, object, ['iremux', 'i remux', 'remux'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'remux', preferDirect: true }),
         search: true,
         kp: true,
         imdb: true
