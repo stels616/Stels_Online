@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.43';
+    var STELS_ONLINE_VERSION = '1.0.46';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -55,7 +55,7 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
-      eneyida: 'rezka2', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      eneyida: 'eneyida', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
@@ -9495,6 +9495,443 @@
       }
     }
 
+
+
+    function eneyida(component, _object) {
+      var network = new Lampa.Reguest();
+      var object = _object;
+      var select_title = '';
+      var extract = [];
+      var filter_items = {};
+      var choice = {
+        season: 0,
+        voice: 0,
+        voice_name: ''
+      };
+      var host = 'https://eneyida.tv';
+      var hdvbHost = 'https://hdvbua.pro';
+      var headersSite = {
+        'User-Agent': Utils.baseUserAgent(),
+        'Referer': host + '/',
+        'Origin': host
+      };
+      var headersPlayer = {
+        'User-Agent': Utils.baseUserAgent(),
+        'Referer': hdvbHost + '/',
+        'Origin': hdvbHost
+      };
+
+      function cleanText(txt) {
+        txt = (txt == null ? '' : String(txt));
+        try { txt = component.decodeHtml(txt); } catch (e) {}
+        return txt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+
+      function norm(txt) {
+        return cleanText(txt).toLowerCase()
+          .replace(/ё/g, 'е').replace(/і/g, 'и').replace(/ї/g, 'и').replace(/є/g, 'е')
+          .replace(/[^a-zа-яґ0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+
+      function abs(url, base) {
+        url = (url || '') + '';
+        if (!url) return '';
+        if (/^https?:\/\//i.test(url)) return url;
+        if (url.indexOf('//') === 0) return 'https:' + url;
+        if (url.charAt(0) === '/') return host + url;
+        base = base || host + '/';
+        try { return new URL(url, base).href; } catch (e) { return host + '/' + url.replace(/^\/+/, ''); }
+      }
+
+      function uniquePush(arr, value) {
+        value = cleanText(value);
+        if (value && arr.indexOf(value) === -1) arr.push(value);
+      }
+
+      function searchVariants() {
+        var movie = object && object.movie || {};
+        var variants = [];
+        uniquePush(variants, object.search);
+        uniquePush(variants, movie.title || movie.name);
+        uniquePush(variants, movie.original_title || movie.original_name);
+        var original = norm(movie.original_title || movie.original_name || '');
+        if (original === 'from') {
+          uniquePush(variants, 'Ззовні');
+          uniquePush(variants, 'Извне');
+        }
+        if (original === 'the boys') {
+          uniquePush(variants, 'Пацани');
+          uniquePush(variants, 'Пацаны');
+        }
+        if (original === 'the flash') {
+          uniquePush(variants, 'Флеш');
+        }
+        return variants;
+      }
+
+      function requestText(url, success, fail, referer) {
+        network.clear();
+        network.timeout(15000);
+        var h = {
+          'User-Agent': Utils.baseUserAgent(),
+          'Referer': referer || host + '/',
+          'Origin': (referer && referer.indexOf('hdvbua.pro') !== -1) ? hdvbHost : host
+        };
+        network["native"](url, function (html) {
+          success((html == null ? '' : String(html)));
+        }, function (a, c) {
+          stelsLog('eneyida-request-fail', { url: url, status: a && a.status, error: network.errorDecode ? network.errorDecode(a, c) : '' });
+          if (fail) fail(a, c);
+        }, false, { dataType: 'text', headers: h });
+      }
+
+      function scoreCandidate(item, query) {
+        var t = norm(item.title || '');
+        var q = norm(query || '');
+        var m = object && object.movie || {};
+        var ot = norm(m.original_title || m.original_name || '');
+        var lt = norm(m.title || m.name || '');
+        var url = (item.link || '').toLowerCase();
+        var score = 0;
+        if (q && t === q) score += 130;
+        if (q && t.indexOf(q) !== -1) score += 80;
+        if (lt && t === lt) score += 120;
+        if (lt && t.indexOf(lt) !== -1) score += 70;
+        if (ot && t.indexOf(ot) !== -1) score += 65;
+        if (ot === 'from' && /ззовн|извне/.test(t)) score += 140;
+        if (ot === 'the boys' && /пацан|хлопц|the boys/.test(t)) score += 130;
+        if (ot === 'the flash' && /флеш|flash/.test(t)) score += 120;
+        if ((m.name || m.number_of_seasons || m.media_type === 'tv') && /serial|serialy|series|seri/i.test(url + ' ' + t)) score += 10;
+        var year = ((m.release_date || m.first_air_date || m.year || '') + '').slice(0, 4);
+        if (year && t.indexOf(year) !== -1) score += 15;
+        return score;
+      }
+
+      function parseSearchResults(html, query) {
+        var root = $('<div>' + html + '</div>');
+        var seen = {};
+        var items = [];
+        root.find('a[href]').each(function () {
+          var a = $(this);
+          var href = a.attr('href') || '';
+          if (!href.match(/\/(\d+)-[^\/?#]+\.html/i)) return;
+          var url = abs(href);
+          if (seen[url]) return;
+          var box = a.closest('.short, .shortstory, .movie, .th-item, .story, article, .sect_cont, .searchitem');
+          var title = cleanText(a.attr('title') || a.text());
+          if (box.length) title = cleanText(box.find('.short_title,.short-title,.title,h1,h2,h3,a').first().text()) || title;
+          if (!title) title = cleanText(a.text());
+          if (!title) return;
+          seen[url] = true;
+          items.push({ title: title, link: url, score: scoreCandidate({ title: title, link: url }, query) });
+        });
+        items.sort(function (a, b) { return b.score - a.score; });
+        stelsLog('eneyida-search-results', { query: query, count: items.length, sample: items.slice(0, 8).map(function (i) { return i.score + '|' + i.title + '|' + i.link; }) });
+        return items;
+      }
+
+      function looksLikeDetailPage(html) {
+        return /hdvbua\.pro\/(?:embed|vid)\//i.test(html || '') && /iframe/i.test(html || '');
+      }
+
+      function findIframe(html) {
+        var root = $('<div>' + html + '</div>');
+        var src = '';
+        root.find('iframe[src]').each(function () {
+          var s = $(this).attr('src') || '';
+          if (!src && /hdvbua\.pro\/embed\//i.test(s)) src = s;
+        });
+        if (!src) {
+          var m = html.match(/https?:\/\/hdvbua\.pro\/embed\/[^"'\s<>]+/i);
+          if (m) src = m[0];
+        }
+        return src;
+      }
+
+      function extractQuotedAfter(html, key) {
+        var pos = html.indexOf(key);
+        if (pos < 0) return '';
+        var colon = html.indexOf(':', pos);
+        if (colon < 0) return '';
+        var qpos = -1;
+        var q = '';
+        for (var i = colon + 1; i < html.length; i++) {
+          var ch = html.charAt(i);
+          if (ch === '\'' || ch === '"') { qpos = i; q = ch; break; }
+          if (ch !== ' ' && ch !== '\t' && ch !== '\n' && ch !== '\r') break;
+        }
+        if (qpos < 0) return '';
+        var out = '';
+        var esc = false;
+        for (var j = qpos + 1; j < html.length; j++) {
+          var c = html.charAt(j);
+          if (esc) { out += c; esc = false; continue; }
+          if (c === '\\') { esc = true; out += c; continue; }
+          if (c === q) break;
+          out += c;
+        }
+        return out;
+      }
+
+      function parseSeasonNumber(title, fallback) {
+        var m = String(title || '').match(/(\d+)/);
+        return m ? parseInt(m[1], 10) || fallback : fallback;
+      }
+
+      function parseEpisodeNumber(title, fallback) {
+        var m = String(title || '').match(/(\d+)/);
+        return m ? parseInt(m[1], 10) || fallback : fallback;
+      }
+
+      function flattenPlayerNode(node, state, out) {
+        state = state || {};
+        if (!node) return;
+        if (Lampa.Arrays.isArray(node)) {
+          node.forEach(function (n) { flattenPlayerNode(n, state, out); });
+          return;
+        }
+        var title = cleanText(node.title || '');
+        var next = {
+          season: state.season,
+          episode: state.episode,
+          voice: state.voice
+        };
+        if (node.folder && Lampa.Arrays.isArray(node.folder)) {
+          if (/сезон|season/i.test(title)) next.season = parseSeasonNumber(title, next.season || 1);
+          else if (title && !/сер[іиіяя]|episode|епізод|эпизод/i.test(title)) next.voice = title;
+          flattenPlayerNode(node.folder, next, out);
+          return;
+        }
+        var file = node.file || node.url || node.hls || node.src || '';
+        if (!file) return;
+        if (/сер[іиіяя]|episode|епізод|эпизод/i.test(title) || next.season) next.episode = parseEpisodeNumber(title, next.episode || (out.length + 1));
+        var isSerial = !!(object && object.movie && (object.movie.name || object.movie.number_of_seasons || object.movie.media_type === 'tv')) || !!next.season;
+        var season = next.season || (isSerial ? 1 : 0);
+        var episode = next.episode || (isSerial ? (out.length + 1) : 0);
+        var voice = next.voice || 'Eneyida';
+        out.push({
+          title: isSerial ? component.formatEpisodeTitle(season, episode) : (voice || select_title),
+          quality: 'HLS',
+          info: voice ? ' / ' + Lampa.Utils.shortText(voice, 50) : '',
+          season: isSerial ? season : 0,
+          episode: isSerial ? episode : 0,
+          voice: voice,
+          stream: file,
+          poster: node.poster || '',
+          subtitles: node.subtitle || '',
+          id: node.id || ''
+        });
+      }
+
+      function parsePlayerHtml(html) {
+        var file = extractQuotedAfter(html, 'file');
+        var items = [];
+        stelsLog('eneyida-player-file', { has_file: !!file, preview: file ? file.substring(0, 140) : '' });
+        if (!file) return items;
+        if (/^https?:\/\//i.test(file)) {
+          items.push({ title: select_title, quality: 'HLS', info: '', stream: file, season: 0, episode: 0, voice: 'Eneyida' });
+          return items;
+        }
+        try {
+          var data = JSON.parse(file);
+          flattenPlayerNode(data, {}, items);
+        } catch (e) {
+          stelsLog('eneyida-player-json-error', { error: e && (e.message || e.toString()), preview: file.substring(0, 250) });
+          var re = /(https?:\/\/[^"'\s<>]+\.(?:m3u8|mp4)(?:\?[^"'\s<>]+)?)/ig;
+          var m;
+          while ((m = re.exec(file))) {
+            items.push({ title: select_title, quality: 'HLS', info: '', stream: m[1], season: 0, episode: 0, voice: 'Eneyida' });
+          }
+        }
+        items.sort(function (a, b) {
+          var c = (a.season || 0) - (b.season || 0);
+          if (c) return c;
+          c = (a.episode || 0) - (b.episode || 0);
+          if (c) return c;
+          return (a.voice || '').localeCompare(b.voice || '');
+        });
+        stelsLog('eneyida-player-parsed', { count: items.length, sample: items.slice(0, 12).map(function (i) { return 'S' + i.season + 'E' + i.episode + '|' + i.voice + '|' + i.stream; }) });
+        return items;
+      }
+
+      function loadPage(pageUrl, fail) {
+        requestText(pageUrl, function (html) {
+          var iframe = findIframe(html);
+          stelsLog('eneyida-page', { url: pageUrl, iframe: iframe });
+          if (!iframe) { if (fail) fail('no iframe'); else component.emptyForQuery(select_title); return; }
+          requestText(iframe, function (playerHtml) {
+            extract = parsePlayerHtml(playerHtml);
+            if (extract.length) {
+              filter();
+              append(filtred());
+            } else component.emptyForQuery(select_title);
+          }, function () { component.emptyForQuery(select_title); }, host + '/');
+        }, function () { if (fail) fail('page request fail'); else component.emptyForQuery(select_title); }, host + '/');
+      }
+
+      function doSearchAt(index, variants) {
+        if (index >= variants.length) { component.emptyForQuery(select_title); return; }
+        var q = variants[index];
+        var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
+        stelsLog('eneyida-search', { query: q, url: url });
+        requestText(url, function (html) {
+          if (looksLikeDetailPage(html)) { loadPage(url); return; }
+          var items = parseSearchResults(html, q);
+          var best = items[0];
+          if (best && (best.score >= 55 || items.length === 1)) {
+            stelsLog('eneyida-search-selected', { query: q, score: best.score, title: best.title, link: best.link });
+            loadPage(best.link, function () { doSearchAt(index + 1, variants); });
+          } else doSearchAt(index + 1, variants);
+        }, function () { doSearchAt(index + 1, variants); }, host + '/');
+      }
+
+      this.search = function (_object) {
+        object = _object;
+        select_title = object.search || (object.movie && (object.movie.title || object.movie.name)) || '';
+        component.loading(true);
+        extract = [];
+        var variants = searchVariants();
+        stelsLog('eneyida-search-start', { title: select_title, variants: variants, original_title: object.movie && (object.movie.original_title || object.movie.original_name), tmdb_id: object.movie && object.movie.id });
+        doSearchAt(0, variants);
+      };
+
+      this.extendChoice = function (saved) {
+        Lampa.Arrays.extend(choice, saved || {}, true);
+      };
+
+      this.reset = function () {
+        choice = { season: 0, voice: 0, voice_name: '' };
+        component.reset();
+        filter();
+        append(filtred());
+        component.saveChoice(choice);
+      };
+
+      this.filter = function (type, a, b) {
+        choice[a.stype] = b.index;
+        if (a.stype === 'voice') choice.voice_name = filter_items.voice[b.index];
+        component.reset();
+        filter();
+        append(filtred());
+        component.saveChoice(choice);
+      };
+
+      this.destroy = function () {
+        network.clear();
+        extract = [];
+      };
+
+      function filter() {
+        var seasons = [];
+        var voices = [];
+        extract.forEach(function (i) {
+          if (i.season && seasons.indexOf(i.season) === -1) seasons.push(i.season);
+        });
+        seasons.sort(function (a, b) { return a - b; });
+        var selectedSeason = seasons.length ? (seasons[choice.season] || seasons[0]) : 0;
+        extract.forEach(function (i) {
+          if ((!selectedSeason || i.season == selectedSeason) && voices.indexOf(i.voice || 'Eneyida') === -1) voices.push(i.voice || 'Eneyida');
+        });
+        filter_items = {
+          season: seasons.map(function (s) { return Lampa.Lang.translate('torrent_serial_season') + ' ' + s; }),
+          season_num: seasons,
+          voice: voices
+        };
+        if (choice.season >= filter_items.season.length) choice.season = 0;
+        if (choice.voice_name) {
+          var vi = voices.indexOf(choice.voice_name);
+          if (vi >= 0) choice.voice = vi;
+        }
+        if (choice.voice >= voices.length) choice.voice = 0;
+        component.filter(filter_items, choice);
+      }
+
+      function filtred() {
+        var seasons = filter_items.season_num || [];
+        var selectedSeason = seasons.length ? (seasons[choice.season] || seasons[0]) : 0;
+        var selectedVoice = filter_items.voice && filter_items.voice.length ? filter_items.voice[choice.voice] : '';
+        return extract.filter(function (i) {
+          if (selectedSeason && i.season != selectedSeason) return false;
+          if (selectedVoice && (i.voice || 'Eneyida') !== selectedVoice) return false;
+          return true;
+        });
+      }
+
+      function getStream(element, call, error) {
+        if (!element || !element.stream) { error(); return; }
+        element.qualitys = false;
+        element.headers = headersPlayer;
+        call(element);
+      }
+
+      function append(items) {
+        component.reset();
+        var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        var last_episode = component.getLastEpisode(items || []);
+        (items || []).forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = last_episode;
+            element.translate_voice = element.voice || 'Eneyida';
+          }
+          var hash = Lampa.Utils.hash(element.season ? [element.season, element.episode, object.movie.original_title || object.movie.original_name || object.movie.title].join('') : (object.movie.original_title || object.movie.title || select_title));
+          var view = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', element);
+          var hash_file = Lampa.Utils.hash((element.season ? [element.season, element.episode, object.movie.original_title, element.voice].join(':') : (object.movie.original_title || select_title)) + 'eneyida');
+          element.timeline = view;
+          item.append(Lampa.Timeline.render(view));
+          if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
+          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+          item.on('hover:enter', function () {
+            if (element.loading) return;
+            if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            element.loading = true;
+            getStream(element, function (element) {
+              element.loading = false;
+              var first = {
+                url: element.stream,
+                quality: component.renameQualityMap(element.qualitys),
+                headers: element.headers,
+                timeline: element.timeline,
+                title: element.season ? element.title + ' / ' + (element.voice || '') : select_title + (element.voice ? ' / ' + element.voice : '')
+              };
+              Lampa.Player.play(first);
+              if (element.season && Lampa.Platform.version) {
+                var playlist = [];
+                items.forEach(function (elem) {
+                  var cell = elem == element ? first : {
+                    url: elem.stream,
+                    headers: headersPlayer,
+                    timeline: elem.timeline,
+                    title: elem.title + ' / ' + (elem.voice || '')
+                  };
+                  playlist.push(cell);
+                });
+                Lampa.Player.playlist(playlist);
+              } else Lampa.Player.playlist([first]);
+              if (viewed.indexOf(hash_file) === -1) {
+                viewed.push(hash_file);
+                item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+                Lampa.Storage.set('online_view', viewed);
+              }
+            }, function () {
+              element.loading = false;
+              Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
+            });
+          });
+          component.append(item);
+          component.contextmenu({
+            item: item,
+            view: view,
+            viewed: viewed,
+            hash_file: hash_file,
+            element: element,
+            file: function (call) { call({ file: element.stream, quality: element.qualitys }); }
+          });
+        });
+        component.start(true);
+      }
+    }
+
     function cdnvideohub(component, _object) {
       var network = new Lampa.Reguest();
       var extract = {};
@@ -16039,6 +16476,13 @@
         kp: true,
         imdb: true
       }, {
+        name: 'eneyida',
+        title: 'Eneyida',
+        source: new eneyida(this, object),
+        search: true,
+        kp: false,
+        imdb: false
+      }, {
         name: 'uaflix',
         title: 'UAflix',
         source: new uaflix(this, object),
@@ -16408,6 +16852,7 @@
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
@@ -19369,7 +19814,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.38: база 1.0.35 + перемикач Android: сумісний запуск відео. Режим прибирає lazy playlist і quality-map для m3u8 у вбудованому Android-плеєрі.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.46: база 1.0.43 + прямий парсер Eneyida.tv через hdvbua.pro Playerjs.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
