@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.33';
+    var STELS_ONLINE_VERSION = '1.0.34';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -101,7 +101,7 @@
       key = stelsNormalizeSourceKey(key);
       if (!title) return false;
       if (/^ua/i.test(title)) return true;
-      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'klonfun'].indexOf(key) !== -1;
+      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'KlonFun' ].indexOf(key) !== -1;
     }
 
     function stelsIsUaPrioritySource(source) {
@@ -123,7 +123,7 @@
 
     function stelsPatchUaFlagIcons(root) {
       try {
-        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'klonfun'];
+        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'KlonFun'];
         var scope = root ? $(root) : $(document.body);
         scope.find('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').each(function () {
           var el = $(this);
@@ -237,8 +237,14 @@
     }
 
 
+    function stelsLogEnabled() {
+      try { return Lampa.Storage.get('stels_online_log_enabled', true) !== false; }
+      catch (e) { return true; }
+    }
+
     function stelsLog(event, data) {
       try {
+        if (!stelsLogEnabled()) return;
         var list = Lampa.Storage.get(STELS_LOG_KEY, []);
         if (!Array.isArray(list)) list = [];
         var item = {
@@ -366,6 +372,7 @@
         'stels_online_rezka2_mirror',
         'stels_online_rezka2_cookie',
         'stels_online_fancdn_cookie',
+        'stels_online_log_enabled',
         'stels_online_filter',
         'stels_online_sources_hide'
       ];
@@ -12932,19 +12939,47 @@
         return json && (json.url || json.stream || json.file || (item && item.method != 'call' && (item.url || isRealStreamValue(item.stream))));
       }
 
+      function lampauaCurrentEpisodeElement(fallback) {
+        var out = {};
+        for (var k in (fallback || {})) out[k] = fallback[k];
+        try {
+          var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+          var cs = parseInt(current.season || 0, 10);
+          var ce = parseInt(current.episode || 0, 10);
+          if (cs) out.season = cs;
+          if (ce) out.episode = ce;
+          if (current.title) out.title = current.title;
+          if (current.voice_name) out.voice_name = current.voice_name;
+        } catch (e) {}
+        return out;
+      }
+
+      function lampauaExtractSeasonFromUrl(url) {
+        var m = String(url || '').match(/(?:^|[\/?&])s(?:=|%3D)(\d+)/i) || String(url || '').match(/(?:^|[\/])(\d+)-season(?:[\/]|$)/i);
+        return m ? parseInt(m[1], 10) : 0;
+      }
+
+      function lampauaExtractEpisodeFromUrl(url) {
+        var m = String(url || '').match(/(?:^|[\/?&])e(?:=|%3D)(\d+)/i) || String(url || '').match(/(?:^|[\/])(\d+)-episode(?:[\/]|$)/i);
+        return m ? parseInt(m[1], 10) : 0;
+      }
+
       function lampauaFindSameEpisode(items, element) {
         var videos = (items || []).filter(function (v) { return v && (v.method == 'play' || v.method == 'call' || v.stream); });
         if (!videos.length) return null;
         var season = parseInt(element.season || 0, 10);
         var episode = parseInt(element.episode || 0, 10);
+        var need_exact = !!(season || episode);
         var found = null;
         videos.forEach(function (v) {
           if (found) return;
-          var vs = parseInt(v.season || season || 0, 10);
-          var ve = parseInt(v.episode || 0, 10);
-          if ((!season || !vs || vs == season) && (!episode || !ve || ve == episode)) found = v;
+          var vs = parseInt(v.season || 0, 10) || lampauaExtractSeasonFromUrl(v.url || v.stream || '');
+          var ve = parseInt(v.episode || 0, 10) || lampauaExtractEpisodeFromUrl(v.url || v.stream || '');
+          var season_ok = !season || vs == season;
+          var episode_ok = !episode || ve == episode;
+          if (season_ok && episode_ok) found = v;
         });
-        return found || videos[0];
+        return found || (need_exact ? null : videos[0]);
       }
 
       function lampauaFindSameSeasonLink(items, element) {
@@ -12954,14 +12989,14 @@
         var found = null;
         links.forEach(function (v) {
           if (found) return;
-          var vs = parseInt(v.season || 0, 10);
+          var vs = parseInt(v.season || 0, 10) || lampauaExtractSeasonFromUrl(v.url || '');
           if (!vs && v.text) {
             var m = String(v.text).match(/(\d+)/);
             if (m) vs = parseInt(m[1], 10);
           }
           if (!season || vs == season) found = v;
         });
-        return found || links[0];
+        return found || (season ? null : links[0]);
       }
 
       function lampauaRequestUrlItems(url, tag, call) {
@@ -13005,6 +13040,7 @@
 
       function lampauaResolveVoicePlayable(element, voice, call) {
         if (!voice) return call(false);
+        var target = lampauaCurrentEpisodeElement(element || {});
         var use_current = voice.active || voice.url == choice.voice_url || voice.title == choice.voice_name;
         var finish = function (item) {
           if (!item) return call(false);
@@ -13013,26 +13049,36 @@
             if (lampauaPlayableReady(json, item)) {
               var play = preparePlayable(item, json || {}, json_call || {});
               play.voice_name = voice.title || play.voice_name;
+              play.season = target.season || play.season;
+              play.episode = target.episode || play.episode;
               call(play);
             } else call(false);
           });
         };
-        if (use_current) return finish(element);
+        if (use_current) return finish(target);
         lampauaRequestVoiceItems(voice, function (items) {
-          var same = lampauaFindSameEpisode(items, element);
+          var same = lampauaFindSameEpisode(items, target);
           if (same) return finish(same);
-          var season_link = lampauaFindSameSeasonLink(items, element);
-          if (!season_link) return call(false);
+          var season_link = lampauaFindSameSeasonLink(items, target);
+          if (!season_link) {
+            stelsLog('lampaua-rezka720-voice-season-missing', { source: sourceTitle, voice: voice.title, season: target.season, episode: target.episode });
+            return call(false);
+          }
           stelsLog('lampaua-rezka720-voice-season-link', {
             source: sourceTitle,
             voice: voice.title,
-            season: element.season,
-            episode: element.episode,
+            season: target.season,
+            episode: target.episode,
             link_text: season_link.text,
             link_url: previewUrl(season_link.url || '')
           });
           lampauaRequestUrlItems(season_link.url, 'voice-season', function (season_items) {
-            finish(lampauaFindSameEpisode(season_items, element));
+            var episode_item = lampauaFindSameEpisode(season_items, target);
+            if (!episode_item) {
+              stelsLog('lampaua-rezka720-voice-episode-missing', { source: sourceTitle, voice: voice.title, season: target.season, episode: target.episode, count: (season_items || []).length });
+              return call(false);
+            }
+            finish(episode_item);
           });
         });
       }
@@ -13050,13 +13096,14 @@
             onSelect: function () {
               if (index == selected_index) return;
               try { Lampa.Player.loading(true); } catch (e) {}
+              var voice_target = lampauaCurrentEpisodeElement(element || {});
               stelsLog('lampaua-rezka720-voice-switch-start', {
                 source: sourceTitle,
                 voice: voice.title,
-                season: element.season,
-                episode: element.episode
+                season: voice_target.season,
+                episode: voice_target.episode
               });
-              lampauaResolveVoicePlayable(element, voice, function (play) {
+              lampauaResolveVoicePlayable(voice_target, voice, function (play) {
                 try { Lampa.Player.loading(false); } catch (e) {}
                 if (play && play.url) {
                   var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
@@ -13065,7 +13112,6 @@
                   play.subtitles = play.subtitles || current.subtitles;
                   play.segments = play.segments || current.segments;
                   play.voiceovers = lampauaRezkaVoiceovers(element, index);
-                  if (current.playlist && current.playlist.length) play.playlist = current.playlist;
                   stelsLog('lampaua-rezka720-voice-switch-play', {
                     source: sourceTitle,
                     voice: voice.title,
@@ -18749,6 +18795,7 @@
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_sources\" data-static=\"true\">\n            <div class=\"settings-param__name\">Джерела</div>\n            <div class=\"settings-param__descr\">Увімкнення або вимкнення джерел у меню Сортувати</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_plugin_cache\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити кеш Stels_Online</div>\n            <div class=\"settings-param__descr\">Скинути збережені сезони, вибір озвучки, останні джерела та позначки перегляду. Налаштування джерел, проксі та cookie не очищаються.</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
@@ -18850,7 +18897,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.33: виправлено перемикання доріжок Rezka ~ 720 через проміжний вибір сезону: voice -> season link -> episode -> stream.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.34: перемикання доріжок Rezka ~ 720 тепер строго тримає поточний сезон/серію без fallback на перший епізод; додано перемикач запису логу.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
