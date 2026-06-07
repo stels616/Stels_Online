@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.31';
+    var STELS_ONLINE_VERSION = '1.0.32';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -12924,6 +12924,116 @@
         return play;
       }
 
+      function lampauaIsRezka720() {
+        return norm(sourceTitle || '') == norm('Rezka ~ 720') || wanted.indexOf('rezka720') !== -1 || wanted.indexOf('pizdatoehd') !== -1;
+      }
+
+      function lampauaPlayableReady(json, item) {
+        return json && (json.url || json.stream || json.file || (item && item.method != 'call' && (item.url || isRealStreamValue(item.stream))));
+      }
+
+      function lampauaFindSameEpisode(items, element) {
+        var videos = (items || []).filter(function (v) { return v && (v.method == 'play' || v.method == 'call' || v.stream); });
+        if (!videos.length) return null;
+        var season = parseInt(element.season || 0, 10);
+        var episode = parseInt(element.episode || 0, 10);
+        var found = null;
+        videos.forEach(function (v) {
+          if (found) return;
+          var vs = parseInt(v.season || season || 0, 10);
+          var ve = parseInt(v.episode || 0, 10);
+          if ((!season || !vs || vs == season) && (!episode || !ve || ve == episode)) found = v;
+        });
+        return found || videos[0];
+      }
+
+      function lampauaRequestVoiceItems(voice, call) {
+        if (!voice || !voice.url) return call([]);
+        var req = new Lampa.Reguest();
+        req.timeout(15000);
+        req['native'](account(absolute(voice.url)), function (str) {
+          var items = parseJsonDate(str, '.videos__item');
+          stelsLog('lampaua-rezka720-voice-items', {
+            source: sourceTitle,
+            voice: voice.title,
+            count: items.length,
+            sample: items.slice(0, 8).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, url: previewUrl(i.url || '') }; })
+          });
+          call(items || []);
+        }, function (a, c) {
+          var err = req.errorDecode ? req.errorDecode(a, c) : 'LampUA voice request error';
+          stelsLog('lampaua-rezka720-voice-items-fail', { source: sourceTitle, voice: voice.title, url: previewUrl(voice.url), error: err, status: a && a.status });
+          call([]);
+        }, false, { dataType: 'text', headers: addHeaders() });
+      }
+
+      function lampauaResolveVoicePlayable(element, voice, call) {
+        if (!voice) return call(false);
+        var use_current = voice.active || voice.url == choice.voice_url || voice.title == choice.voice_name;
+        var finish = function (item) {
+          if (!item) return call(false);
+          if (!item.voice_name) item.voice_name = voice.title || sourceTitle;
+          getFileUrl(item, function (json, json_call) {
+            if (lampauaPlayableReady(json, item)) {
+              var play = preparePlayable(item, json || {}, json_call || {});
+              play.voice_name = voice.title || play.voice_name;
+              call(play);
+            } else call(false);
+          });
+        };
+        if (use_current) return finish(element);
+        lampauaRequestVoiceItems(voice, function (items) {
+          finish(lampauaFindSameEpisode(items, element));
+        });
+      }
+
+      function lampauaRezkaVoiceovers(element, selected_index) {
+        if (!lampauaIsRezka720() || !(filter_find.voice && filter_find.voice.length > 1)) return false;
+        return filter_find.voice.map(function (voice, index) {
+          return {
+            index: index,
+            language: voice.title || ('Voice ' + (index + 1)),
+            name: voice.title || ('Voice ' + (index + 1)),
+            label: sourceTitle,
+            selected: index == selected_index,
+            enabled: index == selected_index,
+            onSelect: function () {
+              if (index == selected_index) return;
+              try { Lampa.Player.loading(true); } catch (e) {}
+              stelsLog('lampaua-rezka720-voice-switch-start', {
+                source: sourceTitle,
+                voice: voice.title,
+                season: element.season,
+                episode: element.episode
+              });
+              lampauaResolveVoicePlayable(element, voice, function (play) {
+                try { Lampa.Player.loading(false); } catch (e) {}
+                if (play && play.url) {
+                  var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+                  play.title = current.title || play.title;
+                  play.timeline = current.timeline || play.timeline;
+                  play.subtitles = play.subtitles || current.subtitles;
+                  play.segments = play.segments || current.segments;
+                  play.voiceovers = lampauaRezkaVoiceovers(element, index);
+                  if (current.playlist && current.playlist.length) play.playlist = current.playlist;
+                  stelsLog('lampaua-rezka720-voice-switch-play', {
+                    source: sourceTitle,
+                    voice: voice.title,
+                    has_url: !!play.url,
+                    url_preview: previewUrl(play.url || '')
+                  });
+                  Lampa.Player.play(play);
+                  if (play.playlist) Lampa.Player.playlist(play.playlist);
+                } else {
+                  stelsLog('lampaua-rezka720-voice-switch-empty', { source: sourceTitle, voice: voice.title, season: element.season, episode: element.episode });
+                  Lampa.Noty.show('Не вдалося завантажити доріжку: ' + (voice.title || ''));
+                }
+              });
+            }
+          };
+        });
+      }
+
       function display(videos) {
         current_videos = videos || [];
         component.reset();
@@ -12958,6 +13068,7 @@
               element.loading = false;
               if (json && (json.url || json.stream || json.file || (element.method != 'call' && (element.url || isRealStreamValue(element.stream))))) {
                 var first = preparePlayable(element, json, json_call || {});
+                if (lampauaIsRezka720()) first.voiceovers = lampauaRezkaVoiceovers(element, choice.voice);
                 var playlist = [];
                 if (element.season) {
                   current_videos.forEach(function (elem) {
@@ -12975,6 +13086,7 @@
                             this.subtitles = cell.subtitles;
                             this.subtitles_call = cell.subtitles_call;
                             this.segments = cell.segments;
+                            if (lampauaIsRezka720()) this.voiceovers = lampauaRezkaVoiceovers(elem, choice.voice);
                           } else this.url = '';
                           call();
                         }.bind(this));
@@ -12984,7 +13096,8 @@
                       season: elem.season,
                       episode: elem.episode,
                       voice_name: elem.voice_name,
-                      thumbnail: elem.thumbnail
+                      thumbnail: elem.thumbnail,
+                      voiceovers: lampauaIsRezka720() ? lampauaRezkaVoiceovers(elem, choice.voice) : false
                     });
                   });
                 } else playlist.push(first);
@@ -15624,7 +15737,7 @@
         return s.name;
       });
       var stelsSourceStatus = {};
-      // 1.0.31: статуси джерел кешуються тільки в поточній сесії відкритої картки.
+      // 1.0.32: статуси джерел кешуються тільки в поточній сесії відкритої картки.
       // Після перезапуску Lampa вони не підтягуються зі Storage, а precheck запускається заново.
       function stelsSaveSourceStatus() {}
       function stelsMarkSourceStatus(source, status, message) {
