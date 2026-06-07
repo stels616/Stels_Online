@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.29';
+    var STELS_ONLINE_VERSION = '1.0.30';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -168,7 +168,7 @@
           }).text(STELS_ONLINE_VERSION);
           if (!el.find('.settings-folder__icon').length) el.prepend('<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true"></div>');
           if (!el.find('.settings-folder__name').length) el.append('<div class="settings-folder__name"></div>');
-          el.find('.settings-folder__icon').first().html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
+          el.find('.settings-folder__icon').first().html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">');
           el.find('.settings-folder__name').first().text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
           el.children().filter(function () {
             var node = $(this);
@@ -418,10 +418,10 @@
           '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
           '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-episode-badge{font-size:.7em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
-          '.settings-folder.stels-online-settings-folder{display:grid!important;grid-template-columns:3.15em auto!important;column-gap:.7em!important;align-items:center!important;justify-content:start!important;}' +
-          '.settings-folder.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{display:flex!important;align-items:center!important;justify-content:center!important;width:3.05em!important;height:3.05em!important;min-width:3.05em!important;max-width:3.05em!important;margin:0!important;padding:0!important;font-size:1rem!important;color:transparent!important;overflow:visible!important;}' +
+          '.settings-folder.stels-online-settings-folder{display:grid!important;grid-template-columns:2.35em auto!important;column-gap:.65em!important;align-items:center!important;justify-content:start!important;}' +
+          '.settings-folder.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{display:flex!important;align-items:center!important;justify-content:center!important;width:2.25em!important;height:2.25em!important;min-width:2.25em!important;max-width:2.25em!important;margin:0!important;padding:0!important;font-size:1rem!important;color:transparent!important;overflow:visible!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__name{margin:0!important;padding:0!important;left:auto!important;transform:none!important;}' +
-          '.settings-folder.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{display:block!important;width:3.0em!important;height:3.0em!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;font-size:1rem!important;}' +
+          '.settings-folder.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{display:block!important;width:2.05em!important;height:2.05em!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;font-size:1rem!important;}' +
           '.stels-online-settings-folder .full-start__subtitle,.stels-online-settings-folder .selector__subtitle,.stels-online-settings-folder .settings-folder__subtitle{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
@@ -15759,17 +15759,18 @@
             if (entry.name === balanser) return false;
             var info = stelsSourceStatus[entry.name];
             return !(info && info.time && now - info.time < 20 * 60 * 1000);
-          }).slice(0, 18);
+          });
           if (!queue.length) return;
           stelsPrecheckRunning = true;
           var token = ++stelsPrecheckToken;
           var active = 0;
           var limit = Math.min(3, Math.max(1, queue.length));
           stelsLog('source-precheck-start', { count: queue.length, limit: limit, sources: queue.map(function (s) { return s.name; }) });
+          stelsRefreshSourceFilterTitles();
           function pump() {
             if (token !== stelsPrecheckToken) { stelsPrecheckRunning = false; return; }
             while (active < limit && queue.length) runOne(queue.shift());
-            if (!active && !queue.length) { stelsPrecheckRunning = false; stelsLog('source-precheck-finish', {}); }
+            if (!active && !queue.length) { stelsPrecheckRunning = false; stelsRefreshSourceFilterTitles(); stelsLog('source-precheck-finish', {}); }
           }
           function runOne(entry) {
             active++;
@@ -18420,7 +18421,7 @@
     function stelsBuildSettingsFolder() {
       return $(Lampa.Lang.translate('<div class="settings-folder selector stels-online-settings-folder" data-component="stels_online" data-title="Stels_Online" data-subtitle="' + STELS_ONLINE_VERSION + '">' +
         '<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true">' +
-          '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">' +
+          '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">' +
         '</div>' +
         '<div class="settings-folder__name">#{stels_online_title_full}</div>' +
       '</div>'));
@@ -18444,7 +18445,7 @@
       field.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
         return /^stels_online\b/i.test(($(this).text() || '').trim());
       }).text(STELS_ONLINE_VERSION);
-      field.find('.settings-folder__icon').html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
+      field.find('.settings-folder__icon').html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">');
       field.find('.settings-folder__name').text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
       field.children().filter(function () {
         var node = $(this);
@@ -18674,7 +18675,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.29: зменшено відступ іконки Stels_Online у налаштуваннях, пришвидшено precheck джерел, додано live-оновлення статусів у відкритому меню балансера.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.30: precheck тепер проходить усі джерела без ліміту 18, live-оновлення меню продовжується до завершення, іконку Stels_Online підігнано під стандартний розмір налаштувань.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
