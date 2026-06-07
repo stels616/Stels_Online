@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.30';
+    var STELS_ONLINE_VERSION = '1.0.31';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -192,6 +192,21 @@
             else if (display === 'block') el.css('display', 'flex');
             el.css('align-items', 'center');
             if (!el.find('.stels-online-plugin-icon').length) el.prepend(STELS_ICON_HTML);
+          });
+          // Деякі екрани Lampa (наприклад список джерел "Джерело") будуються не через data-component,
+          // а простим пунктом з текстом Stels_Online + версія. Патчимо їх окремо по тексту.
+          scope.find('.selector, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').addBack('.selector, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').each(function () {
+            var el = $(this);
+            if (el.find('.stels-online-plugin-icon').length) return;
+            var text = (el.text() || '').replace(/\s+/g, ' ').trim();
+            if (!(text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text))) return;
+            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
+            el.addClass('stels-online-source-entry');
+            var display = el.css('display');
+            if (display === 'inline') el.css('display', 'inline-flex');
+            else if (display === 'block') el.css('display', 'flex');
+            el.css('align-items', 'center');
+            el.prepend('<img class="stels-online-plugin-icon stels-online-source-icon" src="' + STELS_ICON_URL + '" style="width:2.15em;height:2.15em;object-fit:contain;display:block;flex-shrink:0;margin-right:.7em" alt="Stels_Online">');
           });
           stelsPatchUaFlagIcons(scope);
         } catch (e) {
@@ -423,6 +438,8 @@
           '.settings-folder.stels-online-settings-folder .settings-folder__name{margin:0!important;padding:0!important;left:auto!important;transform:none!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{display:block!important;width:2.05em!important;height:2.05em!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;font-size:1rem!important;}' +
           '.stels-online-settings-folder .full-start__subtitle,.stels-online-settings-folder .selector__subtitle,.stels-online-settings-folder .settings-folder__subtitle{display:none!important;}' +
+          '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;}' +
+          '.stels-online-source-entry .stels-online-source-icon{width:2.15em!important;height:2.15em!important;margin-right:.7em!important;object-fit:contain!important;flex-shrink:0!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
           '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
@@ -15607,14 +15624,9 @@
         return s.name;
       });
       var stelsSourceStatus = {};
-      var stelsSourceStatusStorageKey = 'stels_online_source_status_' + (object && object.movie && (object.movie.id || object.movie.tmdb_id || object.movie.imdb_id) || 'unknown');
-      try {
-        var saved_status = Lampa.Storage.get(stelsSourceStatusStorageKey, {});
-        if (saved_status && typeof saved_status === 'object') stelsSourceStatus = saved_status;
-      } catch (e) {}
-      function stelsSaveSourceStatus() {
-        try { Lampa.Storage.set(stelsSourceStatusStorageKey, stelsSourceStatus); } catch (e) {}
-      }
+      // 1.0.31: статуси джерел кешуються тільки в поточній сесії відкритої картки.
+      // Після перезапуску Lampa вони не підтягуються зі Storage, а precheck запускається заново.
+      function stelsSaveSourceStatus() {}
       function stelsMarkSourceStatus(source, status, message) {
         source = stelsNormalizeSourceKey(source || balanser);
         if (!source) return;
