@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.20';
+    var STELS_ONLINE_VERSION = '1.0.21';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -15,7 +15,7 @@
     var STELS_SOURCES_HIDE_KEY = 'stels_online_sources_hide';
 
     var STELS_REQUESTED_SOURCE_NAMES = [
-      'uaflix', 'klonfun', 'batkomakhno', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
+      'uaflix', 'kinozer', 'klonfun', 'batkomakhno', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
       'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
       'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'collaps',
       'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'remux',
@@ -29,7 +29,7 @@
     ];
 
     var STELS_SOURCE_TITLES = {
-      uaflix: 'UAflix', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
+      uaflix: 'UAflix', kinozer: 'Kinozer', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
       mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
       rezka: 'Rezka', pizdatoehd: 'PizdatoeHD', getstv: 'GetsTV', kinopub: 'KinoPub', zetflixdb: 'ZetflixDB',
       collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
@@ -55,7 +55,7 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
-      eneyida: 'rezka2', kinotochka: 'rezka2', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      eneyida: 'rezka2', kinotochka: 'rezka2', kinozer: 'kinozer', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
@@ -12475,6 +12475,471 @@
 
 
 
+
+    // ===============================
+    // Kinozer / zerx.tv source
+    // ===============================
+
+    function kinozer(component, _object) {
+      var network = new Lampa.Reguest();
+      var object = _object;
+      var select_title = '';
+      var host = 'https://zerx.tv/';
+      var ref = host;
+      var prox = component.proxy('kinozer') || component.proxy('iframe');
+      var prox_player = component.proxy('allohacdn') || component.proxy('alloha');
+      var user_agent = Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+      var extract = { pl: null, domain: '', token: '', player_url: '', postdata: '' };
+      var filter_items = {};
+      var choice = { season: 0, voice: 0, voice_name: '' };
+
+      function compact(value, len) {
+        value = (value == null ? '' : String(value)).replace(/\s+/g, ' ').trim();
+        len = len || 220;
+        return value.length > len ? value.slice(0, len) + '...' : value;
+      }
+
+      function decodeHtml(value) {
+        value = value == null ? '' : String(value);
+        try { return $('<textarea/>').html(value).text(); } catch (e) { return value; }
+      }
+
+      function cleanText(value) {
+        return decodeHtml(value).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+
+      function abs(url, base) {
+        url = decodeHtml(url || '').trim();
+        if (!url) return '';
+        if (/^\/\//.test(url)) return 'https:' + url;
+        if (/^https?:\/\//i.test(url)) return url;
+        base = base || host;
+        if (url.charAt(0) === '/') return base.replace(/\/$/, '') + url;
+        return base.replace(/\/[^\/]*$/, '/') + url;
+      }
+
+      function norm(value) {
+        return (value == null ? '' : String(value)).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-яіїєґ0-9]+/ig, '');
+      }
+
+      function yearFromMovie() {
+        var movie = object.movie || {};
+        return ((movie.release_date || movie.first_air_date || movie.year || '') + '').slice(0, 4);
+      }
+
+      function requestText(url, success, fail, postdata, referer, headers_extra) {
+        url = abs(url, host);
+        var headers = {
+          'User-Agent': user_agent,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5',
+          'Referer': referer || ref
+        };
+        if (postdata) headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        if (headers_extra) {
+          for (var k in headers_extra) headers[k] = headers_extra[k];
+        }
+        stelsLog('kinozer-request', { url: url, post: !!postdata, referer: headers.Referer });
+        network.clear();
+        network.timeout(16000);
+        network['native'](component.proxyLink(url, prox, '', 'enc2t'), function (data) {
+          stelsLog('kinozer-response', { url: url, length: (data || '').length, preview: compact(data, 260) });
+          success(data || '');
+        }, function (a, c) {
+          var err = network.errorDecode ? network.errorDecode(a, c) : 'Kinozer request error';
+          stelsLog('kinozer-request-fail', { url: url, error: err, status: a && a.status, statusText: a && a.statusText });
+          if (fail) fail(err);
+        }, postdata || false, { dataType: 'text', headers: headers });
+      }
+
+      function requestJson(url, success, fail, postdata, referer) {
+        var headers = {
+          'User-Agent': user_agent,
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5',
+          'Origin': (extract.domain || '').replace(/\/$/, ''),
+          'Referer': referer || extract.player_url || ref,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        };
+        stelsLog('kinozer-stream-request', { url: url, post: !!postdata, media_referer: headers.Referer });
+        network.clear();
+        network.timeout(16000);
+        network['native'](component.proxyLink(url, prox_player, '', 'enc2t'), function (json) {
+          if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, {});
+          stelsLog('kinozer-stream-response', {
+            url: url,
+            hls_count: json && json.hlsSource && json.hlsSource.length || 0,
+            tracks_count: json && json.tracks && json.tracks.length || 0,
+            keys: json && typeof json === 'object' ? Object.keys(json).slice(0, 20) : []
+          });
+          success(json || {});
+        }, function (a, c) {
+          var err = network.errorDecode ? network.errorDecode(a, c) : 'Kinozer stream error';
+          stelsLog('kinozer-stream-fail', { url: url, error: err, status: a && a.status, statusText: a && a.statusText });
+          if (fail) fail(err);
+        }, postdata || false, { headers: headers });
+      }
+
+      function queryList() {
+        var movie = object.movie || {};
+        var list = [object.search, movie.title, movie.name, movie.original_title, movie.original_name].filter(Boolean).map(function (v) { return String(v).trim(); });
+        var out = [];
+        list.forEach(function (q) {
+          if (q && out.indexOf(q) === -1) out.push(q);
+        });
+        return out;
+      }
+
+      function parseSearchResults(str, query) {
+        var html = $('<div>' + (str || '') + '</div>');
+        var results = [];
+        var seen = {};
+        function add(link, title, ctx) {
+          link = abs(link, host);
+          if (!/\.html(?:$|[?#])/i.test(link) || seen[link]) return;
+          title = cleanText(title || '');
+          if (!title) title = cleanText((ctx || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) && RegExp.$1 || '');
+          if (!title) title = link.split('/').pop().replace(/\.html.*/i, '').replace(/[-_]+/g, ' ');
+          seen[link] = true;
+          results.push({ title: title, link: link });
+        }
+        html.find('a[href]').each(function () {
+          var a = $(this);
+          var href = a.attr('href') || '';
+          if (!/\.html(?:$|[?#])/i.test(href)) return;
+          var card = a.closest('.o-card,.c-card-list__item,.c-card,.short,.news-item');
+          var title = a.find('[itemprop="name"]').text() || a.text() || '';
+          if (!title && card.length) title = card.find('.o-card__title,[itemprop="name"],.title,.short-title').first().text();
+          if (!title && card.length) title = card.find('img[alt]').first().attr('alt') || '';
+          add(href, title, card.length ? card.html() : a.parent().html());
+        });
+        (str || '').replace(/href=["']([^"']+\.html)["'][\s\S]{0,900}?(?:class=["'][^"']*o-card__title[^"']*["'][^>]*>|<span[^>]*itemprop=["']name["'][^>]*>|alt=["'])([^<"']+)/ig, function (_, href, title) {
+          add(href, title, _);
+          return _;
+        });
+        var wanted = [query, object.movie && object.movie.title, object.movie && object.movie.name, object.movie && object.movie.original_title, object.movie && object.movie.original_name].filter(Boolean).map(norm).filter(Boolean);
+        var y = yearFromMovie();
+        results.forEach(function (r) {
+          var n = norm(r.title + ' ' + r.link);
+          var score = 0;
+          wanted.forEach(function (w, i) {
+            if (!w) return;
+            if (n === w) score += 500 - i * 20;
+            else if (n.indexOf(w) !== -1) score += 180 - i * 12;
+            else if (w.indexOf(n) !== -1) score += 80;
+          });
+          if (y && (r.title + ' ' + r.link).indexOf(y) !== -1) score += 40;
+          if (object.movie && object.movie.name && /сезон|serial|series/i.test(r.title + ' ' + r.link)) score += 35;
+          r.score = score;
+        });
+        results.sort(function (a, b) { return b.score - a.score; });
+        stelsLog('kinozer-search-parse', { query: query, count: results.length, sample: results.slice(0, 10).map(function (r) { return { title: r.title, link: r.link, score: r.score }; }) });
+        return results;
+      }
+
+      function searchByQueries(list, index) {
+        if (index >= list.length) {
+          component.loading(false);
+          component.emptyForQuery(select_title);
+          return;
+        }
+        var q = list[index];
+        var body = 'do=search&subaction=search&story=' + encodeURIComponent(q);
+        requestText(host, function (str) {
+          var results = parseSearchResults(str, q);
+          if (results.length) loadPage(results[0].link);
+          else {
+            var getUrl = host + 'index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
+            requestText(getUrl, function (str2) {
+              var results2 = parseSearchResults(str2, q);
+              if (results2.length) loadPage(results2[0].link);
+              else searchByQueries(list, index + 1);
+            }, function () { searchByQueries(list, index + 1); }, false, host);
+          }
+        }, function () { searchByQueries(list, index + 1); }, body, host);
+      }
+
+      function parsePlayerFrame(pageHtml, pageUrl) {
+        var frame = '';
+        try {
+          $('<div>' + (pageHtml || '') + '</div>').find('[data-videoframe]').each(function () {
+            var url = decodeHtml($(this).attr('data-videoframe') || '');
+            if (!frame && /stravers\.live|synthezoid/i.test(url) && !/youtube\.com/i.test(url)) frame = url;
+          });
+        } catch (e) {}
+        if (!frame) {
+          var m = (pageHtml || '').match(/data-videoframe=["']([^"']*(?:stravers\.live|synthezoid)[^"']*)["']/i);
+          if (m) frame = decodeHtml(m[1]);
+        }
+        stelsLog('kinozer-page-parse', { page: pageUrl, frame: frame, has_frame: !!frame, title: cleanText((pageHtml || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) && RegExp.$1 || '') });
+        return frame;
+      }
+
+      function loadPage(url) {
+        url = abs(url, host);
+        component.loading(true);
+        requestText(url, function (str) {
+          var frame = parsePlayerFrame(str, url);
+          if (!frame) {
+            component.loading(false);
+            component.empty('Kinozer: плеєр на сторінці не знайдено');
+            return;
+          }
+          loadPlayer(frame, url);
+        }, function (err) {
+          component.loading(false);
+          component.empty(err || 'Kinozer page error');
+        }, false, host);
+      }
+
+      function loadPlayer(frame, pageUrl) {
+        frame = abs(frame, pageUrl);
+        requestText(frame, function (str) {
+          parsePlayer(str, frame, pageUrl);
+        }, function (err) {
+          component.loading(false);
+          component.empty(err || 'Kinozer player error');
+        }, false, pageUrl);
+      }
+
+      function parsePlayer(str, frame, pageUrl) {
+        var token = '';
+        var tm = (str || '').match(/token:\s*['"]([^'"]+)['"]/i) || frame.match(/[?&]token=([^&]+)/i);
+        if (tm) token = decodeURIComponent(tm[1]);
+        var fm = (str || '').match(/fileList\s*=\s*JSON\.parse\('([\s\S]*?)'\);/i);
+        if (!fm) {
+          stelsLog('kinozer-player-no-filelist', { frame: frame, html_length: (str || '').length, preview: compact(str, 400) });
+          component.loading(false);
+          component.empty('Kinozer: fileList у плеєрі не знайдено');
+          return;
+        }
+        var pl = {};
+        try { pl = JSON.parse(fm[1]); } catch (e) { stelsLog('kinozer-filelist-json-error', { error: e && (e.message || e.toString()) }); }
+        var origin = frame.match(/^(https?:\/\/[^\/]+)/i);
+        extract = {
+          pl: pl,
+          domain: origin ? origin[1] + '/' : 'https://synthezoid-as.stravers.live/',
+          token: token,
+          player_url: frame,
+          page_url: pageUrl,
+          postdata: 'token=' + encodeURIComponent(token || '') + '&av1=true&autoplay=0&audio=&subtitle='
+        };
+        stelsLog('kinozer-player-parse', {
+          frame: frame,
+          page: pageUrl,
+          token_set: !!token,
+          type: pl && pl.type,
+          seasons: pl && pl.all ? Object.keys(pl.all).slice(0, 20) : [],
+          active: pl && pl.active || null
+        });
+        if (!(pl && pl.all)) {
+          component.loading(false);
+          component.empty('Kinozer: список серій порожній');
+          return;
+        }
+        component.loading(false);
+        filter();
+        append(filtred());
+      }
+
+      function filter() {
+        filter_items = { season: [], season_num: [], voice: [], voice_info: [] };
+        if (extract.pl && extract.pl.type === 'serial') {
+          for (var s_num in extract.pl.all) filter_items.season_num.push(s_num);
+          filter_items.season_num.sort(function (a, b) { return parseInt(a) - parseInt(b); });
+          filter_items.season = filter_items.season_num.map(function (s) { return Lampa.Lang.translate('torrent_serial_season') + ' ' + s; });
+          if (!filter_items.season[choice.season]) choice.season = 0;
+          var currentSeason = filter_items.season_num[choice.season];
+          var episodes = extract.pl.all[currentSeason] || {};
+          for (var e_num in episodes) {
+            var translations = episodes[e_num] || {};
+            for (var v_id in translations) {
+              if (!filter_items.voice_info.some(function (v) { return v.id === v_id; })) {
+                filter_items.voice.push(translations[v_id].translation || v_id);
+                filter_items.voice_info.push({ id: v_id });
+              }
+            }
+          }
+        } else {
+          var flat = flattenMedia(extract.pl && extract.pl.all || {});
+          flat.forEach(function (media) {
+            var name = media.translation || media.quality || 'Kinozer';
+            if (filter_items.voice.indexOf(name) === -1) {
+              filter_items.voice.push(name);
+              filter_items.voice_info.push({ title: name });
+            }
+          });
+        }
+        if (!filter_items.voice[choice.voice]) choice.voice = 0;
+        if (choice.voice_name) {
+          var inx = filter_items.voice.indexOf(choice.voice_name);
+          if (inx !== -1) choice.voice = inx;
+        }
+        component.filter(filter_items, choice);
+      }
+
+      function flattenMedia(obj, out) {
+        out = out || [];
+        if (!obj || typeof obj !== 'object') return out;
+        if (obj.id && (obj.translation || obj.quality || obj.id_quality)) out.push(obj);
+        else Object.keys(obj).forEach(function (k) { flattenMedia(obj[k], out); });
+        return out;
+      }
+
+      function filtred() {
+        var out = [];
+        if (extract.pl && extract.pl.type === 'serial') {
+          var s_num = filter_items.season_num[choice.season];
+          var v_id = filter_items.voice_info[choice.voice] && filter_items.voice_info[choice.voice].id;
+          var voice = filter_items.voice[choice.voice] || '';
+          var episodes = (extract.pl.all && extract.pl.all[s_num]) || {};
+          Object.keys(episodes).sort(function (a, b) { return parseInt(a) - parseInt(b); }).forEach(function (e_num) {
+            var media = episodes[e_num] && episodes[e_num][v_id];
+            if (!media) return;
+            out.push({
+              title: component.formatEpisodeTitle(s_num, e_num),
+              quality: '360p ~ ' + (media.uhd ? '2160p' : '1080p') + (media.quality ? ' / ' + media.quality : ''),
+              info: voice ? ' / ' + Lampa.Utils.shortText(voice, 50) : '',
+              season: s_num,
+              episode: e_num,
+              media: media
+            });
+          });
+        } else {
+          flattenMedia(extract.pl && extract.pl.all || {}).forEach(function (media) {
+            var name = media.translation || media.quality || select_title;
+            if (filter_items.voice[choice.voice] && name !== filter_items.voice[choice.voice]) return;
+            out.push({
+              title: name,
+              quality: '360p ~ ' + (media.uhd ? '2160p' : '1080p') + (media.quality ? ' / ' + media.quality : ''),
+              info: '',
+              media: media
+            });
+          });
+        }
+        stelsLog('kinozer-filtered', { count: out.length, season: filter_items.season_num[choice.season], voice: filter_items.voice[choice.voice], sample: out.slice(0, 10).map(function (e) { return { title: e.title, season: e.season, episode: e.episode, media_id: e.media && e.media.id }; }) });
+        return out;
+      }
+
+      function parseSubs(tracks) {
+        var subs = [];
+        (tracks || []).forEach(function (t) {
+          if (t && t.kind === 'captions' && t.src) subs.push({ label: t.label || t.language || 'sub', url: component.processSubs(component.proxyLink((t.src + '').split(' or ')[0], prox_player, '', 'enc2t')) });
+        });
+        return subs.length ? subs : false;
+      }
+
+      function extractQuality(hlsSource, media) {
+        var source = null;
+        var tr = norm(media && media.translation || '');
+        (hlsSource || []).forEach(function (s) {
+          if (!source && tr && norm(s.label || '').indexOf(tr) !== -1) source = s;
+        });
+        if (!source) source = (hlsSource || []).filter(function (s) { return s['default']; })[0] || (hlsSource || [])[0] || {};
+        var items = [];
+        var quality = source.quality || {};
+        for (var q_id in quality) {
+          var link = (quality[q_id] || '').split(' or ').filter(Boolean)[0] || '';
+          if (!link) continue;
+          items.push({ label: q_id + 'p', quality: parseInt(q_id, 10) || 0, file: component.proxyLink(component.fixLinkProtocol(link, false, true), prox_player, '', 'enc2t') });
+        }
+        items.sort(function (a, b) { return b.quality - a.quality; });
+        var file = items[0] && items[0].file || '';
+        var map = {};
+        items.forEach(function (i) { map[i.label] = i.file; });
+        return { file: file, qualitys: Object.keys(map).length ? map : false, selected_label: source.label || '' };
+      }
+
+      function getStream(element, call, error) {
+        if (element.stream) return call(element);
+        if (!(element.media && element.media.id && extract.domain)) return error();
+        var url = extract.domain.replace(/\/$/, '') + '/bnsi/movies/' + element.media.id;
+        requestJson(url, function (json) {
+          var q = extractQuality(json.hlsSource || [], element.media || {});
+          if (q.file) {
+            element.stream = q.file;
+            element.qualitys = q.qualitys;
+            element.subtitles = parseSubs(json.tracks || []);
+            stelsLog('kinozer-stream-ready', { title: element.title, media_id: element.media.id, selected_label: q.selected_label, has_quality: !!q.qualitys, subtitles_count: element.subtitles && element.subtitles.length || 0, url_preview: compact(q.file, 220) });
+            call(element);
+          } else {
+            stelsLog('kinozer-stream-empty', { title: element.title, media_id: element.media && element.media.id, hls_count: json.hlsSource && json.hlsSource.length || 0 });
+            error();
+          }
+        }, error, extract.postdata, extract.player_url);
+      }
+
+      function append(items) {
+        component.reset();
+        var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        var last_episode = component.getLastEpisode(items);
+        items.forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = last_episode;
+            element.translate_voice = filter_items.voice[choice.voice];
+          }
+          var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title || object.movie.original_name || select_title].join('') : object.movie.original_title || select_title);
+          var view = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', element);
+          var hash_file = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title || object.movie.original_name || select_title, filter_items.voice[choice.voice]].join('') : (object.movie.original_title || select_title) + element.title);
+          element.timeline = view;
+          item.append(Lampa.Timeline.render(view));
+          if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
+          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+          item.on('hover:enter', function () {
+            if (element.loading) return;
+            if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            element.loading = true;
+            getStream(element, function (element) {
+              element.loading = false;
+              var first = { url: component.getDefaultQuality(element.qualitys, element.stream), quality: component.renameQualityMap(element.qualitys), subtitles: element.subtitles, timeline: element.timeline, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title) };
+              Lampa.Player.play(first);
+              if (element.season && Lampa.Platform.version) {
+                var playlist = [];
+                items.forEach(function (elem) {
+                  if (elem == element) playlist.push(first);
+                  else {
+                    var cell = { timeline: elem.timeline, title: elem.title, url: function (done) { getStream(elem, function (ready) { cell.url = component.getDefaultQuality(ready.qualitys, ready.stream); cell.quality = component.renameQualityMap(ready.qualitys); cell.subtitles = ready.subtitles; done(); }, function () { cell.url = ''; done(); }); } };
+                    playlist.push(cell);
+                  }
+                });
+                Lampa.Player.playlist(playlist);
+              } else Lampa.Player.playlist([first]);
+              if (viewed.indexOf(hash_file) == -1) { viewed.push(hash_file); item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>'); Lampa.Storage.set('online_view', viewed); }
+            }, function () { element.loading = false; Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
+          });
+          component.append(item);
+          component.contextmenu({ item: item, view: view, viewed: viewed, hash_file: hash_file, element: element, file: function (call) { getStream(element, function (ready) { call({ file: ready.stream, quality: ready.qualitys }); }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); }); } });
+        });
+        component.start(true);
+      }
+
+      this.search = function (_object, kinopoisk_id, data) {
+        object = _object;
+        select_title = object.search || object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name || '';
+        component.loading(true);
+        choice = { season: 0, voice: 0, voice_name: '' };
+        extract = { pl: null, domain: '', token: '', player_url: '', postdata: '' };
+        if (data && data[0] && (data[0].url || data[0].link)) {
+          loadPage(data[0].url || data[0].link);
+          return;
+        }
+        searchByQueries(queryList(), 0);
+      };
+
+      this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
+      this.reset = function () { component.reset(); choice = { season: 0, voice: 0, voice_name: '' }; filter(); append(filtred()); component.saveChoice(choice); };
+      this.filter = function (type, a, b) {
+        choice[a.stype] = b.index;
+        if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index];
+        component.reset();
+        filter();
+        append(filtred());
+        component.saveChoice(choice);
+      };
+      this.destroy = function () { network.clear(); extract = null; };
+    }
+
     function lampauaRemoteSource(component, _object, aliases, sourceTitle) {
       var network = new Lampa.Reguest();
       var object = _object;
@@ -15246,6 +15711,13 @@
       var collapsBlocked = (!startsWith(window.location.protocol, 'http') || window.location.hostname.indexOf('lampa') !== -1) && disable_dbg;
       var all_sources = [
 {
+        name: 'kinozer',
+        title: 'Kinozer',
+        source: new kinozer(this, object),
+        search: true,
+        kp: true,
+        imdb: false
+      }, {
         name: 'lampaua-uaflix',
         title: 'UaFlix',
         source: new lampauaRemoteSource(this, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix'),
