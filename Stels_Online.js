@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.27';
+    var STELS_ONLINE_VERSION = '1.0.28';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -151,26 +151,42 @@
       function shouldPatch(el) {
         if (!el || !el.length) return false;
         if (el.find('.stels-online-plugin-icon').length) return false;
-        if (el.closest('.settings-param, .settings-folder, .full-start__button').length) return false;
-        var component = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
+        var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-        return component === 'stels_online' || el.hasClass('view--stels_online') || el.hasClass('stels-online-settings-folder') || text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text);
+        if (componentKey === 'stels_online' || el.hasClass('view--stels_online') || el.hasClass('stels-online-settings-folder')) return true;
+        if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text)) return true;
+        return false;
+      }
+
+      function stelsPatchSettingsFolderElement(el) {
+        try {
+          if (!el || !el.length) return;
+          el.addClass('stels-online-settings-folder');
+          el.attr('data-subtitle', STELS_ONLINE_VERSION);
+          el.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
+            return /^stels_online\b/i.test(($(this).text() || '').trim());
+          }).text(STELS_ONLINE_VERSION);
+          if (!el.find('.settings-folder__icon').length) el.prepend('<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true"></div>');
+          if (!el.find('.settings-folder__name').length) el.append('<div class="settings-folder__name"></div>');
+          el.find('.settings-folder__icon').first().html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
+          el.find('.settings-folder__name').first().text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
+          el.children().filter(function () {
+            var node = $(this);
+            if (node.hasClass('settings-folder__icon') || node.hasClass('settings-folder__name')) return false;
+            return /^\s*stels_online\s*$/i.test((node.text() || '').trim());
+          }).remove();
+        } catch (e) {}
       }
 
       function patch(root) {
         try {
           var scope = root ? $(root) : $(document.body);
-          scope.find('[data-component="stels_online"], .view--stels_online, .selector').addBack('[data-component="stels_online"], .view--stels_online, .selector').each(function () {
+          scope.find('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').addBack('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').each(function () {
             var el = $(this);
-            if (el.attr('data-subtitle') && /^stels_online\b/i.test(String(el.attr('data-subtitle')))) el.attr('data-subtitle', STELS_ONLINE_VERSION);
-            el.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
-              return /^stels_online\b/i.test(($(this).text() || '').trim());
-            }).text(STELS_ONLINE_VERSION);
-            if (el.hasClass('stels-online-settings-folder') || component === 'stels_online') {
-              var iconBox = el.find('.settings-folder__icon').first();
-              if (iconBox.length) iconBox.html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
-            }
+            var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
+            if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) stelsPatchSettingsFolderElement(el);
             if (!shouldPatch(el)) return;
+            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
             var display = el.css('display');
             if (display === 'inline') el.css('display', 'inline-flex');
             else if (display === 'block') el.css('display', 'flex');
@@ -402,8 +418,9 @@
           '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
           '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-episode-badge{font-size:.7em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
-          '.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{font-size:0!important;color:transparent!important;overflow:hidden!important;}' +
-          '.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{font-size:1rem!important;}' +
+          '.settings-folder.stels-online-settings-folder{display:flex!important;align-items:center!important;gap:1em!important;}' +
+          '.settings-folder.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{display:flex!important;align-items:center!important;justify-content:center!important;width:2.8em!important;height:2.8em!important;min-width:2.8em!important;font-size:1rem!important;color:transparent!important;overflow:visible!important;}' +
+          '.settings-folder.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{display:block!important;width:2.6em!important;height:2.6em!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;font-size:1rem!important;}' +
           '.stels-online-settings-folder .full-start__subtitle,.stels-online-settings-folder .selector__subtitle,.stels-online-settings-folder .settings-folder__subtitle{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
@@ -1329,6 +1346,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -1866,6 +1884,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -2515,6 +2534,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -3290,6 +3310,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -3899,6 +3920,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -4277,6 +4299,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -4968,6 +4991,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -5443,6 +5467,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -5956,6 +5981,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -6452,6 +6478,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -6945,6 +6972,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -7428,6 +7456,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -7936,6 +7965,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -8572,6 +8602,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -9201,6 +9232,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -9433,6 +9465,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -9943,6 +9976,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -10322,6 +10356,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -10726,6 +10761,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -11364,6 +11400,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -11969,6 +12006,7 @@
 
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -13074,6 +13112,7 @@
       };
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         current_videos = [];
       };
@@ -14947,6 +14986,7 @@
       };
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         extract = [];
         title_page_episodes = [];
@@ -15586,7 +15626,164 @@
         var status = stelsSourceStatus[key] && stelsSourceStatus[key].status;
         if (status === 'ok') return title + ' ✅';
         if (status === 'empty' || status === 'error') return title + ' ❌';
+        if (status === 'wait') return title + ' ⏳';
         return title;
+      }
+
+      var stelsPrecheckTimer = null;
+      var stelsPrecheckToken = 0;
+      var stelsPrecheckRunning = false;
+      function stelsRefreshSourceFilterTitles() {
+        try {
+          var sourceTitles = obj_filter_sources.map(function (s) { return stelsSourceTitleWithStatus(s); });
+          var need = Lampa.Storage.get('stels_online_filter', '{}') || {};
+          var selectedIndex = filter_sources.indexOf(balanser);
+          if (selectedIndex < 0) selectedIndex = 0;
+          var existing = need || {};
+          existing.source = selectedIndex;
+          Lampa.Storage.set('stels_online_filter', existing);
+          filter.chosen('sort', [stelsSourceTitleWithStatus(obj_filter_sources[selectedIndex] || balanser)]);
+          var selectItems = sourceTitles.map(function (title, i) {
+            return { title: title, selected: i === selectedIndex, index: i };
+          });
+          filter.set('sort', obj_filter_sources.map(function (e) {
+            return { source: e.name, title: stelsSourceTitleWithStatus(e), selected: e.name === balanser };
+          }));
+          setTimeout(function () { stelsPatchUaFlagIcons(document.body); }, 50);
+        } catch (e) {}
+      }
+
+      function stelsMakeProbeComponent(sourceName, token, done) {
+        var real = this;
+        var finished = false;
+        var probe = {};
+        for (var key in real) {
+          if (typeof real[key] === 'function') {
+            try { probe[key] = real[key].bind(real); } catch (e) { probe[key] = real[key]; }
+          }
+        }
+        function finish(status, message) {
+          if (finished || token !== stelsPrecheckToken) return;
+          finished = true;
+          stelsMarkSourceStatus(sourceName, status, message || '');
+          stelsLog('source-precheck-result', { source: sourceName, status: status, message: message || '' });
+          stelsRefreshSourceFilterTitles();
+          if (done) done();
+        }
+        probe.loading = function () {};
+        probe.reset = function () {};
+        probe.filter = function () {};
+        probe.selected = function () {};
+        probe.start = function () {};
+        probe.closeFilter = function () {};
+        probe.contextmenu = function () {};
+        probe.saveChoice = function () {};
+        probe.append = function () { finish('ok'); };
+        probe.empty = function (msg) { finish(msg ? 'error' : 'empty', msg || ''); };
+        probe.emptyForQuery = function (query) { finish('empty', query || ''); };
+        probe.similars = function (items) { finish(items && items.length ? 'ok' : 'empty'); };
+        return { component: probe, finish: finish };
+      }
+
+      function stelsMakeProbeSource(entry, fake) {
+        var name = stelsNormalizeSourceKey(entry && entry.name);
+        var engine = stelsNormalizeSourceKey(entry && (entry.engine || entry.name));
+        try {
+          if (name === 'uaflix' || engine === 'lampaua-uaflix') return new lampauaRemoteSource(fake, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix');
+          if (name === 'klonfun' || engine === 'lampaua-klonfun') return new lampauaRemoteSource(fake, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun');
+          if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno');
+          if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino');
+          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
+          if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
+          if (engine === 'lumex') return new lumex(fake, object);
+          if (engine === 'lumex2') return new lumex2(fake, object);
+          if (engine === 'rezka2') return new rezka2(fake, object);
+          if (engine === 'kinobase') return new kinobase(fake, object);
+          if (engine === 'collaps') return new collaps(fake, object, false);
+          if (engine === 'collaps-dash') return new collaps(fake, object, true);
+          if (engine === 'cdnmovies') return new cdnmovies(fake, object);
+          if (engine === 'filmix') return new filmix(fake, object);
+          if (engine === 'zetflix') return new zetflix(fake, object);
+          if (engine === 'fancdn') return new fancdn(fake, object);
+          if (engine === 'fancdn2') return new fancdn2(fake, object);
+          if (engine === 'fanserials') return new fanserials(fake, object);
+          if (engine === 'videoseed') return new videoseed(fake, object);
+          if (engine === 'vibix') return new vibix(fake, object);
+          if (engine === 'redheadsound') return new redheadsound(fake, object, false);
+          if (engine === 'redheadsound-dash') return new redheadsound(fake, object, true);
+          if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
+          if (engine === 'anilibria') return new anilibria(fake, object);
+          if (engine === 'anilibria2') return new anilibria2(fake, object);
+          if (engine === 'animelib') return new animelib(fake, object);
+          if (engine === 'kodik') return new kodik(fake, object);
+          if (engine === 'alloha') return new alloha(fake, object);
+          if (engine === 'kinopub') return new kinopub(fake, object);
+        } catch (e) {
+          stelsLog('source-precheck-create-error', { source: name, engine: engine, error: e && (e.message || e.toString()) });
+        }
+        return null;
+      }
+
+      function stelsStartSafePrecheck() {
+        var self = this;
+        clearTimeout(stelsPrecheckTimer);
+        stelsPrecheckTimer = setTimeout(function () {
+          if (stelsPrecheckRunning) return;
+          var now = Date.now();
+          var queue = obj_filter_sources.filter(function (entry) {
+            if (!entry || !entry.name || entry.disabled) return false;
+            if (entry.name === balanser) return false;
+            var info = stelsSourceStatus[entry.name];
+            return !(info && info.time && now - info.time < 30 * 60 * 1000);
+          }).slice(0, 12);
+          if (!queue.length) return;
+          stelsPrecheckRunning = true;
+          var token = ++stelsPrecheckToken;
+          stelsLog('source-precheck-start', { count: queue.length, sources: queue.map(function (s) { return s.name; }) });
+          function next() {
+            if (token !== stelsPrecheckToken) { stelsPrecheckRunning = false; return; }
+            var entry = queue.shift();
+            if (!entry) { stelsPrecheckRunning = false; stelsLog('source-precheck-finish', {}); return; }
+            stelsMarkSourceStatus(entry.name, 'wait', '');
+            stelsRefreshSourceFilterTitles();
+            var probePack = stelsMakeProbeComponent.call(self, entry.name, token, function () {
+              try { if (probe && probe.destroy) probe.destroy(); } catch (e) {}
+              setTimeout(next, 550);
+            });
+            var probe = stelsMakeProbeSource(entry, probePack.component);
+            if (!probe) {
+              probePack.finish('error', 'precheck unsupported');
+              return;
+            }
+            var doneByTimeout = false;
+            var timeout = setTimeout(function () {
+              doneByTimeout = true;
+              try { if (probe && probe.destroy) probe.destroy(); } catch (e) {}
+              probePack.finish('empty', 'timeout');
+            }, 12000);
+            var originalFinish = probePack.finish;
+            probePack.finish = function (status, message) {
+              if (!doneByTimeout) clearTimeout(timeout);
+              originalFinish(status, message);
+            };
+            try {
+              if (!object.clarification && +object.movie.kinopoisk_id && entry.kp) probe.search(object, +object.movie.kinopoisk_id);
+              else if (!object.clarification && object.movie.imdb_id && entry.imdb) probe.search(object, object.movie.imdb_id);
+              else if (entry.search) probe.search(object);
+              else probePack.finish('empty', 'no search id');
+            } catch (e) {
+              clearTimeout(timeout);
+              probePack.finish('error', e && (e.message || e.toString()) || 'precheck error');
+            }
+          }
+          next();
+        }, 1600);
+      }
+
+      function stelsStopSafePrecheck() {
+        clearTimeout(stelsPrecheckTimer);
+        stelsPrecheckToken++;
+        stelsPrecheckRunning = false;
       }
       var sources = {};
       obj_filter_sources.forEach(function (s) {
@@ -15720,8 +15917,10 @@
         }, {
           source: 0
         });
+        stelsStopSafePrecheck();
         this.reset();
         this.find();
+        stelsStartSafePrecheck.call(this);
       };
 
       this.cleanTitle = function (str) {
@@ -16832,6 +17031,7 @@
       this.stop = function () {};
 
       this.destroy = function () {
+        stelsStopSafePrecheck();
         network.clear();
         files.destroy();
         scroll.destroy();
@@ -18186,9 +18386,9 @@
 
 
     function stelsBuildSettingsFolder() {
-      return $(Lampa.Lang.translate('<div class="settings-folder selector stels-online-settings-folder" data-component="stels_online">' +
+      return $(Lampa.Lang.translate('<div class="settings-folder selector stels-online-settings-folder" data-component="stels_online" data-title="Stels_Online" data-subtitle="' + STELS_ONLINE_VERSION + '">' +
         '<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true">' +
-          '<img src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block" alt="">' +
+          '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">' +
         '</div>' +
         '<div class="settings-folder__name">#{stels_online_title_full}</div>' +
       '</div>'));
@@ -18214,6 +18414,11 @@
       }).text(STELS_ONLINE_VERSION);
       field.find('.settings-folder__icon').html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.6em;height:2.6em;object-fit:contain;display:block;flex-shrink:0" alt="">');
       field.find('.settings-folder__name').text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
+      field.children().filter(function () {
+        var node = $(this);
+        if (node.hasClass('settings-folder__icon') || node.hasClass('settings-folder__name')) return false;
+        return /^\s*stels_online\s*$/i.test((node.text() || '').trim());
+      }).remove();
 
       var folders = body.find('.settings-folder.selector, .settings-folder').not(field);
       if (folders.length) folders.eq(0).after(field); // завжди другий пункт у загальному списку налаштувань
@@ -18227,6 +18432,7 @@
       setTimeout(stelsPlaceSettingsFolder, 100);
       setTimeout(stelsPlaceSettingsFolder, 500);
       setTimeout(stelsPlaceSettingsFolder, 1200);
+      setTimeout(stelsPlaceSettingsFolder, 2500);
     }
 
     function initSettings() {
@@ -18436,7 +18642,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.26: відновлено іконку в налаштуваннях, прибрано службовий stels_online з підпису, UA-джерела піднято в сортуванні, додано ✅/❌ статус джерел.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.28: виправлено іконку Stels_Online у налаштуваннях, додано безпечний фоновий precheck джерел, Kinozer видалено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
