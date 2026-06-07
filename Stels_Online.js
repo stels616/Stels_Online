@@ -123,7 +123,7 @@
 
     function stelsPatchUaFlagIcons(root) {
       try {
-        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino'];
+        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'klonfun'];
         var scope = root ? $(root) : $(document.body);
         scope.find('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').each(function () {
           var el = $(this);
