@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.35';
+    var STELS_ONLINE_VERSION = '1.0.43';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -18,7 +18,7 @@
       'uaflix', 'klonfun', 'batkomakhno', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
       'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
       'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'collaps',
-      'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'remux',
+      'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'iremux', 'remux',
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
       'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
       'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
@@ -33,7 +33,7 @@
       mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
       rezka: 'Rezka', pizdatoehd: 'PizdatoeHD', getstv: 'GetsTV', kinopub: 'KinoPub', zetflixdb: 'ZetflixDB',
       collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
-      kinoukr: 'KinoUkr', uafilm: 'UAFilm', kinotochka: 'KinoTochka', remux: 'Remux', anilibria: 'AniLibria',
+      kinoukr: 'KinoUkr', uafilm: 'UAFilm', kinotochka: 'KinoTochka', iremux: 'iRemux', remux: 'Remux', anilibria: 'AniLibria',
       animedia: 'Animedia', animego: 'AnimeGo', animevost: 'AnimeVost', animebesst: 'AnimeBesst', alloha: 'Alloha',
       mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
@@ -55,12 +55,12 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
-      eneyida: 'rezka2', kinotochka: 'rezka2', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      eneyida: 'rezka2', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
-      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'videoseed', kinoflix: 'videoseed', leproduction: 'videoseed',
+      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', kinoflix: 'videoseed', leproduction: 'videoseed',
       vkmovie: 'cdnvideohub', kinogo: 'rezka2', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'cdnvideohub'
     };
 
@@ -101,7 +101,7 @@
       key = stelsNormalizeSourceKey(key);
       if (!title) return false;
       if (/^ua/i.test(title)) return true;
-      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'KlonFun'].indexOf(key) !== -1;
+      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino'].indexOf(key) !== -1;
     }
 
     function stelsIsUaPrioritySource(source) {
@@ -123,7 +123,7 @@
 
     function stelsPatchUaFlagIcons(root) {
       try {
-        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'KlonFun'];
+        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino'];
         var scope = root ? $(root) : $(document.body);
         scope.find('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').each(function () {
           var el = $(this);
@@ -259,6 +259,100 @@
       } catch (e) {}
     }
 
+
+    function stelsIsAndroidRuntime() {
+      try { if (Lampa && Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('android')) return true; } catch (e) {}
+      try { return /Android/i.test((navigator && navigator.userAgent) || ''); } catch (e2) { return false; }
+    }
+
+    function stelsAndroidPlayerFixEnabled() {
+      try { return stelsIsAndroidRuntime() && Lampa.Storage.get('stels_online_android_player_fix', false) === true; }
+      catch (e) { return false; }
+    }
+
+    function stelsPreviewUrl(url) {
+      url = (url == null ? '' : String(url));
+      return url.length > 220 ? url.slice(0, 220) + '...' : url;
+    }
+
+    function stelsSanitizeAndroidPlayable(play, ctx) {
+      if (!stelsAndroidPlayerFixEnabled() || !play || typeof play !== 'object') return play;
+      try {
+        var out = play;
+        var url = out.url || out.file || '';
+        if (typeof url == 'string' && url.indexOf(' or ') !== -1) {
+          var parts = url.split(' or ');
+          out.url = parts[0];
+          if (!out.url_reserve && parts[1]) out.url_reserve = parts[1];
+          url = out.url;
+        }
+        if (typeof url == 'string' && /^https?:\/\//i.test(url)) {
+          if (/^https:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
+            out.url = url.replace(/^https:/i, 'http:');
+            if (!out.url_reserve) out.url_reserve = url;
+            url = out.url;
+          }
+          else if (/^http:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
+            if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
+          }
+        }
+        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
+          out._stels_original_quality = out.quality;
+          out.quality = false;
+        }
+        var timeout = parseInt(out.hls_manifest_timeout || 0, 10) || 0;
+        if (!timeout || timeout < 30000) out.hls_manifest_timeout = 30000;
+        stelsLog('android-player-fix-playable', {
+          ctx: ctx || '',
+          title: out.title || '',
+          season: out.season || 0,
+          episode: out.episode || 0,
+          has_url: !!(out.url || out.file),
+          has_reserve: !!out.url_reserve,
+          quality_disabled: !!out._stels_original_quality,
+          url_preview: stelsPreviewUrl(out.url || out.file || '')
+        });
+      } catch (e) {
+        stelsLog('android-player-fix-playable-error', { ctx: ctx || '', error: e && (e.message || e.toString()) });
+      }
+      return play;
+    }
+
+    function stelsInstallAndroidPlayerFixPatch() {
+      try {
+        if (!Lampa || !Lampa.Player || Lampa.Player.__stelsAndroidFixPatched) return;
+        var nativePlay = Lampa.Player.play;
+        var nativePlaylist = Lampa.Player.playlist;
+        if (typeof nativePlay == 'function') {
+          Lampa.Player.play = function (data) {
+            if (stelsAndroidPlayerFixEnabled()) data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
+            return nativePlay.apply(this, arguments.length ? [data] : arguments);
+          };
+        }
+        if (typeof nativePlaylist == 'function') {
+          Lampa.Player.playlist = function (list) {
+            if (stelsAndroidPlayerFixEnabled() && Array.isArray(list)) {
+              var original_len = list.length;
+              var safe = [];
+              list.forEach(function (item) {
+                if (!item) return;
+                if (typeof item.url === 'function') return;
+                safe.push(stelsSanitizeAndroidPlayable(item, 'Lampa.Player.playlist'));
+              });
+              if (!safe.length && list[0]) safe = [stelsSanitizeAndroidPlayable(list[0], 'Lampa.Player.playlist-first')];
+              list = safe;
+              stelsLog('android-player-fix-playlist', { original_count: original_len, safe_count: list.length, lazy_removed: original_len - list.length });
+            }
+            return nativePlaylist.apply(this, arguments.length ? [list] : arguments);
+          };
+        }
+        Lampa.Player.__stelsAndroidFixPatched = true;
+        stelsLog('android-player-fix-patch-installed', { android: stelsIsAndroidRuntime() });
+      } catch (e) {
+        stelsLog('android-player-fix-patch-error', { error: e && (e.message || e.toString()) });
+      }
+    }
+
     function stelsSafeJson(value) {
       try { return JSON.stringify(value, null, 2); }
       catch (e) { return String(value || ''); }
@@ -323,6 +417,7 @@
                 low.indexOf('stels_online_uaflix_mobile_ua') !== -1 ||
                 low.indexOf('stels_online_uaflix_forced_year') !== -1 ||
                 low.indexOf('stels_online_save_last_balanser') !== -1 ||
+                low.indexOf('stels_online_android_player_fix') !== -1 ||
                 low.indexOf('stels_online_lampac_token') !== -1 ||
                 low.indexOf('token') !== -1 ||
                 low.indexOf('account') !== -1 ||
@@ -373,6 +468,7 @@
         'stels_online_rezka2_cookie',
         'stels_online_fancdn_cookie',
         'stels_online_log_enabled',
+        'stels_online_android_player_fix',
         'stels_online_filter',
         'stels_online_sources_hide'
       ];
@@ -12557,10 +12653,12 @@
 
 
     // ===============================
-    function lampauaRemoteSource(component, _object, aliases, sourceTitle) {
+    function lampauaRemoteSource(component, _object, aliases, sourceTitle, remoteOptions) {
       var network = new Lampa.Reguest();
       var object = _object;
-      var host = 'http://lampaua.mooo.com/';
+      remoteOptions = remoteOptions || {};
+      var host = remoteOptions.host || 'http://lampaua.mooo.com/';
+      if (host && host.slice(-1) !== '/') host += '/';
       var select_title = '';
       var source_url = '';
       var memkey = '';
@@ -12569,6 +12667,16 @@
       var choice = { season: 0, voice: 0, voice_url: '', voice_name: sourceTitle || 'LampUA' };
       var current_videos = [];
       var current_source = null;
+
+      function remoteDirectUrl() {
+        var direct = remoteOptions.directPath || remoteOptions.directBalanser || '';
+        if (!direct) return '';
+        return host + 'lite/' + String(direct).replace(/^\/+/, '');
+      }
+
+      function remoteUseDirectFirst() {
+        return !!remoteOptions.preferDirect;
+      }
 
       function norm(value) {
         return (value == null ? '' : String(value)).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-яіїєґ0-9]+/ig, '');
@@ -12579,7 +12687,7 @@
 
       function account(url) {
         url = url + '';
-        var token = atob('NTQ0OTYzNzQ1MQ==');
+        var token = remoteOptions.token === false ? '' : (remoteOptions.token || atob('NTQ0OTYzNzQ1MQ=='));
         if (url.indexOf('account_email=') == -1) {
           var email = Lampa.Storage.get('account_email');
           if (!email && /^\d{6,}$/.test(token)) {
@@ -12605,8 +12713,201 @@
       }
 
       function addHeaders() {
-        var kit = Lampa.Storage.get('kit_aesgcmkey', '');
+        var kit = Lampa.Storage.get(remoteOptions.headerKey || 'kit_aesgcmkey', '') || Lampa.Storage.get('bwaesgcmkey', '');
         return kit ? { 'X-Kit-AesGcm': kit } : {};
+      }
+
+
+      function remoteHostBase() {
+        return (host || '').replace(/\/$/, '');
+      }
+
+      function remoteHostKey() {
+        return remoteHostBase().replace('http://', '').replace('https://', '');
+      }
+
+      function remoteAndroidVersion() {
+        if (!Lampa.Platform.is('android')) return 0;
+        try {
+          var current = AndroidJS.appVersion().split('-');
+          return parseInt(current.pop(), 10) || 0;
+        } catch (e) {
+          return 0;
+        }
+      }
+
+      function remoteRchEnsure() {
+        var hkey = remoteHostKey();
+        if (!window.rch_nws) window.rch_nws = {};
+        if (!window.rch_nws[hkey]) {
+          window.rch_nws[hkey] = {
+            type: Lampa.Platform.is('android') ? 'apk' : Lampa.Platform.is('tizen') ? 'cors' : undefined,
+            startTypeInvoke: false,
+            rchRegistry: false,
+            apkVersion: remoteAndroidVersion()
+          };
+        }
+        return window.rch_nws[hkey];
+      }
+
+      function remoteRchTypeInvoke(call) {
+        var hkey = remoteHostKey();
+        var base = remoteHostBase();
+        var state = remoteRchEnsure();
+        state.typeInvoke = state.typeInvoke || function (host_arg, cb) {
+          if (!state.startTypeInvoke) {
+            state.startTypeInvoke = true;
+            var check = function (good) {
+              state.type = Lampa.Platform.is('android') ? 'apk' : good ? 'cors' : 'web';
+              cb();
+            };
+            if (Lampa.Platform.is('android') || Lampa.Platform.is('tizen')) check(true);
+            else {
+              var net = new Lampa.Reguest();
+              net.silent(base.indexOf(location.host) >= 0 ? 'https://github.com/' : base + '/cors/check', function () {
+                check(true);
+              }, function () {
+                check(false);
+              }, false, { dataType: 'text' });
+            }
+          } else cb();
+        };
+        state.typeInvoke(base, call);
+      }
+
+      function remoteRchRegistry(client, startConnection) {
+        var hkey = remoteHostKey();
+        var base = remoteHostBase();
+        var state = remoteRchEnsure();
+        remoteRchTypeInvoke(function () {
+          try {
+            client.invoke('RchRegistry', {
+              host: location.host,
+              rchtype: Lampa.Platform.is('android') ? 'apk' : Lampa.Platform.is('tizen') ? 'cors' : (state.type || 'web'),
+              apkVersion: Lampa.Platform.is('android') ? (state.apkVersion || 0) : 0,
+              player: Lampa.Storage.field('player')
+            });
+          } catch (e) {
+            stelsLog('remote-rch-registry-invoke-error', { source: sourceTitle, host: base, error: e && (e.message || e.toString()) });
+          }
+
+          if (state.rchRegistry) return;
+          state.rchRegistry = true;
+
+          var handled = false;
+          client.on('RchRegistry', function () {
+            if (startConnection && !handled) {
+              handled = true;
+              startConnection();
+            }
+          });
+
+          client.on('RchClient', function (rchId, url, data, headers, returnHeaders) {
+            var net = new Lampa.Reguest();
+            function sendResult(uri, html) {
+              $.ajax({
+                url: base + '/rch/' + uri + '?id=' + rchId,
+                type: 'POST',
+                data: html,
+                async: true,
+                cache: false,
+                contentType: false,
+                processData: false,
+                success: function () {},
+                error: function () {
+                  try { client.invoke('RchResult', rchId, ''); } catch (e) {}
+                }
+              });
+            }
+            function result(html) {
+              if (Lampa.Arrays.isObject(html) || Lampa.Arrays.isArray(html)) html = JSON.stringify(html);
+              if (typeof CompressionStream !== 'undefined' && html && html.length > 1000) {
+                try {
+                  var compressionStream = new CompressionStream('gzip');
+                  var encoder = new TextEncoder();
+                  var readable = new ReadableStream({
+                    start: function (controller) {
+                      controller.enqueue(encoder.encode(html));
+                      controller.close();
+                    }
+                  });
+                  var compressedStream = readable.pipeThrough(compressionStream);
+                  new Response(compressedStream).arrayBuffer().then(function (compressedBuffer) {
+                    var compressedArray = new Uint8Array(compressedBuffer);
+                    if (compressedArray.length > html.length) sendResult('result', html);
+                    else sendResult('gzresult', compressedArray);
+                  })['catch'](function () { sendResult('result', html); });
+                } catch (e) {
+                  sendResult('result', html);
+                }
+              } else sendResult('result', html);
+            }
+
+            if (url == 'eval') {
+              try { result(eval(data)); } catch (e) { result(''); }
+            } else if (url == 'evalrun') {
+              try { eval(data); } catch (e) {}
+            } else if (url == 'ping') {
+              result('pong');
+            } else {
+              stelsLog('remote-rch-client-request', { source: sourceTitle, host: base, url: previewUrl(url || '') });
+              net['native'](url, result, function (e) {
+                stelsLog('remote-rch-client-empty', { source: sourceTitle, status: e && e.status, url: previewUrl(url || '') });
+                result('');
+              }, data, {
+                dataType: 'text',
+                timeout: 1000 * 8,
+                headers: headers,
+                returnHeaders: returnHeaders
+              });
+            }
+          });
+
+          client.on('Connected', function (connectionId) {
+            stelsLog('remote-rch-connected', { source: sourceTitle, host: base, connectionId: connectionId });
+            state.connectionId = connectionId;
+          });
+          client.on('Closed', function () { stelsLog('remote-rch-closed', { source: sourceTitle, host: base }); });
+          client.on('Error', function (err) { stelsLog('remote-rch-error', { source: sourceTitle, host: base, error: err && (err.message || err.toString ? err.toString() : err) }); });
+        });
+      }
+
+      function remoteRchInvoke(json, call) {
+        var hkey = remoteHostKey();
+        if (!window.nwsClient) window.nwsClient = {};
+        var client = window.nwsClient[hkey];
+        if (client && client.connectionId != null) return call();
+        if (client) {
+          stelsLog('remote-rch-reconnecting', { source: sourceTitle, host: remoteHostBase() });
+          try {
+            client.reconnect(function () { call(); });
+          } catch (e) {
+            call();
+          }
+          return;
+        }
+        if (typeof NativeWsClient == 'undefined') return call(false);
+        window.nwsClient[hkey] = new NativeWsClient(json.nws, { autoReconnect: true });
+        client = window.nwsClient[hkey];
+        client.on('Connected', function () {
+          remoteRchRegistry(client, function () { call(); });
+        });
+        client.connect();
+      }
+
+      function remoteRchRun(json, call) {
+        stelsLog('remote-rch-run', { source: sourceTitle, host: remoteHostBase(), has_nws: !!(json && json.nws) });
+        if (!json || !json.nws) return call(false);
+        if (typeof NativeWsClient == 'undefined') {
+          try {
+            Lampa.Utils.putScript([remoteHostBase() + '/js/nws-client-es5.js?v21042026'], function () {}, false, function () {
+              remoteRchInvoke(json, call);
+            }, true);
+          } catch (e) {
+            stelsLog('remote-rch-script-error', { source: sourceTitle, host: remoteHostBase(), error: e && (e.message || e.toString()) });
+            call(false);
+          }
+        } else remoteRchInvoke(json, call);
       }
 
       function absolute(url) {
@@ -12637,9 +12938,21 @@
 
       function sourceKey(j) {
         var raw = (j && (j.balanser || j.key || j.name || j.title || '')) + '';
+        var name = (j && j.name) || '';
+        var title = (j && j.title) || '';
+        var display = (j && j.display_name) || '';
         var first = raw.split(' ')[0];
-        var all = [raw, first, (j && j.display_name) || '', (j && j.title) || ''].map(norm).filter(Boolean);
-        return all;
+        var name_first = (name + '').split(' ')[0];
+        var title_first = (title + '').split(' ')[0];
+        var all = [
+          raw, first,
+          name, name_first,
+          title, title_first,
+          display,
+          (j && j.balanser) || '',
+          (j && j.key) || ''
+        ].map(norm).filter(Boolean);
+        return Lampa.Arrays.unique ? Lampa.Arrays.unique(all) : all.filter(function (v, i, a) { return a.indexOf(v) === i; });
       }
 
       function isWanted(j) {
@@ -12669,6 +12982,17 @@
 
       function loadSourceUrl(done, fail) {
         if (source_url) return done(source_url);
+        var direct = remoteDirectUrl();
+        function useDirect(reason) {
+          if (direct) {
+            current_source = { name: sourceTitle, balanser: remoteOptions.directPath || sourceTitle, url: direct, show: true };
+            source_url = direct;
+            stelsLog('remote-direct-source-url', { source: sourceTitle, direct: direct, reason: reason || '', prefer: remoteUseDirectFirst() });
+            return done(source_url);
+          }
+          fail(reason || ('Джерело ' + sourceTitle + ' не знайдено на сервері LampUA'));
+        }
+        if (remoteUseDirectFirst() && direct) return useDirect('preferDirect');
         life_wait_times = 0;
         var url = requestParams(host + 'lite/events?life=true');
         network.clear();
@@ -12677,17 +13001,18 @@
           if (json && json.accsdb) return fail(json.msg || 'Access denied');
           if (json && json.life) {
             memkey = json.memkey || '';
-            pollLife(done, fail);
+            pollLife(done, function (err) { useDirect(err || 'lifeevents fallback'); });
           } else {
             var src = pickSource(json);
             if (src && src.url) {
               current_source = src;
               source_url = src.url;
               done(source_url);
-            } else fail('Джерело ' + sourceTitle + ' не знайдено на сервері LampUA');
+            } else useDirect('events source not found');
           }
         }, function (a, c) {
-          fail(network.errorDecode ? network.errorDecode(a, c) : 'LampUA events error');
+          var err = network.errorDecode ? network.errorDecode(a, c) : 'LampUA events error';
+          useDirect(err);
         }, false, { headers: addHeaders() });
       }
 
@@ -12794,6 +13119,71 @@
         return typeof value == 'string' && value && (/^https?:\/\//i.test(value) || /\.(m3u8|mp4)(\?|$)/i.test(value));
       }
 
+
+      function remotePickPlayableFromHtml(str, originalFile) {
+        if (typeof str != 'string' || str.indexOf('videos__') === -1) return null;
+        var nested = parseJsonDate(str, '.videos__item') || [];
+        var playable = nested.filter(function (v) { return v && (v.method == 'play' || v.method == 'call' || v.stream || isPlayableUrl(v.url)); });
+        if (!playable.length) return null;
+        var found = lampauaFindSameEpisode(playable, originalFile || {}) || playable[0];
+        stelsLog('remote-html-playable-picked', {
+          source: sourceTitle,
+          count: playable.length,
+          picked_text: found && (found.text || found.title),
+          picked_method: found && found.method,
+          season: found && found.season,
+          episode: found && found.episode,
+          url_preview: previewUrl(found && found.url || '')
+        });
+        return found || null;
+      }
+
+      function normalizeRemotePlayableJson(json) {
+        if (!json || typeof json != 'object') return json;
+        if (json.url && typeof json.url == 'object') {
+          json.quality = json.quality || json.url;
+          var ukeys = Lampa.Arrays.getKeys(json.url || {});
+          json.url = ukeys.length ? json.url[ukeys[0]] : '';
+        }
+        if (!json.url && json.file) {
+          if (typeof json.file == 'string') json.url = json.file;
+          else if (typeof json.file == 'object') {
+            json.quality = json.quality || json.file;
+            var keys = Lampa.Arrays.getKeys(json.file || {});
+            if (keys.length) json.url = json.file[keys[0]];
+          }
+        }
+        if (!json.url && json.stream && typeof json.stream == 'string') json.url = json.stream;
+        if (!json.url && json.links && typeof json.links == 'object') {
+          json.quality = json.quality || json.links;
+          var lkeys = Lampa.Arrays.getKeys(json.links || {});
+          if (lkeys.length) json.url = json.links[lkeys[0]];
+        }
+        if (!json.url && json.sources && typeof json.sources == 'object') {
+          json.quality = json.quality || json.sources;
+          var skeys = Lampa.Arrays.getKeys(json.sources || {});
+          if (skeys.length) json.url = json.sources[skeys[0]];
+        }
+        if (!json.url && json.hls) json.url = json.hls;
+        if (!json.url && json.src) json.url = json.src;
+        if (json.url === true || json.url === false) json.url = '';
+        return json;
+      }
+
+      function remoteLooksLikeEndpoint(data) {
+        var url = data && (data.url || data.link || '') || '';
+        if (typeof url != 'string' || !url) return false;
+        if (isPlayableUrl(url)) return false;
+        return /(?:\/lite\/|\/movie(?:\?|$)|[?&]rjson=|[?&]href=|[?&]voice=)/i.test(url) || url.indexOf(remoteHostBase()) === 0;
+      }
+
+      function remotePickStreamFromText(text) {
+        if (typeof text != 'string') return null;
+        var m = text.match(/https?:\/\/[^'"\s<>]+?\.(?:m3u8|mp4)(?:\?[^'"\s<>]*)?/i);
+        if (!m) return null;
+        return { method: 'play', url: m[0], text: sourceTitle };
+      }
+
       function getFileUrl(file, call) {
         if (!file) return call(false, {});
 
@@ -12846,9 +13236,39 @@
         });
         network['native'](account(absolute(file.url)), function (json) {
           json = safeDecodeJson(json);
+          var htmlPlayable = remotePickPlayableFromHtml(json, file) || remotePickStreamFromText(json);
+          if (htmlPlayable) {
+            htmlPlayable = normalizeRemotePlayableJson(htmlPlayable) || htmlPlayable;
+            if ((htmlPlayable.method == 'call' || remoteLooksLikeEndpoint(htmlPlayable)) && htmlPlayable.url && htmlPlayable.url !== file.url) {
+              stelsLog('remote-html-playable-recursive-call', { source: sourceTitle, from: previewUrl(file.url), to: previewUrl(htmlPlayable.url), method: htmlPlayable.method || '', endpoint: remoteLooksLikeEndpoint(htmlPlayable) });
+              htmlPlayable.method = 'call';
+              return getFileUrl(htmlPlayable, call);
+            }
+            return call(htmlPlayable, htmlPlayable);
+          }
+          json = normalizeRemotePlayableJson(json);
           if (json && json.rch) {
-            stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, note: 'Сервер повернув rch. Потрібен NativeWs/RCH як у зразку, якщо це джерело не дасть пряме посилання.' });
-            return call(false, {});
+            stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, stage: 'getfile' });
+            return remoteRchRun(json, function (ok) {
+              if (!ok) return call(false, {});
+              var retry = new Lampa.Reguest();
+              retry.timeout(20000);
+              retry['native'](account(absolute(file.url)), function (json2) {
+                json2 = safeDecodeJson(json2);
+                var htmlPlayable2 = remotePickPlayableFromHtml(json2, file) || remotePickStreamFromText(json2);
+                if (htmlPlayable2) {
+                  htmlPlayable2 = normalizeRemotePlayableJson(htmlPlayable2) || htmlPlayable2;
+                  if ((htmlPlayable2.method == 'call' || remoteLooksLikeEndpoint(htmlPlayable2)) && htmlPlayable2.url && htmlPlayable2.url !== file.url) {
+                    htmlPlayable2.method = 'call';
+                    return getFileUrl(htmlPlayable2, call);
+                  }
+                  return call(htmlPlayable2, htmlPlayable2);
+                }
+                json2 = normalizeRemotePlayableJson(json2);
+                if (json2 && json2.rch) return call(false, {});
+                call(json2, json2 || {});
+              }, function () { call(false, {}); }, false, { headers: addHeaders() });
+            });
           }
           if (json && json.accsdb) {
             stelsLog('lampaua-getfile-access-denied', { source: sourceTitle, message: json.msg || json.denymsg || 'Access denied' });
@@ -12880,11 +13300,16 @@
       }
 
       function preparePlayable(item, json, json_call) {
-        json = safeDecodeJson(json) || {};
-        json_call = safeDecodeJson(json_call) || {};
+        json = normalizeRemotePlayableJson(safeDecodeJson(json) || {}) || {};
+        json_call = normalizeRemotePlayableJson(safeDecodeJson(json_call) || {}) || {};
         var q = json_call.quality || json.quality || item.qualitys || item.quality || false;
         q = normalizeQualityMap(q);
         var url = json.url || json.stream || json.file || '';
+        if (url && typeof url == 'object') {
+          q = q || url;
+          var pkeys = Lampa.Arrays.getKeys(url || {});
+          url = pkeys.length ? url[pkeys[0]] : '';
+        }
         // Для method=call не можна брати item.url/item.stream як запасний варіант:
         // item.url — це LampUA endpoint, а item.stream часто boolean true.
         if (!url && item.method != 'call') url = isRealStreamValue(item.stream) ? item.stream : item.url || '';
@@ -13241,9 +13666,28 @@
         if (json && json.accsdb) return component.empty(json.msg || 'Access denied');
         if (json && json.rch) {
           stelsLog('lampaua-rch-needed', { source: sourceTitle, stage: 'parse', json: json });
-          return component.empty('Джерело потребує RCH/NativeWs. Дивись лог Stels_Online.');
+          return remoteRchRun(json, function (ok) {
+            if (!ok) return component.empty('Джерело потребує RCH/NativeWs, але NativeWs не запустився. Дивись лог Stels_Online.');
+            if (source_url) request(requestParams(source_url));
+            else loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { component.empty(err); });
+          });
         }
         try {
+          if (json && typeof json == 'object' && !json.rch && !json.accsdb && str && String(str).charAt(0) !== '<') {
+            var jkeys = Lampa.Arrays.getKeys(json || {});
+            if (json.type == 'similar' && json.data && json.data.length) {
+              var jitems = json.data.map(function (elem) { elem.title = elem.title || elem.text; elem.link = elem.url || elem.link; elem.balanser = elem.balanser || (remoteOptions.directPath || sourceTitle); return elem; });
+              stelsLog('remote-json-similar', { source: sourceTitle, count: jitems.length });
+              component.similars(jitems);
+              component.loading(false);
+              return;
+            }
+            if (jkeys.length && typeof json[jkeys[0]] == 'string' && /^https?:\/\//i.test(json[jkeys[0]])) {
+              stelsLog('remote-json-link-follow', { source: sourceTitle, key: jkeys[0], url: previewUrl(json[jkeys[0]]) });
+              request(json[jkeys[0]]);
+              return;
+            }
+          }
           var items = parseJsonDate(str, '.videos__item');
           var buttons = parseJsonDate(str, '.videos__button');
           stelsLog('lampaua-parse', { source: sourceTitle, items_count: items.length, buttons_count: buttons.length, methods: items.slice(0, 20).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, similar: !!i.similar, url: i.url }; }) });
@@ -15574,6 +16018,27 @@
         kp: true,
         imdb: true
       }, {
+        name: 'rc-kinotochka',
+        title: 'KinoTochka',
+        source: new lampauaRemoteSource(this, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka' }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
+        name: 'rc-iremux',
+        title: 'iRemux',
+        source: new lampauaRemoteSource(this, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
+        name: 'rc-veoveo',
+        title: 'VeoVeo',
+        source: new lampauaRemoteSource(this, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
         name: 'uaflix',
         title: 'UAflix',
         source: new uaflix(this, object),
@@ -15805,7 +16270,7 @@
         (list || []).forEach(function (s) {
           if (!s || !s.name) return;
           var internal_key = stelsNormalizeSourceKey(s.name);
-          if (internal_key.indexOf('lampaua-') === 0) return;
+          if (internal_key.indexOf('lampaua-') === 0 || internal_key.indexOf('rc-') === 0) return;
           pushDisplaySource(s.name);
         });
 
@@ -15940,6 +16405,9 @@
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino');
           if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
+          if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
@@ -17395,6 +17863,7 @@
       Lampa.Params.trigger('stels_online_av1_support', true);
       Lampa.Params.trigger('stels_online_save_last_balanser', false);
       Lampa.Params.trigger('stels_online_log_enabled', true);
+      Lampa.Params.trigger('stels_online_android_player_fix', false);
       Lampa.Params.trigger('stels_online_rezka2_fix_stream', false);
       Lampa.Params.select('stels_online_kinobase_mirror', '', '');
       Lampa.Params.select('stels_online_kinobase_cookie', '', '');
@@ -18797,6 +19266,7 @@
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_plugin_cache\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити кеш Stels_Online</div>\n            <div class=\"settings-param__descr\">Скинути збережені сезони, вибір озвучки, останні джерела та позначки перегляду. Налаштування джерел, проксі та cookie не очищаються.</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Android: сумісний запуск відео</div>\n            <div class=\"settings-param__descr\">Вмикати, якщо на Android у вбудованому плеєрі Lampa серії/фільми не стартують, хоча на Windows працюють. Режим прибирає lazy-плейлист сезону, відключає quality-map для m3u8 і залишає один конкретний потік.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
@@ -18898,7 +19368,8 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.35: виправлено відкриття налаштувань після додавання перемикача запису логу; параметр stels_online_log_enabled зареєстровано через Lampa.Params.trigger.' });
+      stelsInstallAndroidPlayerFixPatch();
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.38: база 1.0.35 + перемикач Android: сумісний запуск відео. Режим прибирає lazy playlist і quality-map для m3u8 у вбудованому Android-плеєрі.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
