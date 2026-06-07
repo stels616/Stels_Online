@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.47';
+    var STELS_ONLINE_VERSION = '1.0.48';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -48,7 +48,7 @@
 
     var STELS_SOURCE_ENGINE_ALIAS = {
       lumex: 'lumex', lumex2: 'lumex2', rezka2: 'rezka2', kinobase: 'kinobase', collaps: 'collaps',
-      'collaps-dash': 'collaps-dash', cdnmovies: 'cdnmovies', filmix: 'filmix', zetflix: 'zetflix',
+      'collaps-dash': 'rc-collaps-dash', cdnmovies: 'cdnmovies', filmix: 'filmix', zetflix: 'zetflix',
       fancdn: 'fancdn', fancdn2: 'fancdn2', fanserials: 'fanserials', videoseed: 'videoseed', vibix: 'vibix',
       redheadsound: 'redheadsound', 'redheadsound-dash': 'redheadsound-dash', cdnvideohub: 'cdnvideohub',
       anilibria: 'anilibria', anilibria2: 'anilibria2', animelib: 'animelib', kodik: 'kodik', alloha: 'alloha',
@@ -9579,7 +9579,11 @@
           'Referer': referer || host + '/',
           'Origin': (referer && referer.indexOf('hdvbua.pro') !== -1) ? hdvbHost : host
         };
-        if (postdata) h['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        h['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+        if (postdata) {
+          h['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+          h['X-Requested-With'] = 'XMLHttpRequest';
+        }
         var finished = false;
         var timer = setTimeout(function () {
           if (finished) return;
@@ -9810,10 +9814,19 @@
 
       function selectSearchItem(items, q, next) {
         var best = items && items[0];
-        if (best && (best.score >= 55 || items.length === 1)) {
+        if (best && (best.score >= 45 || items.length === 1)) {
           stelsLog('eneyida-search-selected', { query: q, score: best.score, title: best.title, link: best.link });
           loadPage(best.link, next);
         } else next();
+      }
+
+      function searchByPostForm(q, callback, fallback) {
+        var post = 'do=search&subaction=search&story=' + encodeURIComponent(q);
+        stelsLog('eneyida-search-post-form', { query: q, url: host + '/' });
+        requestText(host + '/', function (html) {
+          if (looksLikeDetailPage(html)) { callback([{ title: q, link: host + '/', score: 999 }], true, html); return; }
+          callback(parseSearchResults(html, q));
+        }, fallback, host + '/', post);
       }
 
       function postSearch(q, callback, fallback) {
@@ -9830,30 +9843,71 @@
         }, fallback, host + '/');
       }
 
+      function searchFallbackGet(q, next) {
+        var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
+        stelsLog('eneyida-search', { query: q, url: url, fallback: 'get' });
+        requestText(url, function (html) {
+          if (looksLikeDetailPage(html)) { loadPage(url); return; }
+          selectSearchItem(parseSearchResults(html, q), q, next);
+        }, next, host + '/');
+      }
+
       function doSearchAt(index, variants) {
         if (searchDone) return;
         if (index >= variants.length) { searchDone = true; component.emptyForQuery(select_title); return; }
         var q = variants[index];
-        if (index === 0 && norm(object.movie && (object.movie.original_title || object.movie.original_name || '')) === 'from') {
-          stelsLog('eneyida-known-page', { query: q, url: host + '/7026-zzovni.html' });
-          loadPage(host + '/7026-zzovni.html', function () { doSearchAt(index + 1, variants); });
-          return;
-        }
         postSearch(q, function (postItems) {
-          if (postItems && postItems.length) { selectSearchItem(postItems, q, function () { doSearchAt(index + 1, variants); }); return; }
-          var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
-          stelsLog('eneyida-search', { query: q, url: url });
-          requestText(url, function (html) {
-            if (looksLikeDetailPage(html)) { loadPage(url); return; }
-            selectSearchItem(parseSearchResults(html, q), q, function () { doSearchAt(index + 1, variants); });
-          }, function () { doSearchAt(index + 1, variants); }, host + '/');
+          if (postItems && postItems.length) {
+            selectSearchItem(postItems, q, function () {
+              searchByPostForm(q, function (formItems, directHtml, html) {
+                if (directHtml && html) {
+                  var iframe = findIframe(html);
+                  if (iframe) {
+                    requestText(iframe, function (playerHtml) {
+                      extract = parsePlayerHtml(playerHtml);
+                      if (extract.length) { searchDone = true; filter(); append(filtred()); }
+                      else doSearchAt(index + 1, variants);
+                    }, function () { doSearchAt(index + 1, variants); }, host + '/');
+                    return;
+                  }
+                }
+                if (formItems && formItems.length) selectSearchItem(formItems, q, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
+                else searchFallbackGet(q, function () { doSearchAt(index + 1, variants); });
+              }, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
+            });
+            return;
+          }
+          searchByPostForm(q, function (formItems, directHtml, html) {
+            if (directHtml && html) {
+              var iframe = findIframe(html);
+              if (iframe) {
+                requestText(iframe, function (playerHtml) {
+                  extract = parsePlayerHtml(playerHtml);
+                  if (extract.length) { searchDone = true; filter(); append(filtred()); }
+                  else doSearchAt(index + 1, variants);
+                }, function () { doSearchAt(index + 1, variants); }, host + '/');
+                return;
+              }
+            }
+            if (formItems && formItems.length) selectSearchItem(formItems, q, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
+            else searchFallbackGet(q, function () { doSearchAt(index + 1, variants); });
+          }, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
         }, function () {
-          var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
-          stelsLog('eneyida-search', { query: q, url: url, fallback: true });
-          requestText(url, function (html) {
-            if (looksLikeDetailPage(html)) { loadPage(url); return; }
-            selectSearchItem(parseSearchResults(html, q), q, function () { doSearchAt(index + 1, variants); });
-          }, function () { doSearchAt(index + 1, variants); }, host + '/');
+          searchByPostForm(q, function (formItems, directHtml, html) {
+            if (directHtml && html) {
+              var iframe = findIframe(html);
+              if (iframe) {
+                requestText(iframe, function (playerHtml) {
+                  extract = parsePlayerHtml(playerHtml);
+                  if (extract.length) { searchDone = true; filter(); append(filtred()); }
+                  else doSearchAt(index + 1, variants);
+                }, function () { doSearchAt(index + 1, variants); }, host + '/');
+                return;
+              }
+            }
+            if (formItems && formItems.length) selectSearchItem(formItems, q, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
+            else searchFallbackGet(q, function () { doSearchAt(index + 1, variants); });
+          }, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
         });
       }
 
@@ -16557,6 +16611,13 @@
         kp: true,
         imdb: true
       }, {
+        name: 'rc-collaps-dash',
+        title: 'Collaps (DASH)',
+        source: new lampauaRemoteSource(this, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'collaps-dash' }),
+        search: false,
+        kp: true,
+        imdb: true
+      }, {
         name: 'eneyida',
         title: 'Eneyida',
         source: new eneyida(this, object),
@@ -16933,6 +16994,7 @@
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'collaps-dash' });
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
