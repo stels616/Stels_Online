@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.17';
+    var STELS_ONLINE_VERSION = '1.0.18';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
@@ -12543,10 +12543,21 @@
         return out;
       }
 
+      function isPlayableUrl(url) {
+        return typeof url == 'string' && /\.(m3u8|mp4)(\?|$)/i.test(url);
+      }
+
+      function isRealStreamValue(value) {
+        return typeof value == 'string' && value && (/^https?:\/\//i.test(value) || /\.(m3u8|mp4)(\?|$)/i.test(value));
+      }
+
       function getFileUrl(file, call) {
         if (!file) return call(false, {});
 
-        if (file.method == 'play' || file.stream || file.url && /\.(m3u8|mp4)(\?|$)/i.test(file.url)) {
+        // Важливо: LampUA-джерела типу UAflix і Rezka ~ 720 віддають method=call.
+        // Їхній file.url — це НЕ відео, а endpoint, який треба спочатку викликати.
+        // У 1.0.17 через file.stream=true цей endpoint помилково передавався в плеєр як HLS/MP4.
+        if (file.method != 'call' && (file.method == 'play' || isRealStreamValue(file.stream) || isPlayableUrl(file.url))) {
           stelsLog('lampaua-getfile-direct', {
             source: sourceTitle,
             method: file.method,
@@ -12555,9 +12566,24 @@
             episode: file.episode,
             has_url: !!file.url,
             has_stream: !!file.stream,
-            url_preview: previewUrl(file.url || file.stream || '')
+            stream_type: typeof file.stream,
+            url_preview: previewUrl(file.stream || file.url || '')
           });
           return call(file, file);
+        }
+
+        if (file.method == 'call') {
+          stelsLog('lampaua-getfile-call-required', {
+            source: sourceTitle,
+            method: file.method,
+            title: file.title || file.text,
+            season: file.season,
+            episode: file.episode,
+            has_url: !!file.url,
+            has_stream: !!file.stream,
+            stream_type: typeof file.stream,
+            url_preview: previewUrl(file.url || '')
+          });
         }
 
         if (!file.url) {
@@ -12594,12 +12620,13 @@
             json_type: typeof json,
             has_url: !!(json && json.url),
             has_stream: !!(json && json.stream),
+            has_file: !!(json && json.file),
             has_quality: !!(json && json.quality),
             has_headers: !!(json && json.headers),
             has_subtitles: !!(json && json.subtitles),
             has_subtitles_call: !!(json && json.subtitles_call),
             has_vast: !!(json && json.vast),
-            url_preview: previewUrl(json && (json.url || json.stream) || '')
+            url_preview: previewUrl(json && (json.url || json.stream || json.file) || '')
           });
           call(json, json || {});
         }, function (a, c) {
@@ -12614,7 +12641,11 @@
         json_call = safeDecodeJson(json_call) || {};
         var q = json_call.quality || json.quality || item.qualitys || item.quality || false;
         q = normalizeQualityMap(q);
-        var url = json.url || json.stream || item.stream || item.url || '';
+        var url = json.url || json.stream || json.file || '';
+        // Для method=call не можна брати item.url/item.stream як запасний варіант:
+        // item.url — це LampUA endpoint, а item.stream часто boolean true.
+        if (!url && item.method != 'call') url = isRealStreamValue(item.stream) ? item.stream : item.url || '';
+        if (url === true || url === false) url = '';
         if (q && typeof q === 'object') url = component.getDefaultQuality(q, url);
         var play = {
           url: url,
@@ -12645,6 +12676,7 @@
           season: play.season,
           episode: play.episode,
           has_url: !!play.url,
+          url_type: typeof play.url,
           has_reserve: !!play.url_reserve,
           has_quality: !!play.quality,
           has_headers: !!play.headers,
@@ -12688,7 +12720,7 @@
             element.loading = true;
             getFileUrl(element, function (json, json_call) {
               element.loading = false;
-              if (json && (json.url || json.stream || element.url || element.stream)) {
+              if (json && (json.url || json.stream || json.file || (element.method != 'call' && (element.url || isRealStreamValue(element.stream))))) {
                 var first = preparePlayable(element, json, json_call || {});
                 var playlist = [];
                 if (element.season) {
@@ -12697,7 +12729,7 @@
                     else playlist.push({
                       url: function (call) {
                         getFileUrl(elem, function (stream, stream_json) {
-                          if (stream && (stream.url || stream.stream || elem.url || elem.stream)) {
+                          if (stream && (stream.url || stream.stream || stream.file || (elem.method != 'call' && (elem.url || isRealStreamValue(elem.stream))))) {
                             var cell = preparePlayable(elem, stream, stream_json || {});
                             this.url = cell.url;
                             this.url_reserve = cell.url_reserve;
@@ -18103,7 +18135,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix/LampUA debug 1.0.16: пріоритет serial/{id} Playerjs playlist, підтримка vod із webdlrip/uaflix pattern, менше залежності від HLS-вгадування.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'UAflix/LampUA debug 1.0.18: method=call більше не передається в плеєр напряму; спочатку виконується getfile-запит, а endpoint не використовується як відео.' });
       stelsInstallImageStyles();
       initStorage();
       initLang();
