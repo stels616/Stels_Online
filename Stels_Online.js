@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.37';
+    var STELS_ONLINE_VERSION = '1.0.35';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -101,7 +101,7 @@
       key = stelsNormalizeSourceKey(key);
       if (!title) return false;
       if (/^ua/i.test(title)) return true;
-      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino'].indexOf(key) !== -1;
+      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'KlonFun'].indexOf(key) !== -1;
     }
 
     function stelsIsUaPrioritySource(source) {
@@ -123,7 +123,7 @@
 
     function stelsPatchUaFlagIcons(root) {
       try {
-        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino'];
+        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'KlonFun'];
         var scope = root ? $(root) : $(document.body);
         scope.find('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').each(function () {
           var el = $(this);
@@ -12786,51 +12786,6 @@
         return out;
       }
 
-      function lampauaAndroidHttpsUrl(url) {
-        if (!url || !Lampa.Platform.is('android')) return url;
-        url = String(url);
-        // На Android-вбудованому плеєрі частина збірок Lampa погано відкриває HLS з http://lampaua.mooo.com/proxy/.
-        // API LampUA лишаємо через http, а в плеєр для потоків пробуємо віддати https.
-        if (/^http:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) return url.replace(/^http:\/\/lampaua\.mooo\.com\//i, 'https://lampaua.mooo.com/');
-        return url;
-      }
-
-      function lampauaAndroidHttpsQuality(q) {
-        if (!q || typeof q !== 'object' || !Lampa.Platform.is('android')) return q;
-        var out = {};
-        for (var k in q) out[k] = lampauaAndroidHttpsUrl(q[k]);
-        return out;
-      }
-
-      function lampauaIsLampProxyUrl(url) {
-        return /^https?:\/\/lampaua\.mooo\.com\/proxy\//i.test(String(url || ''));
-      }
-
-      function lampauaAndroidPlayerUrl(url) {
-        if (!url || !Lampa.Platform.is('android') || !lampauaIsLampProxyUrl(url)) return url;
-        var https_url = lampauaAndroidHttpsUrl(url);
-        // На Android-вбудованому плеєрі WebView/ExoPlayer іноді не відкриває напряму LampUA proxy HLS,
-        // хоча Windows відкриває. Тому для самого плеєра пробуємо обгорнути HLS через stream-proxy
-        // (налаштування "Проксувати потоки"), а прямий LampUA URL лишаємо резервом.
-        try {
-          var proxied = component.proxyStream ? component.proxyStream(https_url, 'lampaua') : https_url;
-          if (proxied && proxied !== https_url) {
-            stelsLog('lampaua-android-stream-proxy', { source: sourceTitle, from: previewUrl(https_url), to: previewUrl(proxied) });
-            return proxied;
-          }
-        } catch (e) {
-          stelsLog('lampaua-android-stream-proxy-error', { source: sourceTitle, error: e && (e.message || e.toString()) });
-        }
-        return https_url;
-      }
-
-      function lampauaAndroidPlayerQuality(q) {
-        if (!q || typeof q !== 'object' || !Lampa.Platform.is('android')) return q;
-        var out = {};
-        for (var k in q) out[k] = lampauaAndroidPlayerUrl(q[k]);
-        return out;
-      }
-
       function isPlayableUrl(url) {
         return typeof url == 'string' && /\.(m3u8|mp4)(\?|$)/i.test(url);
       }
@@ -12934,34 +12889,12 @@
         // item.url — це LampUA endpoint, а item.stream часто boolean true.
         if (!url && item.method != 'call') url = isRealStreamValue(item.stream) ? item.stream : item.url || '';
         if (url === true || url === false) url = '';
-        if (q && typeof q === 'object') q = lampauaAndroidPlayerQuality(q);
-        var original_android_url = url;
         if (q && typeof q === 'object') url = component.getDefaultQuality(q, url);
-        var reserve_android_url = '';
-        if (Lampa.Platform.is('android') && lampauaIsLampProxyUrl(url)) {
-          reserve_android_url = url;
-          var android_direct_https = lampauaAndroidHttpsUrl(url);
-          url = lampauaAndroidPlayerUrl(url);
-          stelsLog('lampaua-android-stream-url', {
-            source: sourceTitle,
-            title: item.title || item.text,
-            season: item.season,
-            episode: item.episode,
-            original: previewUrl(reserve_android_url),
-            direct_https: previewUrl(android_direct_https),
-            player_url: previewUrl(url)
-          });
-        }
         var play = {
           url: url,
-          url_reserve: reserve_android_url || json.url_reserve || json_call.url_reserve || item.url_reserve,
           quality: component.renameQualityMap(q),
-          headers: json_call.headers || json.headers || item.headers || (Lampa.Platform.is('android') && lampauaIsLampProxyUrl(reserve_android_url || original_android_url || url) ? {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 16; lampa_client) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.215 Mobile Safari/537.36',
-            'Referer': 'http://lampaua.mooo.com/',
-            'Origin': 'http://lampaua.mooo.com'
-          } : undefined),
-          hls_manifest_timeout: json_call.hls_manifest_timeout || json.hls_manifest_timeout || item.hls_manifest_timeout || (Lampa.Platform.is('android') && lampauaIsLampProxyUrl(reserve_android_url || original_android_url || url) ? 20000 : undefined),
+          headers: json_call.headers || json.headers || item.headers,
+          hls_manifest_timeout: json_call.hls_manifest_timeout || json.hls_manifest_timeout || item.hls_manifest_timeout,
           subtitles: json.subtitles || item.subtitles,
           subtitles_call: json_call.subtitles_call || json.subtitles_call || item.subtitles_call,
           segments: json_call.segments || json.segments || item.segments,
@@ -13233,18 +13166,7 @@
                 var first = preparePlayable(element, json, json_call || {});
                 if (lampauaIsRezka720()) first.voiceovers = lampauaRezkaVoiceovers(element, choice.voice);
                 var playlist = [];
-                var androidSafeSinglePlay = Lampa.Platform.is('android') && lampauaIsRezka720();
-                if (element.season && androidSafeSinglePlay) {
-                  playlist.push(first);
-                  stelsLog('lampaua-android-single-playlist', {
-                    source: sourceTitle,
-                    title: first.title,
-                    season: first.season,
-                    episode: first.episode,
-                    reason: 'Android built-in player: avoid lazy playlist objects for Rezka ~ 720 serials'
-                  });
-                }
-                else if (element.season) {
+                if (element.season) {
                   current_videos.forEach(function (elem) {
                     if (elem === element) playlist.push(first);
                     else playlist.push({
@@ -18976,7 +18898,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.37: виправлено відкриття налаштувань після додавання перемикача запису логу; параметр stels_online_log_enabled зареєстровано через Lampa.Params.trigger.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.35: виправлено відкриття налаштувань після додавання перемикача запису логу; параметр stels_online_log_enabled зареєстровано через Lampa.Params.trigger.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
