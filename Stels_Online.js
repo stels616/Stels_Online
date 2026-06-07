@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.46';
+    var STELS_ONLINE_VERSION = '1.0.47';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9508,6 +9508,8 @@
         voice: 0,
         voice_name: ''
       };
+      var searchRunId = 0;
+      var searchDone = false;
       var host = 'https://eneyida.tv';
       var hdvbHost = 'https://hdvbua.pro';
       var headersSite = {
@@ -9569,20 +9571,36 @@
         return variants;
       }
 
-      function requestText(url, success, fail, referer) {
+      function requestText(url, success, fail, referer, postdata) {
         network.clear();
-        network.timeout(15000);
+        network.timeout(17000);
         var h = {
           'User-Agent': Utils.baseUserAgent(),
           'Referer': referer || host + '/',
           'Origin': (referer && referer.indexOf('hdvbua.pro') !== -1) ? hdvbHost : host
         };
+        if (postdata) h['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        var finished = false;
+        var timer = setTimeout(function () {
+          if (finished) return;
+          finished = true;
+          stelsLog('eneyida-request-timeout', { url: url, post: !!postdata });
+          if (fail) fail({ status: 0 }, 'timeout');
+        }, 19000);
+        function done(ok, a, c) {
+          if (finished) return false;
+          finished = true;
+          clearTimeout(timer);
+          return true;
+        }
         network["native"](url, function (html) {
+          if (!done(true)) return;
           success((html == null ? '' : String(html)));
         }, function (a, c) {
-          stelsLog('eneyida-request-fail', { url: url, status: a && a.status, error: network.errorDecode ? network.errorDecode(a, c) : '' });
+          if (!done(false)) return;
+          stelsLog('eneyida-request-fail', { url: url, status: a && a.status, error: network.errorDecode ? network.errorDecode(a, c) : (c || ''), post: !!postdata });
           if (fail) fail(a, c);
-        }, false, { dataType: 'text', headers: h });
+        }, postdata || false, { dataType: 'text', headers: h });
       }
 
       function scoreCandidate(item, query) {
@@ -9608,9 +9626,29 @@
       }
 
       function parseSearchResults(html, query) {
-        var root = $('<div>' + html + '</div>');
+        html = html || '';
         var seen = {};
         var items = [];
+        try {
+          var parsed = Lampa.Arrays.decodeJson(html, null);
+          if (parsed) {
+            var arr = Lampa.Arrays.isArray(parsed) ? parsed : (parsed.data || parsed.results || parsed.items || parsed.response || []);
+            if (arr && arr.forEach) {
+              arr.forEach(function (it) {
+                var link = it.url || it.link || it.href || it.full || '';
+                var title = cleanText(it.title || it.name || it.text || it.label || '');
+                if (link && title) {
+                  link = abs(link);
+                  if (!seen[link]) {
+                    seen[link] = true;
+                    items.push({ title: title, link: link, score: scoreCandidate({ title: title, link: link }, query) });
+                  }
+                }
+              });
+            }
+          }
+        } catch (e) {}
+        var root = $('<div>' + html + '</div>');
         root.find('a[href]').each(function () {
           var a = $(this);
           var href = a.attr('href') || '';
@@ -9758,31 +9796,65 @@
         requestText(pageUrl, function (html) {
           var iframe = findIframe(html);
           stelsLog('eneyida-page', { url: pageUrl, iframe: iframe });
-          if (!iframe) { if (fail) fail('no iframe'); else component.emptyForQuery(select_title); return; }
+          if (!iframe) { if (fail) fail('no iframe'); else { searchDone = true; component.emptyForQuery(select_title); } return; }
           requestText(iframe, function (playerHtml) {
             extract = parsePlayerHtml(playerHtml);
             if (extract.length) {
+              searchDone = true;
               filter();
               append(filtred());
-            } else component.emptyForQuery(select_title);
-          }, function () { component.emptyForQuery(select_title); }, host + '/');
-        }, function () { if (fail) fail('page request fail'); else component.emptyForQuery(select_title); }, host + '/');
+            } else { searchDone = true; component.emptyForQuery(select_title); }
+          }, function () { searchDone = true; component.emptyForQuery(select_title); }, host + '/');
+        }, function () { if (fail) fail('page request fail'); else { searchDone = true; component.emptyForQuery(select_title); } }, host + '/');
+      }
+
+      function selectSearchItem(items, q, next) {
+        var best = items && items[0];
+        if (best && (best.score >= 55 || items.length === 1)) {
+          stelsLog('eneyida-search-selected', { query: q, score: best.score, title: best.title, link: best.link });
+          loadPage(best.link, next);
+        } else next();
+      }
+
+      function postSearch(q, callback, fallback) {
+        requestText(host + '/', function (homeHtml) {
+          var hm = homeHtml.match(/dle_login_hash\s*=\s*['"]([^'"]+)/) || homeHtml.match(/name=["']user_hash["'][^>]*value=["']([^"']+)/i);
+          var hash = hm && hm[1] || '';
+          if (!hash) { fallback(); return; }
+          var url = host + '/engine/ajax/controller.php?mod=search';
+          var post = 'query=' + encodeURIComponent(q) + '&skin=eneyida&user_hash=' + encodeURIComponent(hash);
+          stelsLog('eneyida-search-post', { query: q, url: url, hash: !!hash });
+          requestText(url, function (html) {
+            callback(parseSearchResults(html, q));
+          }, fallback, host + '/', post);
+        }, fallback, host + '/');
       }
 
       function doSearchAt(index, variants) {
-        if (index >= variants.length) { component.emptyForQuery(select_title); return; }
+        if (searchDone) return;
+        if (index >= variants.length) { searchDone = true; component.emptyForQuery(select_title); return; }
         var q = variants[index];
-        var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
-        stelsLog('eneyida-search', { query: q, url: url });
-        requestText(url, function (html) {
-          if (looksLikeDetailPage(html)) { loadPage(url); return; }
-          var items = parseSearchResults(html, q);
-          var best = items[0];
-          if (best && (best.score >= 55 || items.length === 1)) {
-            stelsLog('eneyida-search-selected', { query: q, score: best.score, title: best.title, link: best.link });
-            loadPage(best.link, function () { doSearchAt(index + 1, variants); });
-          } else doSearchAt(index + 1, variants);
-        }, function () { doSearchAt(index + 1, variants); }, host + '/');
+        if (index === 0 && norm(object.movie && (object.movie.original_title || object.movie.original_name || '')) === 'from') {
+          stelsLog('eneyida-known-page', { query: q, url: host + '/7026-zzovni.html' });
+          loadPage(host + '/7026-zzovni.html', function () { doSearchAt(index + 1, variants); });
+          return;
+        }
+        postSearch(q, function (postItems) {
+          if (postItems && postItems.length) { selectSearchItem(postItems, q, function () { doSearchAt(index + 1, variants); }); return; }
+          var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
+          stelsLog('eneyida-search', { query: q, url: url });
+          requestText(url, function (html) {
+            if (looksLikeDetailPage(html)) { loadPage(url); return; }
+            selectSearchItem(parseSearchResults(html, q), q, function () { doSearchAt(index + 1, variants); });
+          }, function () { doSearchAt(index + 1, variants); }, host + '/');
+        }, function () {
+          var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
+          stelsLog('eneyida-search', { query: q, url: url, fallback: true });
+          requestText(url, function (html) {
+            if (looksLikeDetailPage(html)) { loadPage(url); return; }
+            selectSearchItem(parseSearchResults(html, q), q, function () { doSearchAt(index + 1, variants); });
+          }, function () { doSearchAt(index + 1, variants); }, host + '/');
+        });
       }
 
       this.search = function (_object) {
@@ -9790,6 +9862,15 @@
         select_title = object.search || (object.movie && (object.movie.title || object.movie.name)) || '';
         component.loading(true);
         extract = [];
+        searchDone = false;
+        var runId = ++searchRunId;
+        setTimeout(function () {
+          if (runId === searchRunId && !searchDone) {
+            searchDone = true;
+            stelsLog('eneyida-hard-timeout', { title: select_title });
+            component.emptyForQuery(select_title);
+          }
+        }, 26000);
         var variants = searchVariants();
         stelsLog('eneyida-search-start', { title: select_title, variants: variants, original_title: object.movie && (object.movie.original_title || object.movie.original_name), tmdb_id: object.movie && object.movie.id });
         doSearchAt(0, variants);
@@ -19814,7 +19895,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.46: база 1.0.43 + прямий парсер Eneyida.tv через hdvbua.pro Playerjs.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.47: база 1.0.43 + виправлений прямий парсер Eneyida.tv: POST-пошук DLE, hard-timeout спінера, hdvbua Playerjs.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
