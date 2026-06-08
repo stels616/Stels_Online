@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.53';
+    var STELS_ONLINE_VERSION = '1.0.54';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -10149,15 +10149,25 @@
         list.push(item);
       }
 
+      function parseSeasonOnly(text) {
+        text = cleanText(text || '');
+        var m = text.match(/(?:сезон|season|s)\s*0*(\d+)/i);
+        return m ? (parseInt(m[1], 10) || 0) : 0;
+      }
+
+      function parseEpisodeOnly(text) {
+        text = cleanText(text || '');
+        var m = text.match(/(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i);
+        return m ? (parseInt(m[1], 10) || 0) : 0;
+      }
+
       function parseSeasonEpisode(text) {
         text = cleanText(text || '');
         var m = text.match(/(?:сезон|season|s)\s*0*(\d+).*?(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i) ||
                 text.match(/[sс]\s*0*(\d+)\s*[eе]\s*0*(\d+)/i) ||
                 text.match(/0*(\d+)\s*[xх]\s*0*(\d+)/i);
         if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
-        m = text.match(/(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i);
-        if (m) return { season: 1, episode: parseInt(m[1], 10) || 0 };
-        return { season: 0, episode: 0 };
+        return { season: parseSeasonOnly(text), episode: parseEpisodeOnly(text) };
       }
 
       function normalizeStreamUrl(url, referer) {
@@ -10172,8 +10182,8 @@
         url = normalizeStreamUrl(url, referer);
         if (!url) return;
         var meta = parseSeasonEpisode(title || '');
-        season = season || meta.season || 0;
         episode = episode || meta.episode || 0;
+        season = season || meta.season || (episode ? 1 : 0);
         uniquePush(list, {
           title: title || (episode ? component.formatEpisodeTitle(season || 1, episode) : select_title),
           quality: /\.m3u8/i.test(url) ? 'HLS' : 'Eneyida',
@@ -10186,17 +10196,22 @@
         }, url + '|' + title);
       }
 
-      function addIframe(list, url, title, referer, poster) {
+      function addIframe(list, url, title, referer, poster, season, episode, info) {
         url = absolute(url, referer || ref);
         if (!url || /(?:youtube\.com|youtu\.be|google|facebook|twitter|instagram)/i.test(url)) return;
+        var meta = parseSeasonEpisode(title || '');
+        episode = episode || meta.episode || 0;
+        season = season || meta.season || (episode ? 1 : 0);
         uniquePush(list, {
-          title: title || select_title,
+          title: title || (episode ? component.formatEpisodeTitle(season || 1, episode) : select_title),
           quality: 'Eneyida',
-          info: '',
+          info: info || '',
+          season: season || 0,
+          episode: episode || 0,
           iframe: url,
           referer: referer || ref,
           poster: poster || ''
-        }, url);
+        }, url + '|' + (season || 0) + '|' + (episode || 0));
       }
 
       function tryParseJsonLike(text) {
@@ -10215,7 +10230,7 @@
           return;
         }
         if (typeof node == 'string') {
-          parseFilesFromString(node, list, ctx.title || select_title, ctx.info || '', ctx.referer || ref, ctx.poster || '');
+          parseFilesFromString(node, list, ctx.title || select_title, ctx.info || '', ctx.referer || ref, ctx.poster || '', ctx.season || 0, ctx.episode || 0);
           return;
         }
         if (typeof node != 'object') return;
@@ -10223,8 +10238,9 @@
         var title = cleanText(node.title || node.name || node.label || ctx.title || '');
         var info = cleanText(node.subtitle || node.voice || node.translation || ctx.info || '');
         var meta = parseSeasonEpisode(title || ctx.title || '');
-        var season = meta.season || ctx.season || 0;
+        var season = meta.season || ctx.season || parseSeasonOnly(title || ctx.title || '') || 0;
         var episode = meta.episode || ctx.episode || 0;
+        if (episode && !season) season = 1;
 
         if (node.file || node.hls || node.src || node.url) {
           parseFilesFromString(node.file || node.hls || node.src || node.url, list, title || ctx.title || select_title, info, ctx.referer || ref, ctx.poster || '', season, episode);
@@ -10243,6 +10259,26 @@
           return;
         }
 
+        try {
+          var playlist = component.parsePlaylist ? component.parsePlaylist(file) : [];
+          if (playlist && playlist.length) {
+            playlist.forEach(function (pl) {
+              var label = cleanText(pl.label || title || '');
+              var voice = cleanText(pl.voice || info || '');
+              var meta = parseSeasonEpisode(label + ' ' + title);
+              var sNum = season || meta.season || (meta.episode ? 1 : 0);
+              var eNum = episode || meta.episode || 0;
+              (pl.links || []).forEach(function (link) {
+                if (/\.(?:m3u8|mp4)(?:$|\?)/i.test(link)) addDirectStream(list, link, label || title, voice, referer, sNum, eNum, poster);
+                else addIframe(list, link, label || title, referer, poster, sNum, eNum, voice);
+              });
+            });
+            return;
+          }
+        } catch (e) {
+          stelsLog('eneyida-playlist-parse-error', { title: title || '', error: e && (e.message || e.toString()) });
+        }
+
         var urls = [];
         var directRe = /https?:\/\/[^\s"'<>\\,]+(?:\.m3u8|\.mp4)(?:\?[^\s"'<>\\,]*)?/ig;
         var m;
@@ -10251,7 +10287,7 @@
 
         urls.forEach(function (u) {
           if (/\.(?:m3u8|mp4)(?:$|\?)/i.test(u)) addDirectStream(list, u, title, info, referer, season, episode, poster);
-          else addIframe(list, u, title, referer, poster);
+          else addIframe(list, u, title, referer, poster, season, episode, info);
         });
       }
 
@@ -10306,8 +10342,15 @@
         var list = [];
 
         root.find('iframe[src],iframe[data-src],video[src],source[src]').each(function (index) {
-          var src = $(this).attr('src') || $(this).attr('data-src') || '';
-          addIframe(list, src, index ? 'Плеєр ' + (index + 1) : select_title, pageUrl, poster);
+          var node = $(this);
+          var src = node.attr('src') || node.attr('data-src') || '';
+          var box = node.closest('[data-season],[data-episode],.episode,.seriya,.serie,.series,.tabs-box,.tab-pane,.player-box,.player,.movie-player,.video-box,li,article,.item');
+          var contextText = cleanText((box && box.length ? box.text() : node.parent().text()) || '');
+          var meta = parseSeasonEpisode(contextText);
+          var title = meta.episode ? component.formatEpisodeTitle(meta.season || 1, meta.episode) : (index ? 'Плеєр ' + (index + 1) : select_title);
+          var dataSeason = parseInt(node.attr('data-season') || (box && box.attr('data-season')) || 0, 10) || 0;
+          var dataEpisode = parseInt(node.attr('data-episode') || (box && box.attr('data-episode')) || 0, 10) || 0;
+          addIframe(list, src, title, pageUrl, poster, dataSeason || meta.season, dataEpisode || meta.episode, '');
         });
 
         var attrRe = /\b(?:data-file|data-src|src|file|hls)\s*[:=]\s*(['"])((?:\\.|(?!\1)[\s\S])*?)\1/ig;
@@ -10369,7 +10412,11 @@
             iframe_count: extract.filter(function (i) { return !!i.iframe; }).length,
             sample: extract.slice(0, 12).map(function (i) { return (i.title || '') + '|' + (i.stream || i.iframe || ''); }),
             iframe_html_count: root.find('iframe').length,
-            iframe_src_sample: root.find('iframe').map(function () { return $(this).attr('src') || $(this).attr('data-src') || ''; }).get().slice(0, 8)
+            iframe_src_sample: root.find('iframe').map(function () { return $(this).attr('src') || $(this).attr('data-src') || ''; }).get().slice(0, 8),
+            playerjs_count: ((html || '').match(/Playerjs\s*\(/ig) || []).length,
+            data_file_count: ((html || '').match(/(?:data-file|file|hls)\s*[:=]/ig) || []).length,
+            season_word_count: ((html || '').match(/сезон|season/ig) || []).length,
+            episode_word_count: ((html || '').match(/сер(?:і|и)я|episode/ig) || []).length
           });
 
           if (extract.length) {
@@ -17035,7 +17082,129 @@
         search_sources: search_sources,
         kp_sources: kp_sources,
         imdb_sources: imdb_sources
-      }); // шаловливые ручки
+      });
+
+      var stelsSourcePrecheckState = {};
+      var stelsSourcePrecheckRound = 0;
+      var stelsSourcePrecheckCapture = null;
+      var stelsSourcePrecheckTimers = [];
+      var stelsSourcePrecheckLastTitles = null;
+
+      function stelsClearPrecheckTimers() {
+        stelsSourcePrecheckTimers.forEach(function (t) { try { clearTimeout(t); } catch (e) {} });
+        stelsSourcePrecheckTimers = [];
+      }
+
+      function stelsPrecheckIcon(state) {
+        if (state === 'active') return '✓ ';
+        if (state === 'wait') return '… ';
+        if (state === 'empty') return '○ ';
+        if (state === 'error') return '× ';
+        if (state === 'timeout') return '? ';
+        return '';
+      }
+
+      function stelsDecorateSourceTitle(sourceObj) {
+        var title = sourceObj && sourceObj.title || '';
+        var state = sourceObj && stelsSourcePrecheckState[sourceObj.name] && stelsSourcePrecheckState[sourceObj.name].state;
+        return stelsPrecheckIcon(state) + title;
+      }
+
+      function stelsRefreshPrecheckSort() {
+        try {
+          filter.set('sort', obj_filter_sources.map(function (e) {
+            return {
+              source: e.name,
+              title: stelsDecorateSourceTitle(e),
+              selected: e.name === balanser
+            };
+          }));
+          var source_obj = obj_filter_sources.filter(function (e) { return e.name === balanser; })[0];
+          filter.chosen('sort', [source_obj ? stelsDecorateSourceTitle(source_obj) : balanser]);
+        } catch (e) {}
+      }
+
+      function stelsStopSafePrecheck(reason) {
+        stelsSourcePrecheckRound++;
+        stelsClearPrecheckTimers();
+        stelsSourcePrecheckCapture = null;
+        stelsLog('source-precheck-stop', { reason: reason || '', round: stelsSourcePrecheckRound });
+      }
+
+      function stelsStartSafePrecheck() {
+        var round = ++stelsSourcePrecheckRound;
+        stelsClearPrecheckTimers();
+        stelsSourcePrecheckCapture = null;
+        stelsSourcePrecheckState = {};
+        var queue = obj_filter_sources.filter(function (s) { return s && s.name && s.name !== balanser; });
+        var limit = 1;
+        stelsLog('source-precheck-start', { count: queue.length, limit: limit, sources: queue.map(function (s) { return s.name; }) });
+
+        function finishSource(sourceName, state, reason) {
+          if (round !== stelsSourcePrecheckRound) return;
+          stelsSourcePrecheckState[sourceName] = {
+            state: state,
+            reason: reason || '',
+            time: Date.now()
+          };
+          stelsLog('source-precheck-result', { source: sourceName, state: state, reason: reason || '' });
+          stelsRefreshPrecheckSort();
+        }
+
+        function runAt(index) {
+          if (round !== stelsSourcePrecheckRound) return;
+          if (index >= queue.length) {
+            stelsLog('source-precheck-finished', { count: queue.length });
+            stelsSourcePrecheckCapture = { source: 'late-callback-blocker', found: function () {}, empty: function () {} };
+            stelsSourcePrecheckTimers.push(setTimeout(function () {
+              if (round === stelsSourcePrecheckRound && stelsSourcePrecheckCapture && stelsSourcePrecheckCapture.source === 'late-callback-blocker') stelsSourcePrecheckCapture = null;
+            }, 8000));
+            return;
+          }
+
+          var item = queue[index];
+          var sourceName = item.name;
+          var source = sources[sourceName];
+          if (!source || typeof source.search !== 'function') {
+            finishSource(sourceName, 'error', 'no-source-search');
+            runAt(index + 1);
+            return;
+          }
+
+          finishSource(sourceName, 'wait', '');
+          var completed = false;
+          function done(state, reason) {
+            if (completed || round !== stelsSourcePrecheckRound) return;
+            completed = true;
+            finishSource(sourceName, state, reason || '');
+            stelsSourcePrecheckTimers.push(setTimeout(function () { runAt(index + 1); }, 120));
+          }
+
+          stelsSourcePrecheckCapture = {
+            source: sourceName,
+            found: function (reason) { done('active', reason || 'append'); },
+            empty: function (reason) { done('empty', reason || 'empty'); }
+          };
+
+          stelsSourcePrecheckTimers.push(setTimeout(function () { done('timeout', 'timeout'); }, 7000));
+
+          try {
+            var movie = object.movie || {};
+            var kpId = +movie.kinopoisk_id || 0;
+            var imdbId = movie.imdb_id || '';
+            if (item.kp && kpId) source.search(object, kpId);
+            else if (item.imdb && imdbId) source.search(object, imdbId);
+            else if (item.search) source.search(object);
+            else done('timeout', 'no-fast-id');
+          } catch (e) {
+            done('error', e && (e.message || e.toString()) || 'exception');
+          }
+        }
+
+        stelsSourcePrecheckTimers.push(setTimeout(function () { runAt(0); }, 450));
+      }
+
+      // шаловливые ручки
 
       if (filter_sources.indexOf(balanser) == -1) {
         balanser = default_balanser;
@@ -17096,6 +17265,7 @@
       };
 
       this.changeBalanser = function (balanser_name) {
+        stelsStopSafePrecheck('change-balanser');
         stelsLog('change-balanser', { from: balanser, to: balanser_name });
         balanser = balanser_name;
         Lampa.Storage.set('stels_online_balanser', balanser);
@@ -17134,6 +17304,8 @@
 
 
       this.search = function () {
+        stelsStopSafePrecheck('search-start');
+        stelsSourcePrecheckState = {};
         stelsLog('search-start', { balanser: balanser, title: object && object.movie && (object.movie.title || object.movie.name), original_title: object && object.movie && (object.movie.original_title || object.movie.original_name), imdb_id: object && object.movie && object.movie.imdb_id, kinopoisk_id: object && object.movie && object.movie.kinopoisk_id, tmdb_id: object && object.movie && (object.movie.tmdb_id || object.movie.id) });
         this.activity.loader(true);
         this.filter({
@@ -17775,6 +17947,11 @@
 
 
       this.similars = function (json, search_more, more_params) {
+        if (stelsSourcePrecheckCapture) {
+          if (json && json.length) stelsSourcePrecheckCapture.found('similars');
+          else stelsSourcePrecheckCapture.empty('similars-empty');
+          return;
+        }
         var _this5 = this;
 
         json.forEach(function (elem) {
@@ -17829,6 +18006,7 @@
 
 
       this.reset = function () {
+        if (stelsSourcePrecheckCapture) return;
         contextmenu_all = [];
         last = filter.render().find('.selector').eq(0)[0];
         scroll.render().find('.empty').remove();
@@ -17846,6 +18024,7 @@
 
 
       this.loading = function (status) {
+        if (stelsSourcePrecheckCapture) return;
         if (status) this.activity.loader(true);else {
           this.activity.loader(false);
           if (Lampa.Activity.active().activity === this.activity && this.inActivity()) this.activity.toggle();
@@ -17914,6 +18093,7 @@
 
 
       this.filter = function (filter_items, choice) {
+        if (stelsSourcePrecheckCapture) return;
         var select = [];
 
         var add = function add(type, title) {
@@ -17943,7 +18123,7 @@
           reset: true
         });
         filter_items.source = obj_filter_sources.map(function (s) {
-          return s.title;
+          return stelsDecorateSourceTitle(s);
         });
         add('source', Lampa.Lang.translate('stels_online_balanser'));
         if (filter_items.voice && filter_items.voice.length) add('voice', Lampa.Lang.translate('torrent_parser_voice'));
@@ -17952,11 +18132,11 @@
         this.updateQualityFilter();
         select.push(qualityFilter);
         filter.set('filter', select);
-        stelsLog('sort-menu-build', { count: obj_filter_sources.length, sources: obj_filter_sources.map(function(e){ return e.name + ':' + e.title; }), selected: balanser });
+        stelsLog('sort-menu-build', { count: obj_filter_sources.length, sources: obj_filter_sources.map(function(e){ return e.name + ':' + e.title; }), selected: balanser, precheck: stelsSourcePrecheckState });
         filter.set('sort', obj_filter_sources.map(function (e) {
           return {
             source: e.name,
-            title: e.title,
+            title: stelsDecorateSourceTitle(e),
             selected: e.name === balanser
           };
         }));
@@ -17991,7 +18171,7 @@
           return e.name === balanser;
         })[0];
         filter.chosen('filter', select);
-        filter.chosen('sort', [source_obj ? source_obj.title : balanser]);
+        filter.chosen('sort', [source_obj ? stelsDecorateSourceTitle(source_obj) : balanser]);
       };
       /**
        * Добавить файл
@@ -17999,6 +18179,10 @@
 
 
       this.append = function (item) {
+        if (stelsSourcePrecheckCapture) {
+          stelsSourcePrecheckCapture.found('append');
+          return;
+        }
         stelsDecorateItemWithImage(item);
         item.on('hover:focus', function (e) {
           last = e.target;
@@ -18012,6 +18196,7 @@
 
 
       this.contextmenu = function (params) {
+        if (stelsSourcePrecheckCapture) return;
         contextmenu_all.push(params);
         params.item.on('hover:long', function () {
           function selectQuality(title, callback) {
@@ -18177,11 +18362,16 @@
 
 
       this.empty = function (msg) {
+        if (stelsSourcePrecheckCapture) {
+          stelsSourcePrecheckCapture.empty(msg || 'empty');
+          return;
+        }
         stelsLog('empty', { balanser: balanser, message: msg || '' });
         var empty = Lampa.Template.get('list_empty');
         if (msg) empty.find('.empty__descr').text(msg);
         scroll.append(empty);
         this.loading(false);
+        stelsSourcePrecheckTimers.push(setTimeout(function () { stelsStartSafePrecheck(); }, 650));
       };
       /**
        * Показать пустой результат по ключевому слову
@@ -18206,6 +18396,7 @@
 
 
       this.start = function (first_select) {
+        if (stelsSourcePrecheckCapture) return;
         if (Lampa.Activity.active().activity !== this.activity) return; //обязательно, иначе наблюдается баг, активность создается но не стартует, в то время как компонент загружается и стартует самого себя.
 
         if (first_select) {
@@ -18236,6 +18427,9 @@
           back: this.back
         });
         if (this.inActivity()) Lampa.Controller.toggle('content');
+        if (first_select) {
+          stelsSourcePrecheckTimers.push(setTimeout(function () { stelsStartSafePrecheck(); }, 650));
+        }
       };
 
       this.render = function () {
@@ -18251,6 +18445,7 @@
       this.stop = function () {};
 
       this.destroy = function () {
+        stelsStopSafePrecheck('destroy');
         network.clear();
         files.destroy();
         scroll.destroy();
@@ -19818,7 +20013,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'Kinozer 1.0.22: виправлено вибір результату пошуку, додано direct/fallback запити до player/bnsi та розширено діагностику.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.54: повернуто source-precheck; Eneyida розширено для PlayerJS/playlist із сезонами та серіями.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
