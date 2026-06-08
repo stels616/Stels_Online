@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.74';
+    var STELS_ONLINE_VERSION = '1.0.75';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -193,6 +193,7 @@
       function stelsPatchFlatPluginEntry(el) {
         try {
           if (!el || !el.length) return;
+          if (el.hasClass('view--stels_online') || el.hasClass('full-start__button')) return;
           if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
           el.addClass('stels-online-source-entry');
           var display = el.css('display');
@@ -229,6 +230,7 @@
             var el = $(this);
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
             var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text);
+            if (el.hasClass('view--stels_online') || el.hasClass('full-start__button')) return;
             if (el.find('.stels-online-plugin-icon').length) {
               if (flatMatch) stelsPatchFlatPluginEntry(el);
               return;
@@ -658,6 +660,7 @@
           '.stels-online-version-under{font-size:.72em;line-height:1.1;opacity:.6;margin-top:.12em;}' +
           '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;}' +
           '.stels-online-source-entry .stels-online-source-icon{width:2.15em!important;height:2.15em!important;margin-right:.7em!important;object-fit:contain!important;flex-shrink:0!important;}' +
+          '.full-start__button.view--stels_online .full-start__subtitle,.full-start__button.view--stels_online .selector__subtitle,.full-start__button.view--stels_online [class*=\"subtitle\"],.full-start__button.view--stels_online .stels-online-version-under{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
           '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
@@ -9875,12 +9878,13 @@
       }
 
       function stelsPushTitleAndYear(list, title) {
-        var before = list.length;
+        title = cleanText(title || '');
+        if (!title) return;
+        var year = stelsSearchYear();
+        // Eneyida часто повертає точний збіг назви, але інший рік/тип (наприклад "Флеш" 2023 замість серіалу 2014).
+        // Тому для всіх карток з роком спершу пробуємо "Назва Рік", а вже потім чисту назву.
+        if (year && stelsShouldTryTitleWithYear(title)) stelsPushUniqueClean(list, title + ' ' + year);
         stelsPushUniqueClean(list, title);
-        if (list.length > before || list.indexOf(cleanText(title || '')) !== -1) {
-          var year = stelsSearchYear();
-          if (year && stelsShouldTryTitleWithYear(title)) stelsPushUniqueClean(list, cleanText(title || '') + ' ' + year);
-        }
       }
 
       function movieTitles() {
@@ -11428,15 +11432,34 @@
         }
         return value;
       }
+      function kinogoIsCloudflare(text) {
+        text = String(text || '');
+        return /Just a moment|challenges\.cloudflare\.com|cf-browser-verification|cf_clearance|Cloudflare/i.test(text);
+      }
+      function kinogoReadableError(message) {
+        message = String(message || '');
+        if (kinogoIsCloudflare(message) || /<!DOCTYPE html>|<html/i.test(message)) return 'Kinogo: сайт повернув Cloudflare-захист. Зміни адресу Kinogo у налаштуваннях або перевір домен у браузері.';
+        return message;
+      }
       function requestText(url, success, fail, options) {
         options = options || {};
         try {
           network.clear();
           network.timeout(options.timeout || 10000);
-          network["native"](url, function (html) { success(maybeDecode(html || '')); }, function (a, c) {
+          network["native"](url, function (html) {
+            html = maybeDecode(html || '');
+            if (kinogoIsCloudflare(html)) {
+              stelsLog('kinogo-cloudflare-detected', { url: url, sample: String(html || '').slice(0, 360) });
+              if (fail) fail(kinogoReadableError(html));
+              return;
+            }
+            success(html);
+          }, function (a, c) {
             var message = '';
             try { message = network.errorDecode(a, c); } catch (e) {}
-            if (fail) fail(message || (a && (a.statusText || a.status) || c || 'request error') + '');
+            message = kinogoReadableError(message || (a && (a.statusText || a.status) || c || 'request error') + '');
+            stelsLog('kinogo-request-fail', { url: url, status: a && a.status, statusText: a && a.statusText, message: message });
+            if (fail) fail(message);
           }, options.postdata || false, {
             dataType: 'text',
             withCredentials: false,
@@ -11487,10 +11510,16 @@
       }
       function variants() {
         var out = [];
+        var movie = object.movie || {};
+        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '').slice(0, 4), 10) || 0;
+        function push(c) { c = cleanText(c || ''); if (c && out.indexOf(c) === -1) out.push(c); }
         movieTitles().forEach(function (t) {
           var c = cleanText(t || '');
-          if (c && out.indexOf(c) === -1) out.push(c);
+          if (!c) return;
+          if (year && !/(?:^|\D)(19|20)\d{2}(?:\D|$)/.test(c)) push(c + ' ' + year);
+          push(c);
         });
+        stelsLog('kinogo-variant-order', { year: year, result: out.slice(0, 8) });
         return out.slice(0, 8);
       }
       function stelsEscapeRegExp(value) {
@@ -11912,10 +11941,16 @@
       }
       function variants() {
         var out = [];
+        var movie = object.movie || {};
+        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '').slice(0, 4), 10) || 0;
+        function push(c) { c = cleanText(c || ''); if (c && out.indexOf(c) === -1) out.push(c); }
         movieTitles().forEach(function (t) {
           var c = cleanText(t || '');
-          if (c && out.indexOf(c) === -1) out.push(c);
+          if (!c) return;
+          if (year && !/(?:^|\D)(19|20)\d{2}(?:\D|$)/.test(c)) push(c + ' ' + year);
+          push(c);
         });
+        stelsLog('kinogo-variant-order', { year: year, result: out.slice(0, 8) });
         return out.slice(0, 8);
       }
       function stelsEscapeRegExp(value) {
@@ -21241,17 +21276,40 @@
         }
       };
       Lampa.Manifest.plugins = manifest;
-      var button = "<div class=\"full-start__button selector view--stels_online\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
+      var button = "<div class=\"full-start__button selector view--stels_online\" data-stels-main-button=\"1\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block;margin:0\" alt=\"Stels_Online\">\n        </div>";
       Lampa.Listener.follow('full', function (e) {
+        if (e.type == 'render' || e.type == 'build' || e.type == 'complite') {
+          try {
+            stelsLog('full-card-event', {
+              type: e.type,
+              title: e.data && e.data.movie && (e.data.movie.title || e.data.movie.name || e.data.movie.original_title || e.data.movie.original_name) || '',
+              tmdb_id: e.data && e.data.movie && (e.data.movie.id || e.data.movie.tmdb_id) || '',
+              has_object: !!(e.object && e.object.activity),
+              torrent_count: e.object && e.object.activity && e.object.activity.render ? e.object.activity.render().find('.view--torrent').length : -1,
+              stels_count: e.object && e.object.activity && e.object.activity.render ? e.object.activity.render().find('.view--stels_online').length : -1
+            });
+          } catch (logErr) {}
+        }
         if (e.type == 'complite') {
           var btn = $(Lampa.Lang.translate(button));
-          btn.removeAttr('data-subtitle');
-          btn.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
           online_loading = false;
           btn.on('hover:enter', function () {
+            stelsLog('full-button-enter', { title: e.data && e.data.movie && (e.data.movie.title || e.data.movie.name) || '' });
             loadOnline(e.data.movie);
           });
-          e.object.activity.render().find('.view--torrent').after(btn);
+          try {
+            var render = e.object.activity.render();
+            render.find('.view--stels_online').remove();
+            var anchor = render.find('.view--torrent');
+            stelsLog('full-button-insert-before', { anchor_count: anchor.length, existing_count: render.find('.view--stels_online').length });
+            if (anchor.length) anchor.after(btn);
+            else render.find('.full-start__buttons,.full-start,.full-start-new__buttons').first().append(btn);
+            btn.removeAttr('data-subtitle');
+            btn.find('span,.full-start__subtitle,.selector__subtitle,[class*=\"subtitle\"],.stels-online-version-under').remove();
+            stelsLog('full-button-insert-after', { inserted: render.find('.view--stels_online').length, html: (btn.prop('outerHTML') || '').slice(0, 260) });
+          } catch (insertErr) {
+            stelsLog('full-button-insert-error', { error: insertErr && (insertErr.message || insertErr.toString()) });
+          }
         }
       });
 
@@ -22103,7 +22161,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.74: прибрано версію з кнопки головної картки через manifest/css/runtime cleanup, Eneyida додає запит з роком глобально для всіх назв.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.75: Eneyida шукає Назва+Рік перед короткою назвою; головна кнопка Stels_Online стала icon-only без назви/версії; додано лог full-card-event/full-button-insert; Kinogo ловить Cloudflare.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
