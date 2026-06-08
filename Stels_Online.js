@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.60';
+    var STELS_ONLINE_VERSION = '1.0.61';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9828,6 +9828,34 @@
         return matched / needleTokens.length;
       }
 
+      function stelsTrailingNumberInfo(value) {
+        var n = normalizeForCompare(value || '');
+        var m = n.match(/^(.*?)(?:\s+|^)(\d{1,2})$/);
+        if (!m) return { base: n, num: 0 };
+        return { base: (m[1] || '').trim(), num: parseInt(m[2], 10) || 0 };
+      }
+
+      function stelsExpectedTitleHasPartNumber() {
+        var has = false;
+        movieTitles().forEach(function (t) {
+          if (stelsTrailingNumberInfo(t).num) has = true;
+        });
+        return has;
+      }
+
+      function stelsIsWrongSequelTitle(title, query) {
+        var t = stelsTrailingNumberInfo(title);
+        if (!t.num || stelsExpectedTitleHasPartNumber()) return false;
+        var candidates = movieTitles().slice(0);
+        if (query) candidates.push(query);
+        for (var i = 0; i < candidates.length; i++) {
+          var q = normalizeForCompare(candidates[i] || '');
+          if (q && stelsTrailingNumberInfo(q).num) return false;
+          if (q && t.base === q) return true;
+        }
+        return false;
+      }
+
       function stelsEditDistanceLimited(a, b, limit) {
         a = String(a || '');
         b = String(b || '');
@@ -9871,6 +9899,7 @@
         var titleN = normalizeForCompare(title);
         var qN = normalizeForCompare(query);
         if (!titleN) return false;
+        if (stelsIsWrongSequelTitle(title, query)) return false;
         if (qN && (titleN === qN || stelsHasTitleTokenMatch(titleN, qN) || stelsHasFuzzyTitleTokenMatch(titleN, qN) || stelsTitleOverlapScore(titleN, qN) >= 0.75)) return true;
         var titles = movieTitles();
         for (var i = 0; i < titles.length; i++) {
@@ -9943,6 +9972,7 @@
         var title = normalizeForCompare(titleRaw);
         var q = normalizeForCompare(query || '');
         var score = 0;
+        if (stelsIsWrongSequelTitle(titleRaw, query)) return -999;
         if (q && title === q) score += 120;
         else if (q && stelsHasTitleTokenMatch(title, q)) score += 55;
         else if (q && stelsHasFuzzyTitleTokenMatch(title, q)) score += 95;
@@ -10075,19 +10105,22 @@
 
       function parseSeasonOnly(text) {
         text = cleanText(text || '');
-        var m = text.match(/(?:сезон|season|s)\s*0*(\d+)/i);
+        var m = text.match(/(?:сезон|season|s)\s*0*(\d+)/i) ||
+                text.match(/0*(\d+)\s*(?:сезон|season)/i);
         return m ? (parseInt(m[1], 10) || 0) : 0;
       }
 
       function parseEpisodeOnly(text) {
         text = cleanText(text || '');
-        var m = text.match(/(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i);
+        var m = text.match(/(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i) ||
+                text.match(/0*(\d+)\s*(?:сер(?:і|и)я|episode|епізод|эпизод)/i);
         return m ? (parseInt(m[1], 10) || 0) : 0;
       }
 
       function parseSeasonEpisode(text) {
         text = cleanText(text || '');
         var m = text.match(/(?:сезон|season|s)\s*0*(\d+).*?(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i) ||
+                text.match(/0*(\d+)\s*(?:сезон|season).*?0*(\d+)\s*(?:сер(?:і|и)я|episode|епізод|эпизод)/i) ||
                 text.match(/[sс]\s*0*(\d+)\s*[eе]\s*0*(\d+)/i) ||
                 text.match(/0*(\d+)\s*[xх]\s*0*(\d+)/i);
         if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
@@ -10640,6 +10673,17 @@
               if (!item.poster) item.poster = poster;
             });
             items = eneyidaNormalizeFinalItems(items || [], h1 || select_title, poster, source || '');
+            if (stelsEneyidaExpectedSerial() && !(items || []).some(function (i) { return i && i.season && i.episode; })) {
+              stelsLog('eneyida-type-mismatch-skip', {
+                expected: 'serial',
+                page: link,
+                title: h1 || select_title,
+                source: source || '',
+                count: (items || []).length,
+                sample: (items || []).slice(0, 8).map(function (i) { return 'S' + (i.season||0) + 'E' + (i.episode||0) + '|' + (i.title || '') + '|' + (i.stream || i.iframe || '').slice(0,120); })
+              });
+              return safeEmpty('Eneyida: знайдено фільм замість серіалу', { page: link, title: h1 || select_title });
+            }
             extract = items || [];
             stelsLog('eneyida-extract-ready', {
               source: source || '',
@@ -11031,7 +11075,8 @@
           original_title: object.movie && (object.movie.original_title || object.movie.original_name),
           tmdb_id: object.movie && (object.movie.tmdb_id || object.movie.id),
           imdb_id: object.movie && object.movie.imdb_id,
-          kinopoisk_id: object.movie && object.movie.kinopoisk_id
+          kinopoisk_id: object.movie && object.movie.kinopoisk_id,
+          expected_serial: stelsEneyidaExpectedSerial()
         });
 
         if (data && data[0] && data[0].link) {
@@ -21238,7 +21283,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.60: Eneyida: фільми завжди S0E0 з назвою фільму; voice->season структура виправлена; UASerials додано як beta-парсер.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.61: Eneyida: сувора перевірка частин/сіквелів, серіал не відкривається як фільм, PlayerJS voice->season виправлено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
