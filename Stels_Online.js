@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.50';
+    var STELS_ONLINE_VERSION = '1.0.51';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13,9 +13,11 @@
     var STELS_LOG_MAX = 1200;
 
     var STELS_SOURCES_HIDE_KEY = 'stels_online_sources_hide';
+    var STELS_WATCH_HISTORY_KEY = 'stels_online_watch_history';
+    var STELS_WATCH_HISTORY_MAX = 300;
 
     var STELS_REQUESTED_SOURCE_NAMES = [
-      'uaflix', 'klonfun', 'batkomakhno', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
+      'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
       'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
       'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'collaps',
       'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'iremux', 'remux',
@@ -29,7 +31,7 @@
     ];
 
     var STELS_SOURCE_TITLES = {
-      uaflix: 'UAflix', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
+      uaflix: 'UAflix', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', jacktor: 'JackTor', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
       mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
       rezka: 'Rezka', pizdatoehd: 'PizdatoeHD', getstv: 'GetsTV', kinopub: 'KinoPub', zetflixdb: 'ZetflixDB',
       collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
@@ -55,7 +57,7 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
-      eneyida: 'eneyida', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      eneyida: 'lampaua-eneyida', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
@@ -101,7 +103,7 @@
       key = stelsNormalizeSourceKey(key);
       if (!title) return false;
       if (/^ua/i.test(title)) return true;
-      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino'].indexOf(key) !== -1;
+      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'jacktor', 'eneyida', 'kinoukr', 'batkomakhno', 'klonfun'].indexOf(key) !== -1;
     }
 
     function stelsIsUaPrioritySource(source) {
@@ -123,7 +125,7 @@
 
     function stelsPatchUaFlagIcons(root) {
       try {
-        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino'];
+        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'JackTor', 'Eneyida', 'KinoUkr', 'BatkoMakhno', 'KlonFun'];
         var scope = root ? $(root) : $(document.body);
         scope.find('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').each(function () {
           var el = $(this);
@@ -411,6 +413,7 @@
               var low = k.toLowerCase();
               var protectedKey =
                 low.indexOf('stels_online_sources_hide') !== -1 ||
+                low.indexOf('stels_online_watch_history') !== -1 ||
                 low.indexOf('stels_online_rezka2_cookie') !== -1 ||
                 low.indexOf('stels_online_fancdn_cookie') !== -1 ||
                 low.indexOf('stels_online_proxy') !== -1 ||
@@ -470,7 +473,8 @@
         'stels_online_log_enabled',
         'stels_online_android_player_fix',
         'stels_online_filter',
-        'stels_online_sources_hide'
+        'stels_online_sources_hide',
+        'stels_online_watch_history'
       ];
       var out = {};
       try {
@@ -487,6 +491,88 @@
         out.error = e && (e.message || e.toString());
       }
       return out;
+    }
+
+    
+    function stelsCardKeyFromMovie(movie) {
+      movie = movie || {};
+      var id = movie.id || movie.tmdb_id || movie.source_id || '';
+      if (id) return String(id);
+      if (movie.kinopoisk_id) return 'kp:' + movie.kinopoisk_id;
+      if (movie.imdb_id) return 'imdb:' + movie.imdb_id;
+      return Lampa.Utils && Lampa.Utils.hash ? String(Lampa.Utils.hash((movie.original_title || movie.original_name || movie.title || movie.name || '') + ':' + (movie.release_date || movie.first_air_date || ''))) : ((movie.original_title || movie.original_name || movie.title || movie.name || '') + ':' + (movie.release_date || movie.first_air_date || ''));
+    }
+
+    function stelsReadWatchHistory() {
+      try {
+        var history = Lampa.Storage.get(STELS_WATCH_HISTORY_KEY, {});
+        return history && typeof history === 'object' && !Array.isArray(history) ? history : {};
+      } catch (e) { return {}; }
+    }
+
+    function stelsSaveWatchHistoryMap(history) {
+      try {
+        var keys = Object.keys(history || {});
+        if (keys.length > STELS_WATCH_HISTORY_MAX) {
+          keys.sort(function (a, b) { return (history[a].time || 0) - (history[b].time || 0); });
+          keys.slice(0, keys.length - STELS_WATCH_HISTORY_MAX).forEach(function (k) { delete history[k]; });
+        }
+        Lampa.Storage.set(STELS_WATCH_HISTORY_KEY, history || {});
+      } catch (e) {}
+    }
+
+    function stelsGetWatchHistory(movie) {
+      var key = stelsCardKeyFromMovie(movie);
+      var history = stelsReadWatchHistory();
+      return key && history[key] ? history[key] : null;
+    }
+
+    function stelsSaveWatchHistory(movie, source, sourceTitle, element, extra) {
+      try {
+        movie = movie || {};
+        element = element || {};
+        var key = stelsCardKeyFromMovie(movie);
+        if (!key) return;
+        var history = stelsReadWatchHistory();
+        var title = movie.title || movie.name || movie.original_title || movie.original_name || (extra && extra.title) || '';
+        var season = parseInt(element.season || (extra && extra.season) || 0, 10) || 0;
+        var episode = parseInt(element.episode || (extra && extra.episode) || 0, 10) || 0;
+        var itemTitle = element.title || (extra && extra.item_title) || '';
+        var voice = element.translate_voice || element.voice || (element.info ? String(element.info).replace(/^\s*\/\s*/, '') : '') || (extra && extra.voice) || '';
+        history[key] = {
+          key: key,
+          source: stelsNormalizeSourceKey(source || ''),
+          source_title: sourceTitle || stelsSourceTitle(source || '') || '',
+          season: season,
+          episode: episode,
+          item_title: itemTitle,
+          title: title,
+          voice: voice,
+          time: Date.now()
+        };
+        stelsSaveWatchHistoryMap(history);
+        stelsLog('watch-history-save', { key: key, source: history[key].source, source_title: history[key].source_title, season: season, episode: episode, item_title: itemTitle, voice: voice });
+      } catch (e) {
+        stelsLog('watch-history-save-error', { error: e && (e.message || e.toString()) });
+      }
+    }
+
+    function stelsFormatWatchHistory(item) {
+      if (!item) return '';
+      var parts = [];
+      if (item.source_title) parts.push(item.source_title);
+      if (item.season && item.episode) parts.push('S' + item.season + 'E' + item.episode);
+      else if (item.episode) parts.push('Серія ' + item.episode);
+      if (item.voice) parts.push(item.voice);
+      return parts.join(' • ');
+    }
+
+    function stelsClearWatchHistory() {
+      try {
+        Lampa.Storage.set(STELS_WATCH_HISTORY_KEY, {});
+        stelsLog('watch-history-cleared', {});
+        Lampa.Noty.show('Історію перегляду Stels_Online очищено');
+      } catch (e) {}
     }
 
     function stelsBuildLogText() {
@@ -16583,6 +16669,13 @@
         kp: true,
         imdb: true
       }, {
+        name: 'lampaua-jacktor',
+        title: 'JackTor',
+        source: new lampauaRemoteSource(this, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor'),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
         name: 'lampaua-batkomakhno',
         title: 'BatkoMakhno',
         source: new lampauaRemoteSource(this, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno'),
@@ -16639,12 +16732,12 @@
         kp: true,
         imdb: true
       }, {
-        name: 'eneyida',
+        name: 'lampaua-eneyida',
         title: 'Eneyida',
-        source: new eneyida(this, object),
+        source: new lampauaRemoteSource(this, object, ['eneyida', 'енєїда', 'енейіда', 'lme_eneyida'], 'Eneyida'),
         search: true,
-        kp: false,
-        imdb: false
+        kp: true,
+        imdb: true
       }, {
         name: 'uaflix',
         title: 'UAflix',
@@ -16918,6 +17011,10 @@
         var key = stelsNormalizeSourceKey(source && source.name || source);
         var title = source && source.title || stelsSourceTitle(key);
         var status = stelsSourceStatus[key] && stelsSourceStatus[key].status;
+        try {
+          var watch = stelsGetWatchHistory(object && object.movie);
+          if (watch && watch.source === key) title += ' • останнє' + (watch.season && watch.episode ? ' S' + watch.season + 'E' + watch.episode : '');
+        } catch (e) {}
         if (status === 'ok') return title + ' ✅';
         if (status === 'empty' || status === 'error') return title + ' ❌';
         if (status === 'wait') return title + ' ⏳';
@@ -17009,6 +17106,7 @@
           if (name === 'uaflix' || engine === 'lampaua-uaflix') return new lampauaRemoteSource(fake, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix');
           if (name === 'klonfun' || engine === 'lampaua-klonfun') return new lampauaRemoteSource(fake, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun');
           if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno');
+          if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino');
           if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
@@ -17016,7 +17114,8 @@
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
+          if (name === 'eneyida' || engine === 'lampaua-eneyida') return new lampauaRemoteSource(fake, object, ['eneyida', 'енєїда', 'енейіда', 'lme_eneyida'], 'Eneyida');
+          if (engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
@@ -18123,6 +18222,11 @@
 
       this.contextmenu = function (params) {
         contextmenu_all.push(params);
+        try {
+          params.item.on('hover:enter', function () {
+            stelsSaveWatchHistory(object.movie, balanser, stelsSourceTitle(balanser), params.element || {}, { item_title: params.item && params.item.find ? params.item.find('.online__title').text() : '' });
+          });
+        } catch (e) {}
         params.item.on('hover:long', function () {
           function selectQuality(title, callback) {
             return function (extra) {
@@ -18316,6 +18420,77 @@
        */
 
 
+
+      function stelsFindResumeContext(history) {
+        if (!history || !(history.season || history.episode)) return null;
+        var best = null;
+        contextmenu_all.forEach(function (params) {
+          var el = params && params.element || {};
+          var s = parseInt(el.season || 0, 10) || 0;
+          var e = parseInt(el.episode || 0, 10) || 0;
+          if (!best && history.season && history.episode && s === parseInt(history.season, 10) && e === parseInt(history.episode, 10)) best = params;
+        });
+        if (!best && history.episode) {
+          contextmenu_all.forEach(function (params) {
+            var el = params && params.element || {};
+            var e = parseInt(el.episode || 0, 10) || 0;
+            if (!best && e === parseInt(history.episode, 10)) best = params;
+          });
+        }
+        return best;
+      }
+
+      function stelsMaybeShowResumePrompt() {
+        try {
+          if (!object || !object.movie || !object.movie.number_of_seasons) return;
+          if (window.stels_online_resume_prompt_lock) return;
+          var history = stelsGetWatchHistory(object.movie);
+          if (!history || !(history.season || history.episode)) return;
+          var cardKey = stelsCardKeyFromMovie(object.movie);
+          var promptKey = cardKey + ':' + (history.time || 0) + ':' + balanser;
+          if (window.stels_online_last_resume_prompt === promptKey) return;
+          window.stels_online_last_resume_prompt = promptKey;
+          var params = stelsFindResumeContext(history);
+          var controller = Lampa.Controller.enabled().name;
+          var currentSource = stelsSourceTitle(balanser);
+          var lastText = stelsFormatWatchHistory(history);
+          var html = $('<div class="stels-online-resume-modal">' +
+            '<div style="font-size:1.05em;margin-bottom:.75em">Останній перегляд: <b>' + stelsEscapeHtml(lastText || '') + '</b></div>' +
+            (history.source && history.source !== balanser ? '<div style="opacity:.75;margin-bottom:.75em">Зараз відкрито джерело: <b>' + stelsEscapeHtml(currentSource) + '</b>. Останнє джерело: <b>' + stelsEscapeHtml(history.source_title || stelsSourceTitle(history.source)) + '</b>.</div>' : '') +
+            '<div style="display:flex;gap:.6em;flex-wrap:wrap;margin-top:.8em">' +
+              '<div class="simple-button selector" data-action="continue">Продовжити</div>' +
+              '<div class="simple-button selector" data-action="choose">Обрати іншу серію</div>' +
+            '</div>' +
+          '</div>');
+          html.find('[data-action="continue"]').on('hover:enter click', function () {
+            Lampa.Modal.close();
+            Lampa.Controller.toggle('content');
+            if (params && params.item) params.item.trigger('hover:enter');
+            else Lampa.Noty.show('Не знайшов цю серію у поточному списку');
+          });
+          html.find('[data-action="choose"]').on('hover:enter click', function () {
+            Lampa.Modal.close();
+            Lampa.Controller.toggle('content');
+          });
+          window.stels_online_resume_prompt_lock = true;
+          Lampa.Modal.open({
+            title: 'Продовжити перегляд?',
+            html: html,
+            size: 'small',
+            scroll_to_center: true,
+            select: html.find('[data-action="continue"]')[0],
+            onBack: function () {
+              Lampa.Modal.close();
+              Lampa.Controller.toggle(controller || 'content');
+            }
+          });
+          setTimeout(function () { window.stels_online_resume_prompt_lock = false; }, 1000);
+          stelsLog('watch-history-resume-prompt', { source: history.source, current_source: balanser, season: history.season, episode: history.episode, found: !!params });
+        } catch (e) {
+          stelsLog('watch-history-resume-error', { error: e && (e.message || e.toString()) });
+        }
+      }
+
       this.start = function (first_select) {
         if (Lampa.Activity.active().activity !== this.activity) return; //обязательно, иначе наблюдается баг, активность создается но не стартует, в то время как компонент загружается и стартует самого себя.
 
@@ -18347,6 +18522,7 @@
           back: this.back
         });
         if (this.inActivity()) Lampa.Controller.toggle('content');
+        if (first_select) setTimeout(stelsMaybeShowResumePrompt, 260);
       };
 
       this.render = function () {
@@ -19815,7 +19991,7 @@
       }
 
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_full_episode_title\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_full_episode_title}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_save_last_balanser\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_save_last_balanser}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_last_balanser\" data-static=\"true\">\n            <div class=\"settings-param__name\">#{stels_online_clear_last_balanser}</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_save_last_balanser\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_save_last_balanser}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_last_balanser\" data-static=\"true\">\n            <div class=\"settings-param__name\">#{stels_online_clear_last_balanser}</div>\n            <div class=\"settings-param__status\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_watch_history\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити історію перегляду Stels_Online</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
 
       if (Utils.isDebug()) {
         template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_kinobase_mirror\" data-type=\"input\" placeholder=\"#{settings_cub_not_specified}\">\n            <div class=\"settings-param__name\">#{stels_online_kinobase_mirror}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
@@ -19930,6 +20106,11 @@
             Lampa.Storage.set('stels_online_balanser', '');
             $('.settings-param__status', clear_last_balanser).removeClass('active error wait').addClass('active');
           });
+          var clear_watch_history = e.body.find('[data-name="stels_online_clear_watch_history"]');
+          clear_watch_history.unbind('hover:enter').on('hover:enter', function () {
+            stelsClearWatchHistory();
+            $('.settings-param__status', clear_watch_history).removeClass('active error wait').addClass('active');
+          });
           var rezka2_login = e.body.find('[data-name="stels_online_rezka2_login"]');
           rezka2_login.unbind('hover:enter').on('hover:enter', function () {
             var rezka2_login_status = $('.settings-param__status', rezka2_login).removeClass('active error wait').addClass('wait');
@@ -19978,7 +20159,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.47: база 1.0.43 + виправлений прямий парсер Eneyida.tv: POST-пошук DLE, hard-timeout спінера, hdvbua Playerjs.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.51: глобальна історія перегляду, продовження серії, Eneyida через LampUA, додано JackTor.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
