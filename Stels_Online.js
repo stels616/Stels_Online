@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.79';
+    var STELS_ONLINE_VERSION = '1.0.80';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9885,6 +9885,31 @@
         return m ? m[0] : '';
       }
 
+      function stelsExtractYearFromText(value) {
+        var m = String(value || '').match(/(?:^|[^0-9])((?:19|20)\d{2})(?=[^0-9]|$)/);
+        return m ? m[1] : '';
+      }
+
+      function stelsExtractEneyidaPageYear(html, pageTitle) {
+        html = String(html || '');
+        var samples = [];
+        samples.push(pageTitle || '');
+        var mt = html.match(/<meta[^>]+name=["']title["'][^>]+content=["']([^"']+)/i) ||
+                 html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i) ||
+                 html.match(/<title>([^<]+)/i);
+        if (mt) samples.push(component.decodeHtml(mt[1] || ''));
+        var h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+        if (h1) samples.push(cleanText(h1[1] || ''));
+        var joined = samples.join(' | ');
+        return stelsExtractYearFromText(joined);
+      }
+
+      function stelsEneyidaYearMismatch(pageYear) {
+        var expected = stelsSearchYear();
+        pageYear = String(pageYear || '');
+        return !!(expected && pageYear && pageYear !== expected);
+      }
+
       function stelsShouldTryTitleWithYear(title) {
         title = cleanText(title || '');
         if (!title) return false;
@@ -10231,7 +10256,11 @@
         });
         var movie = object.movie || {};
         var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '').slice(0, 4), 10);
-        if (year && item.year && Math.abs(parseInt(item.year, 10) - year) <= 1) score += 12;
+        var itemYear = parseInt(item.year || '', 10) || 0;
+        if (year && itemYear) {
+          if (Math.abs(itemYear - year) <= 1) score += 40;
+          else return -999;
+        }
         return score;
       }
 
@@ -10258,7 +10287,15 @@
           clarification: !!object.clarification
         });
         if (!object.clarification && best && titleMatch && best.score >= 75) {
-          loadTitle(best.item.link, best.item.poster);
+          var ranked = (items || []).slice(0).map(function (it) { return { item: it, score: searchScore(it, query) }; })
+            .filter(function (x) { return x.item && isRelevantTitle(x.item.title, query) && x.score >= 75; })
+            .sort(function (a, b) { return b.score - a.score; });
+          function tryRanked(pos) {
+            if (pos >= ranked.length) return safeEmpty('Eneyida: не знайдено результат з потрібним роком ' + (stelsSearchYear() || ''), { query: query, expected_year: stelsSearchYear(), candidates: (items || []).slice(0, 10).map(function (i) { return (i.title || '') + '|' + (i.year || '') + '|' + (i.link || ''); }) });
+            var candidate = ranked[pos].item;
+            loadTitle(candidate.link, candidate.poster, { onYearMismatch: function () { tryRanked(pos + 1); } });
+          }
+          tryRanked(0);
           return;
         }
         items.forEach(function (item) {
@@ -10955,12 +10992,18 @@
         );
       }
 
-      function loadTitle(link, fallbackPoster) {
+      function loadTitle(link, fallbackPoster, verifyOptions) {
         link = absolute(link, host);
         requestText(link, function (html) {
           var root = $('<div>' + (html || '') + '</div>');
           var h1 = cleanText(root.find('h1').first().text() || root.find('.full-title,.title').first().text() || select_title);
           var poster = pagePoster(root, link, fallbackPoster);
+          var pageYear = stelsExtractEneyidaPageYear(html, h1);
+          if (stelsEneyidaYearMismatch(pageYear)) {
+            stelsLog('eneyida-page-year-mismatch', { page: link, title: h1, page_year: pageYear, expected_year: stelsSearchYear(), action: verifyOptions && verifyOptions.onYearMismatch ? 'try-next' : 'stop' });
+            if (verifyOptions && typeof verifyOptions.onYearMismatch === 'function') return verifyOptions.onYearMismatch();
+            return safeEmpty('Eneyida: знайдено інший рік (' + pageYear + ' замість ' + stelsSearchYear() + ')', { page: link, title: h1, page_year: pageYear, expected_year: stelsSearchYear() });
+          }
           var pageItems = parseEmbeddedPlayers(html, link, poster);
           var iframeList = root.find('iframe[src],iframe[data-src]').map(function () { return $(this).attr('src') || $(this).attr('data-src') || ''; }).get();
           var mainIframe = '';
@@ -10978,6 +11021,8 @@
           stelsLog('eneyida-page', {
             page: link,
             title: h1,
+            page_year: pageYear,
+            expected_year: stelsSearchYear(),
             poster: poster,
             page_items_count: pageItems.length,
             page_direct_count: pageItems.filter(function (i) { return !!i.stream; }).length,
@@ -11528,6 +11573,12 @@
         if (kinogoIsCloudflare(message) || /<!DOCTYPE html>|<html/i.test(message)) return 'Kinogo: сайт повернув Cloudflare-захист. Зміни адресу Kinogo у налаштуваннях або перевір домен у браузері.';
         return message;
       }
+
+      function kinogoProxyUrl(url) {
+        var p = '';
+        try { p = proxy('cookie2') || proxy('cookie') || proxy('iframe') || ''; } catch (e) { p = ''; }
+        return p ? (p + url) : '';
+      }
       function requestText(url, success, fail, options) {
         options = options || {};
         try {
@@ -11993,6 +12044,48 @@
             }, { referer: host() + '/', timeout: 14000 });
           }, { referer: item.link, timeout: 12000 });
         }, function (err) {
+          if (!item._proxy_retry) {
+            var proxied = kinogoProxyUrl(item.link);
+            if (proxied) {
+              item._proxy_retry = true;
+              stelsLog('kinogo-page-proxy-retry', { page: item.link, proxy_url: proxied.slice(0, 180), error: err || '' });
+              return requestText(proxied, function (htmlProxy) {
+                if (destroyed) return;
+                // Обробляємо сторінку так само, але зберігаємо оригінальний referer для iframe.
+                var mt = htmlProxy.match(/<meta\s+property=["']og:title["'][^>]*content=["']([^"']+)/i) || htmlProxy.match(/<title>([^<]+)/i);
+                var mi = htmlProxy.match(/<meta\s+property=["']og:image["'][^>]*content=["']([^"']+)/i);
+                var title = cleanText((mt && mt[1]) || item.title || select_title);
+                var poster = absolute((mi && mi[1]) || item.poster || '', item.link);
+                var iframe = parseIframe(htmlProxy, item.link);
+                var decodedPage = component.decodeHtml(maybeDecode(htmlProxy || '')).replace(/\\//g, '/');
+                var si = decodedPage.indexOf('stravers.live');
+                stelsLog('kinogo-page-proxy', { page: item.link, title: title, iframe: iframe, poster: !!poster, html_length: decodedPage.length, stravers_index: si, html_sample: si >= 0 ? decodedPage.slice(Math.max(0, si - 220), si + 320) : decodedPage.slice(0, 360) });
+                if (!iframe) { component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return; }
+                mainReferer = item.link;
+                function handlePlayer(playerHtml) {
+                  if (destroyed) return;
+                  extract = parsePlayerHtml(playerHtml, iframe, poster, title);
+                  component.loading(false);
+                  if (!extract.length) { component.empty('Kinogo: не вдалося розібрати список сезонів/перекладів'); return; }
+                  buildFilter(); render(currentItems()); component.saveChoice(choice);
+                }
+                requestText(iframe, handlePlayer, function (errP) {
+                  var purl = kinogoProxyUrl(iframe);
+                  stelsLog('kinogo-player-proxy-after-page-proxy', { iframe: iframe, player_error: errP || '', proxy_url: (purl || '').slice(0, 180) });
+                  if (!purl) { component.loading(false); component.empty(errP || 'Kinogo player error'); return; }
+                  requestText(purl, handlePlayer, function (errP2) { component.loading(false); component.empty(errP2 || errP || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
+                }, { referer: item.link, timeout: 14000 });
+              }, function (errProxy) {
+                stelsLog('kinogo-page-proxy-fail', { page: item.link, error: errProxy || '' });
+                if (!item._warmed_retry && kinogoDleHash) {
+                  item._warmed_retry = true;
+                  stelsLog('kinogo-page-retry-after-warm', { page: item.link, error: errProxy || err || '' });
+                  return warmKinogoNews(item, startPageRequest);
+                }
+                component.loading(false); component.empty(errProxy || err || 'Kinogo page error');
+              }, { timeout: 16000, referer: host() + '/' });
+            }
+          }
           if (!item._warmed_retry && kinogoDleHash) {
             item._warmed_retry = true;
             stelsLog('kinogo-page-retry-after-warm', { page: item.link, error: err || '' });
@@ -22338,7 +22431,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.79: Eneyida шукає українські/локалізовані назви з Lampa/TMDB у primary, російські назви лише fallback; Kinogo prewarm DLE news перед відкриттям сторінки, додано hash/news лог.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.80: Eneyida шукає українські/локалізовані назви з Lampa/TMDB у primary, російські назви лише fallback; Kinogo prewarm DLE news перед відкриттям сторінки, додано hash/news лог.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
