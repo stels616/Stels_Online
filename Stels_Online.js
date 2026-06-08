@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.59';
+    var STELS_ONLINE_VERSION = '1.0.60';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -17,7 +17,7 @@
     var STELS_WATCH_HISTORY_MAX = 300;
 
     var STELS_REQUESTED_SOURCE_NAMES = [
-      'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
+      'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'uaserials', 'rezka720',
       'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
       'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'collaps',
       'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'iremux', 'remux',
@@ -45,7 +45,7 @@
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
-      'redheadsound-dash': 'RedHeadSound (DASH)', anilibria2: 'AniLibria.top', 'kinopub-native': 'KinoPub (OnlineMod)', 'uakino-lampaua': 'UAKino', 'uafilmme-lampaua': 'UafilmMe', rezka720: 'Rezka ~ 720'
+      'redheadsound-dash': 'RedHeadSound (DASH)', anilibria2: 'AniLibria.top', 'kinopub-native': 'KinoPub (OnlineMod)', 'uakino-lampaua': 'UAKino', 'uafilmme-lampaua': 'UafilmMe', uaserials: 'UASerials', rezka720: 'Rezka ~ 720'
     };
 
     var STELS_SOURCE_ENGINE_ALIAS = {
@@ -57,7 +57,7 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
-      eneyida: 'eneyida', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
@@ -103,7 +103,7 @@
       key = stelsNormalizeSourceKey(key);
       if (!title) return false;
       if (/^ua/i.test(title)) return true;
-      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'jacktor', 'eneyida', 'kinoukr', 'batkomakhno', 'klonfun'].indexOf(key) !== -1;
+      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uaserials', 'uafilm', 'uakino', 'jacktor', 'eneyida', 'kinoukr', 'batkomakhno', 'klonfun'].indexOf(key) !== -1;
     }
 
     function stelsIsUaPrioritySource(source) {
@@ -171,7 +171,7 @@
           if (!el.find('.settings-folder__icon').length) el.prepend('<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true"></div>');
           if (!el.find('.settings-folder__name').length) el.append('<div class="settings-folder__name"></div>');
           el.find('.settings-folder__icon').first().html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">');
-          el.find('.settings-folder__name').first().text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
+          el.find('.settings-folder__name').first().html('<div>' + stelsEscapeHtml(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online') + '</div><div class="stels-online-version-under">' + stelsEscapeHtml(STELS_ONLINE_VERSION) + '</div>');
           el.children().filter(function () {
             var node = $(this);
             if (node.hasClass('settings-folder__icon') || node.hasClass('settings-folder__name')) return false;
@@ -627,6 +627,7 @@
           '.settings-folder.stels-online-settings-folder .settings-folder__name{margin:0!important;padding:0!important;left:auto!important;transform:none!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{display:block!important;width:2.05em!important;height:2.05em!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;font-size:1rem!important;}' +
           '.stels-online-settings-folder .full-start__subtitle,.stels-online-settings-folder .selector__subtitle,.stels-online-settings-folder .settings-folder__subtitle{display:none!important;}' +
+          '.stels-online-version-under{font-size:.72em;line-height:1.1;opacity:.6;margin-top:.12em;}' +
           '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;}' +
           '.stels-online-source-entry .stels-online-source-icon{width:2.15em!important;height:2.15em!important;margin-right:.7em!important;object-fit:contain!important;flex-shrink:0!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
@@ -10448,8 +10449,30 @@
 
         json.forEach(function (seasonNode, seasonIndex) {
           var seasonTitle = eneyidaNodeTitle(seasonNode);
-          var seasonNum = parseSeasonOnly(seasonTitle) || parseInt(seasonNode.season || seasonNode.season_id || seasonNode.id || 0, 10) || (seasonIndex + 1);
           var seasonFolder = eneyidaIsFolder(seasonNode) ? seasonNode.folder : [];
+
+          // Варіант D: озвучка -> сезон -> серії. У деяких серіалах Eneyida
+          // верхній рівень є назвою перекладу, а сезони лежать всередині.
+          // Старий парсер сприймав вкладені "7 сезон" як озвучку і показував сезони у фільтрі перекладів.
+          var topLooksVoice = seasonFolder.some(function (child) { return eneyidaIsFolder(child) && parseSeasonOnly(eneyidaNodeTitle(child)); }) && !parseSeasonOnly(seasonTitle);
+          if (topLooksVoice) {
+            var topVoiceName = seasonTitle || 'Eneyida';
+            var voiceStat = { season: 0, title: seasonTitle, voices: [] };
+            seasonFolder.forEach(function (seasonChild, seasonChildIndex) {
+              var childSeasonTitle = eneyidaNodeTitle(seasonChild);
+              var childSeasonNum = parseSeasonOnly(childSeasonTitle) || parseInt(seasonChild.season || seasonChild.season_id || seasonChild.id || 0, 10) || (seasonChildIndex + 1);
+              var childFolder = eneyidaIsFolder(seasonChild) ? seasonChild.folder : [];
+              var count = 0;
+              childFolder.forEach(function (epNode, epIndex) {
+                if (eneyidaAddEpisode(list, epNode, childSeasonNum, parseEpisodeOnly(eneyidaNodeTitle(epNode)) || (epIndex + 1), topVoiceName, referer, poster)) count++;
+              });
+              voiceStat.voices.push({ voice: topVoiceName, season: childSeasonNum, episodes: count, mode: 'voice-season-folder' });
+            });
+            structure.push(voiceStat);
+            return;
+          }
+
+          var seasonNum = parseSeasonOnly(seasonTitle) || parseInt(seasonNode.season || seasonNode.season_id || seasonNode.id || 0, 10) || (seasonIndex + 1);
           var stat = { season: seasonNum, title: seasonTitle, voices: [] };
 
           seasonFolder.forEach(function (child, childIndex) {
@@ -10528,8 +10551,14 @@
           var stream = item.stream || '';
           var iframe = item.iframe || '';
           if (/playerjs\.55|\.(?:js|css|jpg|jpeg|png|webp|gif|ico|woff2?)(?:$|\?)/i.test(stream || iframe)) return;
-          if (!hasSerial) { item.season = 0; item.episode = 0; item.voice = ''; item.info = ''; }
-          if (!hasSerial && /^hls$/i.test(item.title || '')) item.title = title || select_title;
+          if (!hasSerial) {
+            item.season = 0;
+            item.episode = 0;
+            item.voice = '';
+            item.info = '';
+            // Для фільмів не можна залишати назву типу "Серія 9", яку парсер міг витягнути з випадкового тексту сторінки/плеєра.
+            item.title = title || select_title;
+          }
           if (!item.title || item.title === select_title || /^hls$/i.test(item.title || '')) item.title = title || select_title;
           if (!item.poster) item.poster = poster || '';
           var key = hasSerial ? [item.season || 0, item.episode || 0, itemVoiceName(item), stream || iframe].join('|') : (stream || iframe || item.title);
@@ -10654,7 +10683,9 @@
       }
 
       function itemVoiceName(item) {
-        return cleanText(item && (item.voice || String(item.info || '').replace(/^\s*\/\s*/, '') || 'Eneyida') || 'Eneyida');
+        var voice = cleanText(item && (item.voice || String(item.info || '').replace(/^\s*\/\s*/, '') || 'Eneyida') || 'Eneyida');
+        if (/^(?:сезон|season)\s*\d+$/i.test(voice)) return 'Eneyida';
+        return voice;
       }
 
       function buildFilter() {
@@ -11052,6 +11083,165 @@
       };
     }
 
+
+
+
+    function uaserials(component, _object) {
+      var network = new Lampa.Reguest();
+      var object = _object || {};
+      var host = 'https://uaserials.com';
+      var select_title = '';
+      var destroyed = false;
+      var headers = {
+        'User-Agent': Utils.baseUserAgent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'uk-UA,uk;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5',
+        'Referer': host + '/'
+      };
+
+      function cleanText(value) {
+        return component.decodeHtml(String(value == null ? '' : value)
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim());
+      }
+      function absolute(link, base) {
+        link = String(link || '').replace(/\\\//g, '/').trim();
+        if (!link) return '';
+        if (/^\/\//.test(link)) link = 'https:' + link;
+        return component.fixLink(link, base || host + '/');
+      }
+      function normalizeForCompare(value) {
+        return component.cleanTitle(String(value || '').toLowerCase().replace(/[’'`"]/g, '').replace(/[\-\u2010-\u2015:]+/g, ' '));
+      }
+      function preview(value, max) {
+        value = String(value == null ? '' : value);
+        max = max || 260;
+        return value.length > max ? value.slice(0, max) + '...' : value;
+      }
+      function requestText(url, success, fail, options) {
+        options = options || {};
+        try {
+          network.clear();
+          network.timeout(options.timeout || 9000);
+          network["native"](url, function (html) { success(html || ''); }, function (a, c) {
+            var message = '';
+            try { message = network.errorDecode(a, c); } catch (e) {}
+            if (fail) fail(message || (a && (a.statusText || a.status) || c || 'request error') + '');
+          }, options.postdata || false, { dataType: 'text', withCredentials: false, headers: headers });
+        } catch (e) {
+          if (fail) fail(e && (e.message || e.toString()) || 'request error');
+        }
+      }
+      function movieTitles() {
+        var movie = object.movie || {};
+        var out = [];
+        [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(function (t) {
+          t = cleanText(t || '');
+          if (t && out.indexOf(t) === -1) out.push(t);
+        });
+        return out;
+      }
+      function isRelevantTitle(title) {
+        var t = normalizeForCompare(title || '');
+        if (!t) return false;
+        return movieTitles().some(function (x) {
+          var n = normalizeForCompare(x || '');
+          return n && (t === n || t.indexOf(n) !== -1 || n.indexOf(t) !== -1);
+        });
+      }
+      function parseSearchItems(html) {
+        var root = $('<div>' + (html || '') + '</div>');
+        var items = [];
+        var seen = {};
+        root.find('a[href]').each(function () {
+          var a = $(this);
+          var href = absolute(a.attr('href') || '', host);
+          if (!href || seen[href] || href.indexOf(host) !== 0 || !/\.html(?:$|\?)/i.test(href)) return;
+          var box = a.closest('.th-item,.short,.shortstory,.story,.movie-item,.sect-item,article,li,.item');
+          var title = cleanText(a.attr('title') || a.find('.th-title,.short-title,.title,h1,h2,h3').first().text() || '');
+          if (!title && box && box.length) title = cleanText(box.find('.th-title,.short-title,.title,h1,h2,h3').first().text());
+          if (!title) title = cleanText(a.text());
+          if (!title || !isRelevantTitle(title)) return;
+          var poster = '';
+          if (box && box.length) poster = box.find('img').first().attr('data-src') || box.find('img').first().attr('data-lazy') || box.find('img').first().attr('src') || '';
+          items.push({ title: title, full_title: title, link: href, poster: absolute(poster, href) });
+          seen[href] = true;
+        });
+        stelsLog('uaserials-search-results', { title: select_title, count: items.length, sample: items.slice(0, 10).map(function (i) { return i.title + '|' + i.link; }) });
+        return items;
+      }
+      function parsePlayerDataFromPage(html, pageUrl, poster, title) {
+        var items = [];
+        var directRe = /https?:\/\/[^"'\s<>\\]+(?:\.m3u8|\.mp4)(?:\?[^"'\s<>\\]*)?/ig;
+        var m;
+        while ((m = directRe.exec(html || ''))) {
+          items.push({ title: title || select_title, quality: 'UASerials', season: 0, episode: 0, stream: component.fixLink(m[0]), poster: poster || '', referer: pageUrl, headers: { Referer: pageUrl, 'User-Agent': Utils.baseUserAgent() } });
+        }
+        var tagCount = ((html || '').match(/<player-control\b/ig) || []).length;
+        if (!items.length && tagCount) {
+          stelsLog('uaserials-encrypted-player', { page: pageUrl, tag_count: tagCount, note: 'player data is encrypted in data-tag; direct stream is not present in HTML' });
+        }
+        return items;
+      }
+      function loadPage(item) {
+        component.loading(true);
+        requestText(item.link, function (html) {
+          if (destroyed) return;
+          var mt = String(html || '').match(/<meta\s+property=["']og:title["'][^>]*content=["']([^"']+)/i);
+          var mi = String(html || '').match(/<meta\s+property=["']og:image["'][^>]*content=["']([^"']+)/i);
+          var title = cleanText((mt && mt[1]) || item.title || select_title);
+          var poster = absolute((mi && mi[1]) || item.poster || '', item.link);
+          var parsed = parsePlayerDataFromPage(html, item.link, poster, title);
+          component.loading(false);
+          component.reset();
+          if (!parsed.length) {
+            component.empty('UASerials: сторінку знайдено, але дані плеєра зашифровані. Потрібен HAR з розшифрованим player-control або відкритим embed HTML.');
+            return;
+          }
+          parsed.forEach(function (element) {
+            var view = Lampa.Timeline.view(Lampa.Utils.hash(select_title + ':' + (element.stream || '')));
+            element.timeline = view;
+            var row = Lampa.Template.get('stels_online', element);
+            row.append(Lampa.Timeline.render(view));
+            row.on('hover:enter', function () {
+              Lampa.Player.play(stelsSanitizeAndroidPlayable({ url: element.stream, title: element.title || select_title, poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, quality: false }, 'uaserials'));
+              try { stelsSaveWatchHistory(object.movie, 'uaserials', 'UASerials', element, { title: element.title }); } catch (e) {}
+            });
+            component.append(row);
+          });
+          component.start(true);
+        }, function (err) {
+          component.loading(false);
+          component.empty(err || 'UASerials page error');
+        }, { timeout: 10000 });
+      }
+
+      this.search = function (_object, kinopoisk_id, data) {
+        object = _object || object || {};
+        select_title = object.search || (object.movie && (object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name)) || '';
+        destroyed = false;
+        component.loading(true);
+        if (data && data[0] && data[0].link) return loadPage(data[0]);
+        var query = encodeURIComponent(select_title || '');
+        requestText(host + '/search/' + query + '/', function (html) {
+          if (destroyed) return;
+          var items = parseSearchItems(html);
+          if (!items.length) {
+            component.loading(false);
+            component.emptyForQuery(select_title);
+            return;
+          }
+          var best = items.filter(function (i) { return isRelevantTitle(i.title); })[0] || items[0];
+          loadPage(best);
+        }, function (err) {
+          component.loading(false);
+          component.empty(err || 'UASerials search error');
+        }, { timeout: 10000 });
+      };
+      this.destroy = function () { destroyed = true; try { network.clear(); } catch (e) {} };
+    }
 
     function cdnvideohub(component, _object) {
       var network = new Lampa.Reguest();
@@ -17613,6 +17803,13 @@
         kp: true,
         imdb: true
       }, {
+        name: 'uaserials',
+        title: 'UASerials',
+        source: new uaserials(this, object),
+        search: true,
+        kp: false,
+        imdb: false
+      }, {
         name: 'eneyida',
         title: 'Eneyida',
         source: new eneyida(this, object),
@@ -17995,6 +18192,7 @@
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
           if (engine === 'lumex') return new lumex(fake, object);
@@ -20803,7 +21001,7 @@
         return /^stels_online\b/i.test(($(this).text() || '').trim());
       }).text(STELS_ONLINE_VERSION);
       field.find('.settings-folder__icon').html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">');
-      field.find('.settings-folder__name').text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
+      field.find('.settings-folder__name').html('<div>' + stelsEscapeHtml(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online') + '</div><div class="stels-online-version-under">' + stelsEscapeHtml(STELS_ONLINE_VERSION) + '</div>');
       field.children().filter(function () {
         var node = $(this);
         if (node.hasClass('settings-folder__icon') || node.hasClass('settings-folder__name')) return false;
@@ -21040,7 +21238,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.59: Eneyida: fuzzy-збіг назв Самітник/Самотник; фільми не перетворюються на серіали через службовий текст.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.60: Eneyida: фільми завжди S0E0 з назвою фільму; voice->season структура виправлена; UASerials додано як beta-парсер.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
