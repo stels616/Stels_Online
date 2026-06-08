@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.52';
+    var STELS_ONLINE_VERSION = '1.0.53';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13,14 +13,12 @@
     var STELS_LOG_MAX = 1200;
 
     var STELS_SOURCES_HIDE_KEY = 'stels_online_sources_hide';
-    var STELS_WATCH_HISTORY_KEY = 'stels_online_watch_history';
-    var STELS_WATCH_HISTORY_MAX = 300;
 
     var STELS_REQUESTED_SOURCE_NAMES = [
-      'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
+      'uaflix', 'kinozer', 'klonfun', 'batkomakhno', 'uakino-lampaua', 'uafilmme-lampaua', 'rezka720',
       'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
       'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'collaps',
-      'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'iremux', 'remux',
+      'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'remux',
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
       'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
       'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
@@ -31,11 +29,11 @@
     ];
 
     var STELS_SOURCE_TITLES = {
-      uaflix: 'UAflix', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', jacktor: 'JackTor', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
+      uaflix: 'UAflix', kinozer: 'Kinozer', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
       mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
       rezka: 'Rezka', pizdatoehd: 'PizdatoeHD', getstv: 'GetsTV', kinopub: 'KinoPub', zetflixdb: 'ZetflixDB',
       collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
-      kinoukr: 'KinoUkr', uafilm: 'UAFilm', kinotochka: 'KinoTochka', iremux: 'iRemux', remux: 'Remux', anilibria: 'AniLibria',
+      kinoukr: 'KinoUkr', uafilm: 'UAFilm', kinotochka: 'KinoTochka', remux: 'Remux', anilibria: 'AniLibria',
       animedia: 'Animedia', animego: 'AnimeGo', animevost: 'AnimeVost', animebesst: 'AnimeBesst', alloha: 'Alloha',
       mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
@@ -57,12 +55,12 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
-      eneyida: 'eneyida', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      eneyida: 'eneyida', kinotochka: 'rezka2', kinozer: 'kinozer', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
-      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', kinoflix: 'videoseed', leproduction: 'videoseed',
+      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'videoseed', kinoflix: 'videoseed', leproduction: 'videoseed',
       vkmovie: 'cdnvideohub', kinogo: 'rezka2', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'cdnvideohub'
     };
 
@@ -103,13 +101,7 @@
       key = stelsNormalizeSourceKey(key);
       if (!title) return false;
       if (/^ua/i.test(title)) return true;
-      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'jacktor', 'eneyida', 'kinoukr', 'batkomakhno', 'klonfun'].indexOf(key) !== -1;
-    }
-
-    function stelsIsUaPrioritySource(source) {
-      var key = stelsNormalizeSourceKey(source && source.name || source);
-      var title = stelsSourceBaseTitle(key);
-      return stelsNeedsUaFlag(title, key);
+      return ['uaflix', 'uakino-lampaua', 'uafilmme-lampaua', 'uafilm', 'uakino', 'jacktor', 'eneyida', 'kinoukr', 'batkomakhno', 'klonfun', 'kinozer'].indexOf(key) !== -1;
     }
 
     function stelsSourceTitle(name) {
@@ -125,7 +117,7 @@
 
     function stelsPatchUaFlagIcons(root) {
       try {
-        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'JackTor', 'Eneyida', 'KinoUkr', 'BatkoMakhno', 'KlonFun'];
+        var names = ['UAflix', 'UAKino', 'UafilmMe', 'UAFilm', 'UAkino', 'JackTor', 'Eneyida', 'KinoUkr', 'BatkoMakhno', 'KlonFun', 'Kinozer'];
         var scope = root ? $(root) : $(document.body);
         scope.find('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .settings-param, .menu__item, .simple-button').each(function () {
           var el = $(this);
@@ -153,62 +145,23 @@
       function shouldPatch(el) {
         if (!el || !el.length) return false;
         if (el.find('.stels-online-plugin-icon').length) return false;
-        var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
+        if (el.closest('.settings-param, .settings-folder, .full-start__button').length) return false;
+        var component = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-        if (componentKey === 'stels_online' || el.hasClass('view--stels_online') || el.hasClass('stels-online-settings-folder')) return true;
-        if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text)) return true;
-        return false;
-      }
-
-      function stelsPatchSettingsFolderElement(el) {
-        try {
-          if (!el || !el.length) return;
-          el.addClass('stels-online-settings-folder');
-          el.attr('data-subtitle', STELS_ONLINE_VERSION);
-          el.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
-            return /^stels_online\b/i.test(($(this).text() || '').trim());
-          }).text(STELS_ONLINE_VERSION);
-          if (!el.find('.settings-folder__icon').length) el.prepend('<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true"></div>');
-          if (!el.find('.settings-folder__name').length) el.append('<div class="settings-folder__name"></div>');
-          el.find('.settings-folder__icon').first().html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">');
-          el.find('.settings-folder__name').first().text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
-          el.children().filter(function () {
-            var node = $(this);
-            if (node.hasClass('settings-folder__icon') || node.hasClass('settings-folder__name')) return false;
-            return /^\s*stels_online\s*$/i.test((node.text() || '').trim());
-          }).remove();
-        } catch (e) {}
+        return component === 'stels_online' || text.indexOf('Stels_Online') !== -1;
       }
 
       function patch(root) {
         try {
           var scope = root ? $(root) : $(document.body);
-          scope.find('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').addBack('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').each(function () {
+          scope.find('.selector, [data-component="stels_online"]').addBack('.selector, [data-component="stels_online"]').each(function () {
             var el = $(this);
-            var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
-            if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) stelsPatchSettingsFolderElement(el);
             if (!shouldPatch(el)) return;
-            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
             var display = el.css('display');
             if (display === 'inline') el.css('display', 'inline-flex');
             else if (display === 'block') el.css('display', 'flex');
             el.css('align-items', 'center');
-            if (!el.find('.stels-online-plugin-icon').length) el.prepend(STELS_ICON_HTML);
-          });
-          // Деякі екрани Lampa (наприклад список джерел "Джерело") будуються не через data-component,
-          // а простим пунктом з текстом Stels_Online + версія. Патчимо їх окремо по тексту.
-          scope.find('.selector, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').addBack('.selector, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').each(function () {
-            var el = $(this);
-            if (el.find('.stels-online-plugin-icon').length) return;
-            var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-            if (!(text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text))) return;
-            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
-            el.addClass('stels-online-source-entry');
-            var display = el.css('display');
-            if (display === 'inline') el.css('display', 'inline-flex');
-            else if (display === 'block') el.css('display', 'flex');
-            el.css('align-items', 'center');
-            el.prepend('<img class="stels-online-plugin-icon stels-online-source-icon" src="' + STELS_ICON_URL + '" style="width:2.15em;height:2.15em;object-fit:contain;display:block;flex-shrink:0;margin-right:.7em" alt="Stels_Online">');
+            el.prepend(STELS_ICON_HTML);
           });
           stelsPatchUaFlagIcons(scope);
         } catch (e) {
@@ -239,14 +192,8 @@
     }
 
 
-    function stelsLogEnabled() {
-      try { return Lampa.Storage.get('stels_online_log_enabled', true) !== false; }
-      catch (e) { return true; }
-    }
-
     function stelsLog(event, data) {
       try {
-        if (!stelsLogEnabled()) return;
         var list = Lampa.Storage.get(STELS_LOG_KEY, []);
         if (!Array.isArray(list)) list = [];
         var item = {
@@ -259,100 +206,6 @@
         Lampa.Storage.set(STELS_LOG_KEY, list);
         if (window.console && console.log) console.log('Stels_Online LOG', item);
       } catch (e) {}
-    }
-
-
-    function stelsIsAndroidRuntime() {
-      try { if (Lampa && Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('android')) return true; } catch (e) {}
-      try { return /Android/i.test((navigator && navigator.userAgent) || ''); } catch (e2) { return false; }
-    }
-
-    function stelsAndroidPlayerFixEnabled() {
-      try { return stelsIsAndroidRuntime() && Lampa.Storage.get('stels_online_android_player_fix', false) === true; }
-      catch (e) { return false; }
-    }
-
-    function stelsPreviewUrl(url) {
-      url = (url == null ? '' : String(url));
-      return url.length > 220 ? url.slice(0, 220) + '...' : url;
-    }
-
-    function stelsSanitizeAndroidPlayable(play, ctx) {
-      if (!stelsAndroidPlayerFixEnabled() || !play || typeof play !== 'object') return play;
-      try {
-        var out = play;
-        var url = out.url || out.file || '';
-        if (typeof url == 'string' && url.indexOf(' or ') !== -1) {
-          var parts = url.split(' or ');
-          out.url = parts[0];
-          if (!out.url_reserve && parts[1]) out.url_reserve = parts[1];
-          url = out.url;
-        }
-        if (typeof url == 'string' && /^https?:\/\//i.test(url)) {
-          if (/^https:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
-            out.url = url.replace(/^https:/i, 'http:');
-            if (!out.url_reserve) out.url_reserve = url;
-            url = out.url;
-          }
-          else if (/^http:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
-            if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
-          }
-        }
-        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
-          out._stels_original_quality = out.quality;
-          out.quality = false;
-        }
-        var timeout = parseInt(out.hls_manifest_timeout || 0, 10) || 0;
-        if (!timeout || timeout < 30000) out.hls_manifest_timeout = 30000;
-        stelsLog('android-player-fix-playable', {
-          ctx: ctx || '',
-          title: out.title || '',
-          season: out.season || 0,
-          episode: out.episode || 0,
-          has_url: !!(out.url || out.file),
-          has_reserve: !!out.url_reserve,
-          quality_disabled: !!out._stels_original_quality,
-          url_preview: stelsPreviewUrl(out.url || out.file || '')
-        });
-      } catch (e) {
-        stelsLog('android-player-fix-playable-error', { ctx: ctx || '', error: e && (e.message || e.toString()) });
-      }
-      return play;
-    }
-
-    function stelsInstallAndroidPlayerFixPatch() {
-      try {
-        if (!Lampa || !Lampa.Player || Lampa.Player.__stelsAndroidFixPatched) return;
-        var nativePlay = Lampa.Player.play;
-        var nativePlaylist = Lampa.Player.playlist;
-        if (typeof nativePlay == 'function') {
-          Lampa.Player.play = function (data) {
-            if (stelsAndroidPlayerFixEnabled()) data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
-            return nativePlay.apply(this, arguments.length ? [data] : arguments);
-          };
-        }
-        if (typeof nativePlaylist == 'function') {
-          Lampa.Player.playlist = function (list) {
-            if (stelsAndroidPlayerFixEnabled() && Array.isArray(list)) {
-              var original_len = list.length;
-              var safe = [];
-              list.forEach(function (item) {
-                if (!item) return;
-                if (typeof item.url === 'function') return;
-                safe.push(stelsSanitizeAndroidPlayable(item, 'Lampa.Player.playlist'));
-              });
-              if (!safe.length && list[0]) safe = [stelsSanitizeAndroidPlayable(list[0], 'Lampa.Player.playlist-first')];
-              list = safe;
-              stelsLog('android-player-fix-playlist', { original_count: original_len, safe_count: list.length, lazy_removed: original_len - list.length });
-            }
-            return nativePlaylist.apply(this, arguments.length ? [list] : arguments);
-          };
-        }
-        Lampa.Player.__stelsAndroidFixPatched = true;
-        stelsLog('android-player-fix-patch-installed', { android: stelsIsAndroidRuntime() });
-      } catch (e) {
-        stelsLog('android-player-fix-patch-error', { error: e && (e.message || e.toString()) });
-      }
     }
 
     function stelsSafeJson(value) {
@@ -413,14 +266,12 @@
               var low = k.toLowerCase();
               var protectedKey =
                 low.indexOf('stels_online_sources_hide') !== -1 ||
-                low.indexOf('stels_online_watch_history') !== -1 ||
                 low.indexOf('stels_online_rezka2_cookie') !== -1 ||
                 low.indexOf('stels_online_fancdn_cookie') !== -1 ||
                 low.indexOf('stels_online_proxy') !== -1 ||
                 low.indexOf('stels_online_uaflix_mobile_ua') !== -1 ||
                 low.indexOf('stels_online_uaflix_forced_year') !== -1 ||
                 low.indexOf('stels_online_save_last_balanser') !== -1 ||
-                low.indexOf('stels_online_android_player_fix') !== -1 ||
                 low.indexOf('stels_online_lampac_token') !== -1 ||
                 low.indexOf('token') !== -1 ||
                 low.indexOf('account') !== -1 ||
@@ -470,11 +321,8 @@
         'stels_online_rezka2_mirror',
         'stels_online_rezka2_cookie',
         'stels_online_fancdn_cookie',
-        'stels_online_log_enabled',
-        'stels_online_android_player_fix',
         'stels_online_filter',
-        'stels_online_sources_hide',
-        'stels_online_watch_history'
+        'stels_online_sources_hide'
       ];
       var out = {};
       try {
@@ -491,88 +339,6 @@
         out.error = e && (e.message || e.toString());
       }
       return out;
-    }
-
-    
-    function stelsCardKeyFromMovie(movie) {
-      movie = movie || {};
-      var id = movie.id || movie.tmdb_id || movie.source_id || '';
-      if (id) return String(id);
-      if (movie.kinopoisk_id) return 'kp:' + movie.kinopoisk_id;
-      if (movie.imdb_id) return 'imdb:' + movie.imdb_id;
-      return Lampa.Utils && Lampa.Utils.hash ? String(Lampa.Utils.hash((movie.original_title || movie.original_name || movie.title || movie.name || '') + ':' + (movie.release_date || movie.first_air_date || ''))) : ((movie.original_title || movie.original_name || movie.title || movie.name || '') + ':' + (movie.release_date || movie.first_air_date || ''));
-    }
-
-    function stelsReadWatchHistory() {
-      try {
-        var history = Lampa.Storage.get(STELS_WATCH_HISTORY_KEY, {});
-        return history && typeof history === 'object' && !Array.isArray(history) ? history : {};
-      } catch (e) { return {}; }
-    }
-
-    function stelsSaveWatchHistoryMap(history) {
-      try {
-        var keys = Object.keys(history || {});
-        if (keys.length > STELS_WATCH_HISTORY_MAX) {
-          keys.sort(function (a, b) { return (history[a].time || 0) - (history[b].time || 0); });
-          keys.slice(0, keys.length - STELS_WATCH_HISTORY_MAX).forEach(function (k) { delete history[k]; });
-        }
-        Lampa.Storage.set(STELS_WATCH_HISTORY_KEY, history || {});
-      } catch (e) {}
-    }
-
-    function stelsGetWatchHistory(movie) {
-      var key = stelsCardKeyFromMovie(movie);
-      var history = stelsReadWatchHistory();
-      return key && history[key] ? history[key] : null;
-    }
-
-    function stelsSaveWatchHistory(movie, source, sourceTitle, element, extra) {
-      try {
-        movie = movie || {};
-        element = element || {};
-        var key = stelsCardKeyFromMovie(movie);
-        if (!key) return;
-        var history = stelsReadWatchHistory();
-        var title = movie.title || movie.name || movie.original_title || movie.original_name || (extra && extra.title) || '';
-        var season = parseInt(element.season || (extra && extra.season) || 0, 10) || 0;
-        var episode = parseInt(element.episode || (extra && extra.episode) || 0, 10) || 0;
-        var itemTitle = element.title || (extra && extra.item_title) || '';
-        var voice = element.translate_voice || element.voice || (element.info ? String(element.info).replace(/^\s*\/\s*/, '') : '') || (extra && extra.voice) || '';
-        history[key] = {
-          key: key,
-          source: stelsNormalizeSourceKey(source || ''),
-          source_title: sourceTitle || stelsSourceTitle(source || '') || '',
-          season: season,
-          episode: episode,
-          item_title: itemTitle,
-          title: title,
-          voice: voice,
-          time: Date.now()
-        };
-        stelsSaveWatchHistoryMap(history);
-        stelsLog('watch-history-save', { key: key, source: history[key].source, source_title: history[key].source_title, season: season, episode: episode, item_title: itemTitle, voice: voice });
-      } catch (e) {
-        stelsLog('watch-history-save-error', { error: e && (e.message || e.toString()) });
-      }
-    }
-
-    function stelsFormatWatchHistory(item) {
-      if (!item) return '';
-      var parts = [];
-      if (item.source_title) parts.push(item.source_title);
-      if (item.season && item.episode) parts.push('S' + item.season + 'E' + item.episode);
-      else if (item.episode) parts.push('Серія ' + item.episode);
-      if (item.voice) parts.push(item.voice);
-      return parts.join(' • ');
-    }
-
-    function stelsClearWatchHistory() {
-      try {
-        Lampa.Storage.set(STELS_WATCH_HISTORY_KEY, {});
-        stelsLog('watch-history-cleared', {});
-        Lampa.Noty.show('Історію перегляду Stels_Online очищено');
-      } catch (e) {}
     }
 
     function stelsBuildLogText() {
@@ -622,13 +388,6 @@
           '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
           '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-episode-badge{font-size:.7em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
-          '.settings-folder.stels-online-settings-folder{display:grid!important;grid-template-columns:2.35em auto!important;column-gap:.65em!important;align-items:center!important;justify-content:start!important;}' +
-          '.settings-folder.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{display:flex!important;align-items:center!important;justify-content:center!important;width:2.25em!important;height:2.25em!important;min-width:2.25em!important;max-width:2.25em!important;margin:0!important;padding:0!important;font-size:1rem!important;color:transparent!important;overflow:visible!important;}' +
-          '.settings-folder.stels-online-settings-folder .settings-folder__name{margin:0!important;padding:0!important;left:auto!important;transform:none!important;}' +
-          '.settings-folder.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{display:block!important;width:2.05em!important;height:2.05em!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;font-size:1rem!important;}' +
-          '.stels-online-settings-folder .full-start__subtitle,.stels-online-settings-folder .selector__subtitle,.stels-online-settings-folder .settings-folder__subtitle{display:none!important;}' +
-          '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;}' +
-          '.stels-online-source-entry .stels-online-source-icon{width:2.15em!important;height:2.15em!important;margin-right:.7em!important;object-fit:contain!important;flex-shrink:0!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
           '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
@@ -1553,7 +1312,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -2091,7 +1849,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -2741,7 +2498,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -3517,7 +3273,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -4127,7 +3882,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -4506,7 +4260,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -5198,7 +4951,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -5674,7 +5426,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -6188,7 +5939,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -6685,7 +6435,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -7179,7 +6928,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -7663,7 +7411,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -8172,7 +7919,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -8809,7 +8555,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -9439,7 +9184,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -9581,597 +9325,6 @@
       }
     }
 
-
-
-    function eneyida(component, _object) {
-      var network = new Lampa.Reguest();
-      var object = _object;
-      var select_title = '';
-      var extract = [];
-      var filter_items = {};
-      var choice = {
-        season: 0,
-        voice: 0,
-        voice_name: ''
-      };
-      var searchRunId = 0;
-      var searchDone = false;
-      var host = 'https://eneyida.tv';
-      var hdvbHost = 'https://hdvbua.pro';
-      var headersSite = {
-        'User-Agent': Utils.baseUserAgent(),
-        'Referer': host + '/',
-        'Origin': host
-      };
-      var headersPlayer = {
-        'User-Agent': Utils.baseUserAgent(),
-        'Referer': hdvbHost + '/',
-        'Origin': hdvbHost
-      };
-
-      function cleanText(txt) {
-        txt = (txt == null ? '' : String(txt));
-        try { txt = component.decodeHtml(txt); } catch (e) {}
-        return txt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      }
-
-      function norm(txt) {
-        return cleanText(txt).toLowerCase()
-          .replace(/ё/g, 'е').replace(/і/g, 'и').replace(/ї/g, 'и').replace(/є/g, 'е')
-          .replace(/[^a-zа-яґ0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-      }
-
-      function abs(url, base) {
-        url = (url || '') + '';
-        if (!url) return '';
-        if (/^https?:\/\//i.test(url)) return url;
-        if (url.indexOf('//') === 0) return 'https:' + url;
-        if (url.charAt(0) === '/') return host + url;
-        base = base || host + '/';
-        try { return new URL(url, base).href; } catch (e) { return host + '/' + url.replace(/^\/+/, ''); }
-      }
-
-      function uniquePush(arr, value) {
-        value = cleanText(value);
-        if (value && arr.indexOf(value) === -1) arr.push(value);
-      }
-
-      function searchVariants() {
-        var movie = object && object.movie || {};
-        var variants = [];
-        uniquePush(variants, object.search);
-        uniquePush(variants, movie.title || movie.name);
-        uniquePush(variants, movie.original_title || movie.original_name);
-        var original = norm(movie.original_title || movie.original_name || '');
-        if (original === 'from') {
-          uniquePush(variants, 'Ззовні');
-          uniquePush(variants, 'Извне');
-        }
-        if (original === 'the boys') {
-          uniquePush(variants, 'Пацани');
-          uniquePush(variants, 'Пацаны');
-        }
-        if (original === 'the flash') {
-          uniquePush(variants, 'Флеш');
-        }
-        return variants;
-      }
-
-      function requestText(url, success, fail, referer, postdata) {
-        network.clear();
-        network.timeout(17000);
-        var h = {
-          'User-Agent': Utils.baseUserAgent(),
-          'Referer': referer || host + '/',
-          'Origin': (referer && referer.indexOf('hdvbua.pro') !== -1) ? hdvbHost : host
-        };
-        h['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
-        if (postdata) {
-          h['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
-          h['X-Requested-With'] = 'XMLHttpRequest';
-        }
-        var finished = false;
-        var timer = setTimeout(function () {
-          if (finished) return;
-          finished = true;
-          stelsLog('eneyida-request-timeout', { url: url, post: !!postdata });
-          if (fail) fail({ status: 0 }, 'timeout');
-        }, 19000);
-        function done(ok, a, c) {
-          if (finished) return false;
-          finished = true;
-          clearTimeout(timer);
-          return true;
-        }
-        network["native"](url, function (html) {
-          if (!done(true)) return;
-          success((html == null ? '' : String(html)));
-        }, function (a, c) {
-          if (!done(false)) return;
-          stelsLog('eneyida-request-fail', { url: url, status: a && a.status, error: network.errorDecode ? network.errorDecode(a, c) : (c || ''), post: !!postdata });
-          if (fail) fail(a, c);
-        }, postdata || false, { dataType: 'text', headers: h });
-      }
-
-      function scoreCandidate(item, query) {
-        var t = norm(item.title || '');
-        var q = norm(query || '');
-        var m = object && object.movie || {};
-        var ot = norm(m.original_title || m.original_name || '');
-        var lt = norm(m.title || m.name || '');
-        var url = (item.link || '').toLowerCase();
-        var slug = norm(titleFromEneyidaUrl(url));
-        var score = 0;
-        if (slug) {
-          if (q && slug === q) score += 125;
-          if (q && (slug.indexOf(q) !== -1 || q.indexOf(slug) !== -1)) score += 70;
-          if (lt && (slug === lt || slug.indexOf(lt) !== -1 || lt.indexOf(slug) !== -1)) score += 110;
-          if (ot && (slug === ot || slug.indexOf(ot) !== -1 || ot.indexOf(slug) !== -1)) score += 70;
-          if (ot === 'from' && /zzovni|zovni|izvne/.test(slug + ' ' + url)) score += 160;
-          if (ot === 'the boys' && /pacany|patsany|the boys/.test(slug + ' ' + url)) score += 140;
-          if (ot === 'the flash' && /flesh|flash/.test(slug + ' ' + url)) score += 130;
-        }
-        if (q && t === q) score += 130;
-        if (q && t.indexOf(q) !== -1) score += 80;
-        if (lt && t === lt) score += 120;
-        if (lt && t.indexOf(lt) !== -1) score += 70;
-        if (ot && t.indexOf(ot) !== -1) score += 65;
-        if (ot === 'from' && /ззовн|извне/.test(t)) score += 140;
-        if (ot === 'the boys' && /пацан|хлопц|the boys/.test(t)) score += 130;
-        if (ot === 'the flash' && /флеш|flash/.test(t)) score += 120;
-        if ((m.name || m.number_of_seasons || m.media_type === 'tv') && /serial|serialy|series|seri/i.test(url + ' ' + t)) score += 10;
-        var year = ((m.release_date || m.first_air_date || m.year || '') + '').slice(0, 4);
-        if (year && t.indexOf(year) !== -1) score += 15;
-        return score;
-      }
-
-      function parseSearchResults(html, query) {
-        html = html || '';
-        var seen = {};
-        var items = [];
-        try {
-          var parsed = Lampa.Arrays.decodeJson(html, null);
-          if (parsed) {
-            var arr = Lampa.Arrays.isArray(parsed) ? parsed : (parsed.data || parsed.results || parsed.items || parsed.response || []);
-            if (arr && arr.forEach) {
-              arr.forEach(function (it) {
-                var link = it.url || it.link || it.href || it.full || '';
-                var title = cleanText(it.title || it.name || it.text || it.label || '');
-                if (link && title) {
-                  link = abs(link);
-                  if (!seen[link]) {
-                    seen[link] = true;
-                    items.push({ title: title, link: link, score: scoreCandidate({ title: title, link: link }, query) });
-                  }
-                }
-              });
-            }
-          }
-        } catch (e) {}
-        var root = $('<div>' + html + '</div>');
-        root.find('a[href]').each(function () {
-          var a = $(this);
-          var href = a.attr('href') || '';
-          if (!href.match(/\/(\d+)-[^\/?#]+\.html/i)) return;
-          var url = abs(href);
-          if (seen[url]) return;
-          var box = a.closest('.short, .shortstory, .movie, .th-item, .story, article, .sect_cont, .searchitem');
-          var title = cleanText(a.attr('title') || a.text());
-          if (box.length) title = cleanText(box.find('.short_title,.short-title,.title,h1,h2,h3,a').first().text()) || title;
-          if (!title) title = cleanText(a.text());
-          var slugTitle = titleFromEneyidaUrl(url);
-          if (slugTitle && (!title || /^\+?\d+\s*(?:FHD|HD|4K|1080|720|480|\d)/i.test(title) || title.length < 4)) title = slugTitle;
-          if (!title) return;
-          seen[url] = true;
-          items.push({ title: title, link: url, score: scoreCandidate({ title: title, link: url }, query) });
-        });
-        items.sort(function (a, b) { return b.score - a.score; });
-        stelsLog('eneyida-search-results', { query: query, count: items.length, sample: items.slice(0, 8).map(function (i) { return i.score + '|' + i.title + '|' + i.link; }) });
-        return items;
-      }
-
-      function looksLikeDetailPage(html) {
-        return /hdvbua\.pro\/(?:embed|vid)\//i.test(html || '') && /iframe/i.test(html || '');
-      }
-
-      function findIframe(html) {
-        var root = $('<div>' + html + '</div>');
-        var src = '';
-        root.find('iframe[src]').each(function () {
-          var s = $(this).attr('src') || '';
-          if (!src && /hdvbua\.pro\/embed\//i.test(s)) src = s;
-        });
-        if (!src) {
-          var m = html.match(/https?:\/\/hdvbua\.pro\/embed\/[^"'\s<>]+/i);
-          if (m) src = m[0];
-        }
-        return src;
-      }
-
-      function extractQuotedAfter(html, key) {
-        var pos = html.indexOf(key);
-        if (pos < 0) return '';
-        var colon = html.indexOf(':', pos);
-        if (colon < 0) return '';
-        var qpos = -1;
-        var q = '';
-        for (var i = colon + 1; i < html.length; i++) {
-          var ch = html.charAt(i);
-          if (ch === '\'' || ch === '"') { qpos = i; q = ch; break; }
-          if (ch !== ' ' && ch !== '\t' && ch !== '\n' && ch !== '\r') break;
-        }
-        if (qpos < 0) return '';
-        var out = '';
-        var esc = false;
-        for (var j = qpos + 1; j < html.length; j++) {
-          var c = html.charAt(j);
-          if (esc) { out += c; esc = false; continue; }
-          if (c === '\\') { esc = true; out += c; continue; }
-          if (c === q) break;
-          out += c;
-        }
-        return out;
-      }
-
-      function parseSeasonNumber(title, fallback) {
-        var m = String(title || '').match(/(\d+)/);
-        return m ? parseInt(m[1], 10) || fallback : fallback;
-      }
-
-      function parseEpisodeNumber(title, fallback) {
-        var m = String(title || '').match(/(\d+)/);
-        return m ? parseInt(m[1], 10) || fallback : fallback;
-      }
-
-      function titleFromEneyidaUrl(url) {
-        url = (url || '') + '';
-        var m = url.match(/\/\d+-([^\/?#]+)\.html/i);
-        if (!m) return '';
-        return m[1].replace(/[-_]+/g, ' ').trim();
-      }
-
-      function flattenPlayerNode(node, state, out) {
-        state = state || {};
-        if (!node) return;
-        if (Lampa.Arrays.isArray(node)) {
-          node.forEach(function (n) { flattenPlayerNode(n, state, out); });
-          return;
-        }
-        var title = cleanText(node.title || '');
-        var next = {
-          season: state.season,
-          episode: state.episode,
-          voice: state.voice
-        };
-        if (node.folder && Lampa.Arrays.isArray(node.folder)) {
-          if (/сезон|season/i.test(title)) next.season = parseSeasonNumber(title, next.season || 1);
-          else if (title && !/сер[іиіяя]|episode|епізод|эпизод/i.test(title)) next.voice = title;
-          flattenPlayerNode(node.folder, next, out);
-          return;
-        }
-        var file = node.file || node.url || node.hls || node.src || '';
-        if (!file) return;
-        if (/сер[іиіяя]|episode|епізод|эпизод/i.test(title) || next.season) next.episode = parseEpisodeNumber(title, next.episode || (out.length + 1));
-        var isSerial = !!(object && object.movie && (object.movie.name || object.movie.number_of_seasons || object.movie.media_type === 'tv')) || !!next.season;
-        var season = next.season || (isSerial ? 1 : 0);
-        var episode = next.episode || (isSerial ? (out.length + 1) : 0);
-        var voice = next.voice || 'Eneyida';
-        out.push({
-          title: isSerial ? component.formatEpisodeTitle(season, episode) : (voice || select_title),
-          quality: 'HLS',
-          info: voice ? ' / ' + Lampa.Utils.shortText(voice, 50) : '',
-          season: isSerial ? season : 0,
-          episode: isSerial ? episode : 0,
-          voice: voice,
-          stream: file,
-          poster: node.poster || '',
-          subtitles: node.subtitle || '',
-          id: node.id || ''
-        });
-      }
-
-      function parsePlayerHtml(html) {
-        var file = extractQuotedAfter(html, 'file');
-        var items = [];
-        stelsLog('eneyida-player-file', { has_file: !!file, preview: file ? file.substring(0, 140) : '' });
-        if (!file) return items;
-        if (/^https?:\/\//i.test(file)) {
-          items.push({ title: select_title, quality: 'HLS', info: '', stream: file, season: 0, episode: 0, voice: 'Eneyida' });
-          return items;
-        }
-        try {
-          var data = JSON.parse(file);
-          flattenPlayerNode(data, {}, items);
-        } catch (e) {
-          stelsLog('eneyida-player-json-error', { error: e && (e.message || e.toString()), preview: file.substring(0, 250) });
-          var re = /(https?:\/\/[^"'\s<>]+\.(?:m3u8|mp4)(?:\?[^"'\s<>]+)?)/ig;
-          var m;
-          while ((m = re.exec(file))) {
-            items.push({ title: select_title, quality: 'HLS', info: '', stream: m[1], season: 0, episode: 0, voice: 'Eneyida' });
-          }
-        }
-        items.sort(function (a, b) {
-          var c = (a.season || 0) - (b.season || 0);
-          if (c) return c;
-          c = (a.episode || 0) - (b.episode || 0);
-          if (c) return c;
-          return (a.voice || '').localeCompare(b.voice || '');
-        });
-        stelsLog('eneyida-player-parsed', { count: items.length, sample: items.slice(0, 12).map(function (i) { return 'S' + i.season + 'E' + i.episode + '|' + i.voice + '|' + i.stream; }) });
-        return items;
-      }
-
-      function loadPage(pageUrl, fail) {
-        requestText(pageUrl, function (html) {
-          var iframe = findIframe(html);
-          stelsLog('eneyida-page', { url: pageUrl, iframe: iframe });
-          if (!iframe) { if (fail) fail('no iframe'); else { searchDone = true; component.emptyForQuery(select_title); } return; }
-          requestText(iframe, function (playerHtml) {
-            extract = parsePlayerHtml(playerHtml);
-            if (extract.length) {
-              searchDone = true;
-              filter();
-              append(filtred());
-            } else if (fail) fail('player parse empty'); else { searchDone = true; component.emptyForQuery(select_title); }
-          }, function () { if (fail) fail('player request fail'); else { searchDone = true; component.emptyForQuery(select_title); } }, host + '/');
-        }, function () { if (fail) fail('page request fail'); else { searchDone = true; component.emptyForQuery(select_title); } }, host + '/');
-      }
-
-      function selectSearchItem(items, q, next) {
-        var best = items && items[0];
-        if (best && (best.score >= 20 || items.length === 1)) {
-          stelsLog('eneyida-search-selected', { query: q, score: best.score, title: best.title, link: best.link });
-          loadPage(best.link, next);
-        } else next();
-      }
-
-      function searchByPostForm(q, callback, fallback) {
-        var post = 'do=search&subaction=search&story=' + encodeURIComponent(q);
-        stelsLog('eneyida-search-post-form', { query: q, url: host + '/' });
-        requestText(host + '/', function (html) {
-          if (looksLikeDetailPage(html)) { callback([{ title: q, link: host + '/', score: 999 }], true, html); return; }
-          callback(parseSearchResults(html, q));
-        }, fallback, host + '/', post);
-      }
-
-      function postSearch(q, callback, fallback) {
-        requestText(host + '/', function (homeHtml) {
-          var hm = homeHtml.match(/dle_login_hash\s*=\s*['"]([^'"]+)/) || homeHtml.match(/name=["']user_hash["'][^>]*value=["']([^"']+)/i);
-          var hash = hm && hm[1] || '';
-          if (!hash) { fallback(); return; }
-          var url = host + '/engine/ajax/controller.php?mod=search';
-          var post = 'query=' + encodeURIComponent(q) + '&skin=eneyida&user_hash=' + encodeURIComponent(hash);
-          stelsLog('eneyida-search-post', { query: q, url: url, hash: !!hash });
-          requestText(url, function (html) {
-            callback(parseSearchResults(html, q));
-          }, fallback, host + '/', post);
-        }, fallback, host + '/');
-      }
-
-      function searchFallbackGet(q, next) {
-        var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
-        stelsLog('eneyida-search', { query: q, url: url, fallback: 'get' });
-        requestText(url, function (html) {
-          if (looksLikeDetailPage(html)) { loadPage(url); return; }
-          selectSearchItem(parseSearchResults(html, q), q, next);
-        }, next, host + '/');
-      }
-
-      function doSearchAt(index, variants) {
-        if (searchDone) return;
-        if (index >= variants.length) { searchDone = true; component.emptyForQuery(select_title); return; }
-        var q = variants[index];
-        postSearch(q, function (postItems) {
-          if (postItems && postItems.length) {
-            selectSearchItem(postItems, q, function () {
-              searchByPostForm(q, function (formItems, directHtml, html) {
-                if (directHtml && html) {
-                  var iframe = findIframe(html);
-                  if (iframe) {
-                    requestText(iframe, function (playerHtml) {
-                      extract = parsePlayerHtml(playerHtml);
-                      if (extract.length) { searchDone = true; filter(); append(filtred()); }
-                      else doSearchAt(index + 1, variants);
-                    }, function () { doSearchAt(index + 1, variants); }, host + '/');
-                    return;
-                  }
-                }
-                if (formItems && formItems.length) selectSearchItem(formItems, q, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
-                else searchFallbackGet(q, function () { doSearchAt(index + 1, variants); });
-              }, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
-            });
-            return;
-          }
-          searchByPostForm(q, function (formItems, directHtml, html) {
-            if (directHtml && html) {
-              var iframe = findIframe(html);
-              if (iframe) {
-                requestText(iframe, function (playerHtml) {
-                  extract = parsePlayerHtml(playerHtml);
-                  if (extract.length) { searchDone = true; filter(); append(filtred()); }
-                  else doSearchAt(index + 1, variants);
-                }, function () { doSearchAt(index + 1, variants); }, host + '/');
-                return;
-              }
-            }
-            if (formItems && formItems.length) selectSearchItem(formItems, q, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
-            else searchFallbackGet(q, function () { doSearchAt(index + 1, variants); });
-          }, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
-        }, function () {
-          searchByPostForm(q, function (formItems, directHtml, html) {
-            if (directHtml && html) {
-              var iframe = findIframe(html);
-              if (iframe) {
-                requestText(iframe, function (playerHtml) {
-                  extract = parsePlayerHtml(playerHtml);
-                  if (extract.length) { searchDone = true; filter(); append(filtred()); }
-                  else doSearchAt(index + 1, variants);
-                }, function () { doSearchAt(index + 1, variants); }, host + '/');
-                return;
-              }
-            }
-            if (formItems && formItems.length) selectSearchItem(formItems, q, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
-            else searchFallbackGet(q, function () { doSearchAt(index + 1, variants); });
-          }, function () { searchFallbackGet(q, function () { doSearchAt(index + 1, variants); }); });
-        });
-      }
-
-      this.search = function (_object) {
-        object = _object;
-        select_title = object.search || (object.movie && (object.movie.title || object.movie.name)) || '';
-        component.loading(true);
-        extract = [];
-        searchDone = false;
-        var runId = ++searchRunId;
-        setTimeout(function () {
-          if (runId === searchRunId && !searchDone) {
-            searchDone = true;
-            stelsLog('eneyida-hard-timeout', { title: select_title });
-            component.emptyForQuery(select_title);
-          }
-        }, 26000);
-        var variants = searchVariants();
-        stelsLog('eneyida-search-start', { title: select_title, variants: variants, original_title: object.movie && (object.movie.original_title || object.movie.original_name), tmdb_id: object.movie && object.movie.id });
-        doSearchAt(0, variants);
-      };
-
-      this.extendChoice = function (saved) {
-        Lampa.Arrays.extend(choice, saved || {}, true);
-      };
-
-      this.reset = function () {
-        choice = { season: 0, voice: 0, voice_name: '' };
-        component.reset();
-        filter();
-        append(filtred());
-        component.saveChoice(choice);
-      };
-
-      this.filter = function (type, a, b) {
-        choice[a.stype] = b.index;
-        if (a.stype === 'voice') choice.voice_name = filter_items.voice[b.index];
-        component.reset();
-        filter();
-        append(filtred());
-        component.saveChoice(choice);
-      };
-
-      this.destroy = function () {
-        network.clear();
-        extract = [];
-      };
-
-      function filter() {
-        var seasons = [];
-        var voices = [];
-        extract.forEach(function (i) {
-          if (i.season && seasons.indexOf(i.season) === -1) seasons.push(i.season);
-        });
-        seasons.sort(function (a, b) { return a - b; });
-        var selectedSeason = seasons.length ? (seasons[choice.season] || seasons[0]) : 0;
-        extract.forEach(function (i) {
-          if ((!selectedSeason || i.season == selectedSeason) && voices.indexOf(i.voice || 'Eneyida') === -1) voices.push(i.voice || 'Eneyida');
-        });
-        filter_items = {
-          season: seasons.map(function (s) { return Lampa.Lang.translate('torrent_serial_season') + ' ' + s; }),
-          season_num: seasons,
-          voice: voices
-        };
-        if (choice.season >= filter_items.season.length) choice.season = 0;
-        if (choice.voice_name) {
-          var vi = voices.indexOf(choice.voice_name);
-          if (vi >= 0) choice.voice = vi;
-        }
-        if (choice.voice >= voices.length) choice.voice = 0;
-        component.filter(filter_items, choice);
-      }
-
-      function filtred() {
-        var seasons = filter_items.season_num || [];
-        var selectedSeason = seasons.length ? (seasons[choice.season] || seasons[0]) : 0;
-        var selectedVoice = filter_items.voice && filter_items.voice.length ? filter_items.voice[choice.voice] : '';
-        return extract.filter(function (i) {
-          if (selectedSeason && i.season != selectedSeason) return false;
-          if (selectedVoice && (i.voice || 'Eneyida') !== selectedVoice) return false;
-          return true;
-        });
-      }
-
-      function getStream(element, call, error) {
-        if (!element || !element.stream) { error(); return; }
-        element.qualitys = false;
-        element.headers = headersPlayer;
-        call(element);
-      }
-
-      function append(items) {
-        component.reset();
-        var viewed = Lampa.Storage.cache('online_view', 5000, []);
-        var last_episode = component.getLastEpisode(items || []);
-        (items || []).forEach(function (element) {
-          if (element.season) {
-            element.translate_episode_end = last_episode;
-            element.translate_voice = element.voice || 'Eneyida';
-          }
-          var hash = Lampa.Utils.hash(element.season ? [element.season, element.episode, object.movie.original_title || object.movie.original_name || object.movie.title].join('') : (object.movie.original_title || object.movie.title || select_title));
-          var view = Lampa.Timeline.view(hash);
-          var item = Lampa.Template.get('stels_online', element);
-          var hash_file = Lampa.Utils.hash((element.season ? [element.season, element.episode, object.movie.original_title, element.voice].join(':') : (object.movie.original_title || select_title)) + 'eneyida');
-          element.timeline = view;
-          item.append(Lampa.Timeline.render(view));
-          if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
-          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
-          item.on('hover:enter', function () {
-            if (element.loading) return;
-            if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
-            element.loading = true;
-            getStream(element, function (element) {
-              element.loading = false;
-              var first = {
-                url: element.stream,
-                quality: component.renameQualityMap(element.qualitys),
-                headers: element.headers,
-                timeline: element.timeline,
-                title: element.season ? element.title + ' / ' + (element.voice || '') : select_title + (element.voice ? ' / ' + element.voice : '')
-              };
-              Lampa.Player.play(first);
-              if (element.season && Lampa.Platform.version) {
-                var playlist = [];
-                items.forEach(function (elem) {
-                  var cell = elem == element ? first : {
-                    url: elem.stream,
-                    headers: headersPlayer,
-                    timeline: elem.timeline,
-                    title: elem.title + ' / ' + (elem.voice || '')
-                  };
-                  playlist.push(cell);
-                });
-                Lampa.Player.playlist(playlist);
-              } else Lampa.Player.playlist([first]);
-              if (viewed.indexOf(hash_file) === -1) {
-                viewed.push(hash_file);
-                item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
-                Lampa.Storage.set('online_view', viewed);
-              }
-            }, function () {
-              element.loading = false;
-              Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
-            });
-          });
-          component.append(item);
-          component.contextmenu({
-            item: item,
-            view: view,
-            viewed: viewed,
-            hash_file: hash_file,
-            element: element,
-            file: function (call) { call({ file: element.stream, quality: element.qualitys }); }
-          });
-        });
-        component.start(true);
-      }
-    }
-
     function cdnvideohub(component, _object) {
       var network = new Lampa.Reguest();
       var extract = {};
@@ -10263,7 +9416,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -10606,6 +9758,928 @@
       }
     }
 
+
+    function eneyida(component, _object) {
+      var network = new Lampa.Reguest();
+      var object = _object || {};
+      var host = 'https://eneyida.tv';
+      var ref = host + '/';
+      var user_agent = Utils.baseUserAgent();
+      var prefer_http = Lampa.Storage.field('stels_online_prefer_http') === true;
+      var select_title = '';
+      var extract = [];
+      var filter_items = { season: [], season_num: [], voice: [] };
+      var choice = { season: 0, voice: 0, voice_name: '' };
+      var requestSeq = 0;
+      var searchTimer = null;
+      var destroyed = false;
+      var headers = {
+        'User-Agent': user_agent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'uk-UA,uk;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5',
+        'Referer': ref,
+        'Origin': host,
+        'X-Requested-With': 'XMLHttpRequest'
+      };
+
+      function cleanText(value) {
+        return component.decodeHtml(String(value == null ? '' : value)
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim());
+      }
+
+      function absolute(link, base) {
+        link = String(link || '').replace(/\\\//g, '/').trim();
+        if (!link) return '';
+        if (/^\/\//.test(link)) link = 'https:' + link;
+        return component.fixLink(link, base || ref);
+      }
+
+      function preview(value, max) {
+        value = String(value == null ? '' : value);
+        max = max || 260;
+        return value.length > max ? value.slice(0, max) + '...' : value;
+      }
+
+      function doneLoading() {
+        try { component.loading(false); } catch (e) {}
+        try { if (component.activity && component.activity.loader) component.activity.loader(false); } catch (e2) {}
+      }
+
+      function clearSearchTimer() {
+        if (searchTimer) {
+          clearTimeout(searchTimer);
+          searchTimer = null;
+        }
+      }
+
+      function safeEmpty(reason, data) {
+        clearSearchTimer();
+        doneLoading();
+        stelsLog('eneyida-empty-safe', {
+          reason: reason || '',
+          title: select_title,
+          extra: data || {}
+        });
+        try {
+          if (reason && /timeout|помилка|error|http/i.test(reason)) component.empty(reason);
+          else component.emptyForQuery(select_title);
+        } catch (e) {
+          try { component.emptyForQuery(select_title); } catch (e2) {}
+        }
+      }
+
+      function requestText(url, success, fail, options) {
+        options = options || {};
+        var requestId = ++requestSeq;
+        var finished = false;
+        var timeoutMs = options.timeout || 9000;
+        var postdata = options.postdata || false;
+        var kind = options.kind || 'text';
+        var referer = options.referer || ref;
+        var reqHeaders = {};
+        for (var k in headers) reqHeaders[k] = headers[k];
+        reqHeaders.Referer = referer;
+        if (!postdata) delete reqHeaders.Origin;
+
+        stelsLog('eneyida-request-start', {
+          id: requestId,
+          kind: kind,
+          method: postdata ? 'POST' : 'GET',
+          url: preview(url, 220),
+          post_preview: preview(postdata || '', 220),
+          timeout: timeoutMs,
+          referer: preview(referer, 220)
+        });
+
+        var watchdog = setTimeout(function () {
+          if (finished || destroyed) return;
+          finished = true;
+          try { network.clear(); } catch (e) {}
+          stelsLog('eneyida-request-watchdog', {
+            id: requestId,
+            kind: kind,
+            url: preview(url, 220),
+            timeout: timeoutMs,
+            note: 'native callback was not called; forcing fail path to stop endless loading'
+          });
+          if (fail) fail('timeout:' + kind);
+        }, timeoutMs + 1400);
+
+        function finishOk(str) {
+          if (finished || destroyed) return;
+          finished = true;
+          clearTimeout(watchdog);
+          stelsLog('eneyida-request-done', {
+            id: requestId,
+            kind: kind,
+            url: preview(url, 220),
+            length: (str == null ? 0 : String(str).length),
+            sample: preview(str || '', 280)
+          });
+          if (success) success(str || '');
+        }
+
+        function finishFail(a, c) {
+          if (finished || destroyed) return;
+          finished = true;
+          clearTimeout(watchdog);
+          var message = '';
+          try { message = network.errorDecode(a, c); } catch (e) {}
+          if (!message) message = (a && (a.statusText || a.status) || c || 'request error') + '';
+          stelsLog('eneyida-request-fail', {
+            id: requestId,
+            kind: kind,
+            url: preview(url, 220),
+            status: a && a.status,
+            statusText: a && a.statusText,
+            message: message
+          });
+          if (fail) fail(message);
+        }
+
+        try {
+          network.clear();
+          network.timeout(timeoutMs);
+          network["native"](url, finishOk, finishFail, postdata, {
+            dataType: 'text',
+            withCredentials: false,
+            headers: reqHeaders
+          });
+        } catch (e) {
+          finishFail({ statusText: e && (e.message || e.toString()) }, '');
+        }
+      }
+
+      function getHash(callback) {
+        requestText(ref, function (html) {
+          var hash = '';
+          var m = String(html || '').match(/\bdle_login_hash\s*=\s*['"]([^'"]+)['"]/i) ||
+                  String(html || '').match(/\buser_hash\s*[:=]\s*['"]([^'"]+)['"]/i) ||
+                  String(html || '').match(/name\s*=\s*['"]user_hash['"][^>]*value\s*=\s*['"]([^'"]+)['"]/i);
+          if (m) hash = m[1] || '';
+          stelsLog('eneyida-hash', { found: !!hash, hash_len: hash.length });
+          callback(hash);
+        }, function (err) {
+          stelsLog('eneyida-hash', { found: false, error: err || '' });
+          callback('');
+        }, { kind: 'hash', timeout: 6500, referer: ref });
+      }
+
+      function normalizeForCompare(value) {
+        return component.cleanTitle(String(value || '')
+          .toLowerCase()
+          .replace(/ё/g, 'е')
+          .replace(/[’'`"]/g, '')
+          .replace(/[\-\u2010-\u2015\u2E3A\u2E3B\uFE58\uFE63\uFF0D]+/g, ' ')
+        );
+      }
+
+      function movieTitles() {
+        var movie = object.movie || {};
+        var out = [];
+        [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(function (t) {
+          t = cleanText(t || '');
+          if (t && out.indexOf(t) === -1) out.push(t);
+        });
+        if (normalizeForCompare(movie.original_title || movie.original_name || '') === 'the boys') {
+          ['Хлопаки', 'Хлопці', 'Пацани', 'Пацаны'].forEach(function (t) {
+            if (out.indexOf(t) === -1) out.push(t);
+          });
+        }
+        return out;
+      }
+
+      function variants() {
+        var out = [];
+        movieTitles().forEach(function (t) {
+          if (t && out.indexOf(t) === -1) out.push(t);
+        });
+        var cleaned = [];
+        out.forEach(function (t) {
+          var c = component.cleanTitle(t || '');
+          if (c && cleaned.indexOf(c) === -1) cleaned.push(c);
+        });
+        return cleaned.slice(0, 7);
+      }
+
+      function looksCategory(url) {
+        url = String(url || '').toLowerCase();
+        return /\/(?:xfsearch|year|genre|country|actors|director|tags|page|index\.php)\//i.test(url) ||
+               /\/(?:serialy|filmy|multfilmy|anime|dobirky|novyny)(?:\/|$)/i.test(url);
+      }
+
+      function isRelevantTitle(title, query) {
+        var titleN = normalizeForCompare(title);
+        var qN = normalizeForCompare(query);
+        if (!titleN) return false;
+        if (qN && (titleN === qN || titleN.indexOf(qN) !== -1 || qN.indexOf(titleN) !== -1)) return true;
+        var titles = movieTitles();
+        for (var i = 0; i < titles.length; i++) {
+          var t = normalizeForCompare(titles[i]);
+          if (t && (titleN === t || titleN.indexOf(t) !== -1 || t.indexOf(titleN) !== -1)) return true;
+        }
+        return false;
+      }
+
+      function parseSearchItems(html, query) {
+        var root = $('<div>' + (html || '') + '</div>');
+        var items = [];
+        var raw = [];
+        var seen = {};
+        root.find('a[href]').each(function () {
+          var a = $(this);
+          var href = absolute(a.attr('href') || '', host);
+          if (!href || seen[href]) return;
+          if (href.indexOf(host) !== 0) return;
+          if (!/\.html(?:$|\?)/i.test(href)) return;
+          if (looksCategory(href)) return;
+
+          var box = a.closest('.short, .shortstory, .story, .news, .th-item, .th, .movie-item, .poster, .sect-item, .searchresult, .search_result, li, article, .item');
+          var title = cleanText(a.attr('title') || a.text() || '');
+          if (box && box.length) {
+            title = cleanText(box.find('.short-title, .th-title, .story-title, .title, h1, h2, h3, h4').first().text()) || title;
+          }
+          if (!title) return;
+
+          var year = '';
+          var text = cleanText((box && box.length ? box.text() : a.parent().text()) || '');
+          var yearMatch = text.match(/\b(19|20)\d{2}\b/);
+          if (yearMatch) year = yearMatch[0];
+
+          raw.push(title + '|' + href);
+          if (!isRelevantTitle(title, query)) return;
+
+          var img = '';
+          if (box && box.length) img = box.find('img').first().attr('data-src') || box.find('img').first().attr('data-lazy') || box.find('img').first().attr('src') || '';
+          items.push({
+            title: title,
+            orig_title: '',
+            link: href,
+            poster: absolute(img, href),
+            year: year
+          });
+          seen[href] = true;
+        });
+
+        stelsLog('eneyida-search-results', {
+          query: query,
+          count: items.length,
+          raw_links: root.find('a[href]').length,
+          raw_candidates_count: raw.length,
+          raw_sample: raw.slice(0, 20),
+          final_sample: items.slice(0, 10).map(function (i) { return i.title + '|' + i.link; })
+        });
+        return items;
+      }
+
+      function searchScore(item, query) {
+        var title = normalizeForCompare(item && item.title || '');
+        var q = normalizeForCompare(query || '');
+        var score = 0;
+        if (q && title === q) score += 100;
+        if (q && title.indexOf(q) !== -1) score += 45;
+        var titles = movieTitles();
+        titles.forEach(function (t) {
+          t = normalizeForCompare(t);
+          if (t && title === t) score += 90;
+          else if (t && title.indexOf(t) !== -1) score += 45;
+        });
+        var movie = object.movie || {};
+        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '').slice(0, 4), 10);
+        if (year && item.year && Math.abs(parseInt(item.year, 10) - year) <= 1) score += 12;
+        return score;
+      }
+
+      function selectBest(items, query) {
+        var best = null;
+        (items || []).forEach(function (item) {
+          var score = searchScore(item, query);
+          if (!best || score > best.score) best = { item: item, score: score };
+        });
+        return best;
+      }
+
+      function showSearchItems(items, query) {
+        if (!(items && items.length)) return safeEmpty('no-search-results', { query: query });
+        var best = selectBest(items, query);
+        stelsLog('eneyida-search-best', {
+          query: query,
+          count: items.length,
+          best_title: best && best.item && best.item.title || '',
+          best_link: best && best.item && best.item.link || '',
+          best_score: best && best.score || 0,
+          clarification: !!object.clarification
+        });
+        if (!object.clarification && best && best.score >= 35) {
+          loadTitle(best.item.link, best.item.poster);
+          return;
+        }
+        items.forEach(function (item) {
+          item.full_title = item.full_title || item.title;
+        });
+        clearSearchTimer();
+        component.similars(items);
+        doneLoading();
+      }
+
+      function searchByGet(query, done) {
+        var url = host + '/index.php?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(query);
+        requestText(url, function (html) {
+          done(parseSearchItems(html, query));
+        }, function (err) {
+          stelsLog('eneyida-search-get-fail', { query: query, error: err || '' });
+          done([]);
+        }, { kind: 'search-get', timeout: 9000, referer: ref });
+      }
+
+      function searchByPost(query, hash, done) {
+        var url = host + '/engine/ajax/controller.php?mod=search';
+        var post = 'query=' + encodeURIComponent(query);
+        if (hash) post += '&user_hash=' + encodeURIComponent(hash);
+        post += '&skin=eneyida';
+        stelsLog('eneyida-search-post', { query: query, url: url, hash: !!hash });
+        requestText(url, function (html) {
+          var items = parseSearchItems(html, query);
+          if (items.length) done(items);
+          else searchByGet(query, done);
+        }, function (err) {
+          stelsLog('eneyida-search-post-fail', { query: query, error: err || '' });
+          searchByGet(query, done);
+        }, { kind: 'search-post', timeout: 9000, postdata: post, referer: ref });
+      }
+
+      function runSearches(list, index, hash) {
+        if (destroyed) return;
+        if (index >= list.length) return safeEmpty('all-search-variants-empty', { variants: list });
+        var query = list[index];
+        stelsLog('eneyida-search-try', { index: index, query: query, variants: list });
+        searchByPost(query, hash, function (items) {
+          if (items && items.length) showSearchItems(items, query);
+          else runSearches(list, index + 1, hash);
+        });
+      }
+
+      function unescapeJs(value) {
+        value = String(value || '');
+        try { return JSON.parse('"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"'); }
+        catch (e) {
+          return value.replace(/\\\//g, '/').replace(/\\u([0-9a-f]{4})/ig, function (_, h) { return String.fromCharCode(parseInt(h, 16)); });
+        }
+      }
+
+      function maybeDecodeBase64(value) {
+        value = String(value || '').trim();
+        if (!value || value.length < 60 || !/^[A-Za-z0-9+\/=]+$/.test(value)) return value;
+        try {
+          var decoded = atob(value);
+          if (/https?:\/\/|\.m3u8|Playerjs|\{|\[/.test(decoded)) return decoded;
+        } catch (e) {}
+        return value;
+      }
+
+      function uniquePush(list, item, key) {
+        key = key || (item && (item.stream || item.file || item.iframe || item.link || item.title));
+        if (!key) return;
+        for (var i = 0; i < list.length; i++) {
+          if ((list[i].stream || list[i].file || list[i].iframe || list[i].link || list[i].title) === key) return;
+        }
+        list.push(item);
+      }
+
+      function parseSeasonEpisode(text) {
+        text = cleanText(text || '');
+        var m = text.match(/(?:сезон|season|s)\s*0*(\d+).*?(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i) ||
+                text.match(/[sс]\s*0*(\d+)\s*[eе]\s*0*(\d+)/i) ||
+                text.match(/0*(\d+)\s*[xх]\s*0*(\d+)/i);
+        if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
+        m = text.match(/(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i);
+        if (m) return { season: 1, episode: parseInt(m[1], 10) || 0 };
+        return { season: 0, episode: 0 };
+      }
+
+      function normalizeStreamUrl(url, referer) {
+        url = maybeDecodeBase64(unescapeJs(url || ''));
+        url = url.split(' or ').filter(Boolean)[0] || url;
+        url = absolute(url, referer || ref);
+        url = component.fixLinkProtocol(url, prefer_http, true);
+        return component.proxyStream ? component.proxyStream(url, 'eneyida') : url;
+      }
+
+      function addDirectStream(list, url, title, info, referer, season, episode, poster) {
+        url = normalizeStreamUrl(url, referer);
+        if (!url) return;
+        var meta = parseSeasonEpisode(title || '');
+        season = season || meta.season || 0;
+        episode = episode || meta.episode || 0;
+        uniquePush(list, {
+          title: title || (episode ? component.formatEpisodeTitle(season || 1, episode) : select_title),
+          quality: /\.m3u8/i.test(url) ? 'HLS' : 'Eneyida',
+          info: info || '',
+          season: season || 0,
+          episode: episode || 0,
+          stream: url,
+          poster: poster || '',
+          referer: referer || ref
+        }, url + '|' + title);
+      }
+
+      function addIframe(list, url, title, referer, poster) {
+        url = absolute(url, referer || ref);
+        if (!url || /(?:youtube\.com|youtu\.be|google|facebook|twitter|instagram)/i.test(url)) return;
+        uniquePush(list, {
+          title: title || select_title,
+          quality: 'Eneyida',
+          info: '',
+          iframe: url,
+          referer: referer || ref,
+          poster: poster || ''
+        }, url);
+      }
+
+      function tryParseJsonLike(text) {
+        text = maybeDecodeBase64(unescapeJs(text || '')).trim();
+        if (!text) return null;
+        try { return JSON.parse(text); } catch (e) {}
+        try { return (0, eval)('"use strict"; (' + text + ');'); } catch (e2) {}
+        return null;
+      }
+
+      function walkPlayerNode(node, list, ctx) {
+        ctx = ctx || {};
+        if (!node) return;
+        if (Array.isArray(node)) {
+          node.forEach(function (n) { walkPlayerNode(n, list, ctx); });
+          return;
+        }
+        if (typeof node == 'string') {
+          parseFilesFromString(node, list, ctx.title || select_title, ctx.info || '', ctx.referer || ref, ctx.poster || '');
+          return;
+        }
+        if (typeof node != 'object') return;
+
+        var title = cleanText(node.title || node.name || node.label || ctx.title || '');
+        var info = cleanText(node.subtitle || node.voice || node.translation || ctx.info || '');
+        var meta = parseSeasonEpisode(title || ctx.title || '');
+        var season = meta.season || ctx.season || 0;
+        var episode = meta.episode || ctx.episode || 0;
+
+        if (node.file || node.hls || node.src || node.url) {
+          parseFilesFromString(node.file || node.hls || node.src || node.url, list, title || ctx.title || select_title, info, ctx.referer || ref, ctx.poster || '', season, episode);
+        }
+        if (node.folder) walkPlayerNode(node.folder, list, { title: title || ctx.title, info: info, referer: ctx.referer, poster: ctx.poster, season: season, episode: episode });
+        if (node.playlist) walkPlayerNode(node.playlist, list, { title: title || ctx.title, info: info, referer: ctx.referer, poster: ctx.poster, season: season, episode: episode });
+        if (node.seasons) walkPlayerNode(node.seasons, list, { title: title || ctx.title, info: info, referer: ctx.referer, poster: ctx.poster, season: season, episode: episode });
+        if (node.episodes) walkPlayerNode(node.episodes, list, { title: title || ctx.title, info: info, referer: ctx.referer, poster: ctx.poster, season: season, episode: episode });
+      }
+
+      function parseFilesFromString(file, list, title, info, referer, poster, season, episode) {
+        file = maybeDecodeBase64(unescapeJs(file || ''));
+        var json = tryParseJsonLike(file);
+        if (json) {
+          walkPlayerNode(json, list, { title: title, info: info, referer: referer, poster: poster, season: season, episode: episode });
+          return;
+        }
+
+        var urls = [];
+        var directRe = /https?:\/\/[^\s"'<>\\,]+(?:\.m3u8|\.mp4)(?:\?[^\s"'<>\\,]*)?/ig;
+        var m;
+        while ((m = directRe.exec(file))) urls.push(m[0]);
+        if (!urls.length && /^https?:\/\//i.test(file)) urls.push(file);
+
+        urls.forEach(function (u) {
+          if (/\.(?:m3u8|mp4)(?:$|\?)/i.test(u)) addDirectStream(list, u, title, info, referer, season, episode, poster);
+          else addIframe(list, u, title, referer, poster);
+        });
+      }
+
+      function readBalancedObject(str, start) {
+        var q = '';
+        var esc = false;
+        var depth = 0;
+        for (var i = start; i < str.length; i++) {
+          var ch = str.charAt(i);
+          if (q) {
+            if (esc) esc = false;
+            else if (ch === '\\') esc = true;
+            else if (ch === q) q = '';
+            continue;
+          }
+          if (ch === '"' || ch === "'") {
+            q = ch;
+            continue;
+          }
+          if (ch === '{') depth++;
+          if (ch === '}') {
+            depth--;
+            if (depth === 0) return str.substring(start, i + 1);
+          }
+        }
+        return '';
+      }
+
+      function parsePlayerjsObjects(html, referer, poster) {
+        var list = [];
+        var re = /(?:new\s+)?Playerjs\s*\(\s*\{/ig;
+        var m;
+        while ((m = re.exec(html || ''))) {
+          var start = (html || '').indexOf('{', m.index);
+          var objText = start >= 0 ? readBalancedObject(html, start) : '';
+          var obj = objText ? tryParseJsonLike(objText) : null;
+          if (obj) {
+            stelsLog('eneyida-playerjs-object', {
+              referer: referer,
+              keys: Object.keys(obj).slice(0, 20),
+              has_file: !!obj.file,
+              has_playlist: !!obj.playlist
+            });
+            walkPlayerNode(obj.file || obj.playlist || obj, list, { title: select_title, referer: referer, poster: poster });
+          }
+        }
+        return list;
+      }
+
+      function parseEmbeddedPlayers(html, pageUrl, poster) {
+        var root = $('<div>' + (html || '') + '</div>');
+        var list = [];
+
+        root.find('iframe[src],iframe[data-src],video[src],source[src]').each(function (index) {
+          var src = $(this).attr('src') || $(this).attr('data-src') || '';
+          addIframe(list, src, index ? 'Плеєр ' + (index + 1) : select_title, pageUrl, poster);
+        });
+
+        var attrRe = /\b(?:data-file|data-src|src|file|hls)\s*[:=]\s*(['"])((?:\\.|(?!\1)[\s\S])*?)\1/ig;
+        var am;
+        while ((am = attrRe.exec(html || ''))) {
+          var val = unescapeJs(am[2] || '');
+          if (/\.m3u8|\.mp4|https?:\/\//i.test(val)) parseFilesFromString(val, list, select_title, '', pageUrl, poster);
+        }
+
+        parsePlayerjsObjects(html, pageUrl, poster).forEach(function (item) {
+          uniquePush(list, item, item.stream || item.iframe || item.title);
+        });
+
+        var urlRe = /(?:https?:)?\/\/[^"'\s<>\\]+/ig;
+        var um;
+        while ((um = urlRe.exec(html || ''))) {
+          var u = um[0];
+          if (/youtube|youtu\.be|google|schema\.org|facebook|twitter|instagram/i.test(u)) continue;
+          if (!/(?:m3u8|mp4|player|iframe|embed|video|hdvb|collaps|voidboost|ashdi|plrjs|cdnmovies|tortuga|zetvideo|stream)/i.test(u)) continue;
+          if (/^\/\//.test(u)) u = 'https:' + u;
+          if (/\.(?:m3u8|mp4)(?:$|\?)/i.test(u)) addDirectStream(list, u, select_title, '', pageUrl, 0, 0, poster);
+          else addIframe(list, u, select_title, pageUrl, poster);
+        }
+
+        return list;
+      }
+
+      function pagePoster(root, pageUrl, fallback) {
+        return absolute(
+          fallback ||
+          root.find('meta[property="og:image"]').attr('content') ||
+          root.find('img').first().attr('data-src') ||
+          root.find('img').first().attr('src') ||
+          '',
+          pageUrl
+        );
+      }
+
+      function loadTitle(link, fallbackPoster) {
+        link = absolute(link, host);
+        requestText(link, function (html) {
+          var root = $('<div>' + (html || '') + '</div>');
+          var h1 = cleanText(root.find('h1').first().text() || root.find('.full-title,.title').first().text() || select_title);
+          var poster = pagePoster(root, link, fallbackPoster);
+          var items = parseEmbeddedPlayers(html, link, poster);
+
+          items.forEach(function (item) {
+            if (!item.title || item.title === select_title) item.title = h1 || select_title;
+            if (!item.poster) item.poster = poster;
+          });
+
+          extract = items;
+          stelsLog('eneyida-page', {
+            page: link,
+            title: h1,
+            poster: poster,
+            items_count: extract.length,
+            direct_count: extract.filter(function (i) { return !!i.stream; }).length,
+            iframe_count: extract.filter(function (i) { return !!i.iframe; }).length,
+            sample: extract.slice(0, 12).map(function (i) { return (i.title || '') + '|' + (i.stream || i.iframe || ''); }),
+            iframe_html_count: root.find('iframe').length,
+            iframe_src_sample: root.find('iframe').map(function () { return $(this).attr('src') || $(this).attr('data-src') || ''; }).get().slice(0, 8)
+          });
+
+          if (extract.length) {
+            buildFilter();
+            render(currentItems());
+            clearSearchTimer();
+            doneLoading();
+          } else {
+            safeEmpty('no-player-on-page', { page: link, title: h1, html_sample: preview(html, 500) });
+          }
+        }, function (err) {
+          safeEmpty(err || 'page-load-error', { page: link });
+        }, { kind: 'title-page', timeout: 10000, referer: ref });
+      }
+
+      function buildFilter() {
+        var seasons = [];
+        var seasonNums = [];
+        var voices = [];
+        (extract || []).forEach(function (item) {
+          if (item.season) {
+            if (seasonNums.indexOf(item.season) === -1) {
+              seasonNums.push(item.season);
+              seasons.push(Lampa.Lang.translate('torrent_serial_season') + ' ' + item.season);
+            }
+          }
+        });
+        seasonNums.sort(function (a, b) { return a - b; });
+        if (seasonNums.length) {
+          seasons = seasonNums.map(function (s) { return Lampa.Lang.translate('torrent_serial_season') + ' ' + s; });
+          var selectedSeason = seasonNums[choice.season] || seasonNums[0];
+          (extract || []).forEach(function (item) {
+            var voice = cleanText(item.info || item.voice || 'Eneyida');
+            if (item.season === selectedSeason && voices.indexOf(voice) === -1) voices.push(voice);
+          });
+        }
+        filter_items = {
+          season: seasons,
+          season_num: seasonNums,
+          voice: voices
+        };
+        if (!filter_items.season[choice.season]) choice.season = 0;
+        if (!filter_items.voice[choice.voice]) choice.voice = 0;
+        if (choice.voice_name) {
+          var vi = filter_items.voice.indexOf(choice.voice_name);
+          if (vi >= 0) choice.voice = vi;
+        }
+        component.filter(filter_items, choice);
+      }
+
+      function currentItems() {
+        var items = (extract || []).slice(0);
+        if (filter_items.season_num && filter_items.season_num.length) {
+          var season = filter_items.season_num[choice.season] || filter_items.season_num[0];
+          var voice = filter_items.voice[choice.voice] || '';
+          items = items.filter(function (item) {
+            var itemVoice = cleanText(item.info || item.voice || 'Eneyida');
+            return item.season === season && (!voice || itemVoice === voice);
+          });
+        }
+        return items;
+      }
+
+      function parseStreamFromPlayerHtml(html, iframeUrl, element, success, fail) {
+        var list = [];
+        parseEmbeddedPlayers(html, iframeUrl, element.poster || '').forEach(function (item) {
+          uniquePush(list, item, item.stream || item.iframe || item.title);
+        });
+
+        if (list.length && list[0].stream) {
+          element.stream = list[0].stream;
+          element.qualitys = false;
+          stelsLog('eneyida-stream-resolve', {
+            title: element.title,
+            iframe: iframeUrl,
+            stream: element.stream,
+            candidates: list.length
+          });
+          success(element);
+          return;
+        }
+
+        if (list.length && list[0].iframe && list[0].iframe !== iframeUrl) {
+          requestText(list[0].iframe, function (html2) {
+            parseStreamFromPlayerHtml(html2, list[0].iframe, element, success, fail);
+          }, function (err) {
+            stelsLog('eneyida-stream-fail', { title: element.title, iframe: list[0].iframe, error: err || '' });
+            if (fail) fail(err);
+          }, { kind: 'iframe-nested', timeout: 9000, referer: iframeUrl });
+          return;
+        }
+
+        var direct = String(html || '').match(/https?:\/\/[^\s"'<>\\]+(?:\.m3u8|\.mp4)(?:\?[^\s"'<>\\]+)?/i);
+        if (direct) {
+          element.stream = normalizeStreamUrl(direct[0], iframeUrl);
+          element.qualitys = false;
+          success(element);
+          return;
+        }
+
+        stelsLog('eneyida-stream-fail', {
+          title: element.title,
+          iframe: iframeUrl,
+          reason: 'no stream in player html',
+          html_sample: preview(html, 400)
+        });
+        if (fail) fail('no stream');
+      }
+
+      function getStream(element, success, fail) {
+        if (element.stream) return success(element);
+        if (!element.iframe) {
+          stelsLog('eneyida-stream-fail', { title: element.title, reason: 'no iframe and no direct stream' });
+          if (fail) fail('no iframe');
+          return;
+        }
+        requestText(element.iframe, function (html) {
+          parseStreamFromPlayerHtml(html, element.iframe, element, success, fail);
+        }, function (err) {
+          stelsLog('eneyida-stream-fail', { title: element.title, iframe: element.iframe, error: err || '' });
+          if (fail) fail(err);
+        }, { kind: 'iframe', timeout: 10000, referer: element.referer || ref });
+      }
+
+      function render(items) {
+        component.reset();
+        items = items || [];
+        var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        var last_episode = component.getLastEpisode(items);
+
+        stelsLog('eneyida-render', {
+          count: items.length,
+          seasons: filter_items.season_num,
+          voices: filter_items.voice,
+          selected_season: filter_items.season_num && filter_items.season_num[choice.season],
+          selected_voice: filter_items.voice && filter_items.voice[choice.voice],
+          sample: items.slice(0, 20).map(function (i) { return (i.title || '') + '|' + (i.stream || i.iframe || ''); })
+        });
+
+        items.forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = last_episode;
+            element.translate_voice = filter_items.voice[choice.voice] || 'Eneyida';
+          }
+          var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie && (object.movie.original_title || object.movie.original_name || select_title)].join('') : (object.movie && (object.movie.original_title || object.movie.original_name) || select_title));
+          var view = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', element);
+          var hash_file = Lampa.Utils.hash((element.season ? [element.season, element.episode, object.movie && (object.movie.original_title || object.movie.original_name || select_title), element.translate_voice].join(':') : select_title + ':' + (element.title || '') + ':' + (element.stream || element.iframe || '')));
+          element.timeline = view;
+          item.append(Lampa.Timeline.render(view));
+
+          if (Lampa.Timeline.details) {
+            item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
+          }
+
+          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+
+          item.on('hover:enter', function () {
+            if (element.loading) return;
+            if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            element.loading = true;
+
+            getStream(element, function (element) {
+              element.loading = false;
+              var first = stelsSanitizeAndroidPlayable({
+                url: component.getDefaultQuality(element.qualitys, element.stream),
+                quality: component.renameQualityMap(element.qualitys),
+                subtitles: element.subtitles || false,
+                timeline: element.timeline,
+                poster: element.poster || '',
+                title: element.title || select_title
+              }, 'eneyida-first');
+
+              Lampa.Player.play(first);
+
+              if (element.season && Lampa.Platform.version) {
+                var playlist = [];
+                items.forEach(function (elem) {
+                  if (elem == element) {
+                    playlist.push(first);
+                  } else {
+                    var cell = {
+                      url: function (call) {
+                        getStream(elem, function (elem) {
+                          cell.url = component.getDefaultQuality(elem.qualitys, elem.stream);
+                          cell.quality = component.renameQualityMap(elem.qualitys);
+                          cell.subtitles = elem.subtitles || false;
+                          call();
+                        }, function () {
+                          cell.url = '';
+                          call();
+                        });
+                      },
+                      timeline: elem.timeline,
+                      poster: elem.poster || '',
+                      title: elem.title || ''
+                    };
+                    playlist.push(cell);
+                  }
+                });
+                Lampa.Player.playlist(playlist);
+              } else {
+                Lampa.Player.playlist([first]);
+              }
+
+              try { stelsSaveWatchHistory(object.movie, 'eneyida', 'Eneyida', element, { title: element.title }); } catch (e) {}
+
+              if (viewed.indexOf(hash_file) == -1) {
+                viewed.push(hash_file);
+                item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+                Lampa.Storage.set('online_view', viewed);
+              }
+            }, function () {
+              element.loading = false;
+              Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
+            });
+          });
+
+          component.append(item);
+          component.contextmenu({
+            item: item,
+            view: view,
+            viewed: viewed,
+            hash_file: hash_file,
+            element: element,
+            file: function (call) {
+              getStream(element, function (element) {
+                call({
+                  file: element.stream,
+                  quality: element.qualitys
+                });
+              }, function () {
+                Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
+              });
+            }
+          });
+        });
+
+        if (items.length) component.start(true);
+        else safeEmpty('render-empty');
+      }
+
+      this.search = function (_object, kinopoisk_id, data) {
+        object = _object || object || {};
+        select_title = object.search || (object.movie && (object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name)) || '';
+        destroyed = false;
+        extract = [];
+        component.loading(true);
+
+        clearSearchTimer();
+        searchTimer = setTimeout(function () {
+          if (destroyed) return;
+          stelsLog('eneyida-hard-timeout', {
+            title: select_title,
+            variants: variants(),
+            note: 'search did not finish in hard timeout; stopping loader'
+          });
+          safeEmpty('Eneyida timeout');
+        }, 18500);
+
+        stelsLog('eneyida-search-start', {
+          title: select_title,
+          variants: variants(),
+          original_title: object.movie && (object.movie.original_title || object.movie.original_name),
+          tmdb_id: object.movie && (object.movie.tmdb_id || object.movie.id),
+          imdb_id: object.movie && object.movie.imdb_id,
+          kinopoisk_id: object.movie && object.movie.kinopoisk_id
+        });
+
+        if (data && data[0] && data[0].link) {
+          loadTitle(data[0].link, data[0].poster || '');
+          return;
+        }
+
+        getHash(function (hash) {
+          runSearches(variants(), 0, hash);
+        });
+      };
+
+      this.extendChoice = function (saved) {
+        Lampa.Arrays.extend(choice, saved, true);
+      };
+
+      this.reset = function () {
+        component.reset();
+        choice = { season: 0, voice: 0, voice_name: '' };
+        buildFilter();
+        render(currentItems());
+        component.saveChoice(choice);
+      };
+
+      this.filter = function (type, a, b) {
+        choice[a.stype] = b.index;
+        if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index] || '';
+        component.reset();
+        buildFilter();
+        render(currentItems());
+        component.saveChoice(choice);
+        setTimeout(component.closeFilter, 10);
+      };
+
+      this.destroy = function () {
+        destroyed = true;
+        clearSearchTimer();
+        network.clear();
+        extract = [];
+      };
+    }
+
+
     function anilibria(component, _object) {
       var network = new Lampa.Reguest();
       var extract = {};
@@ -10774,7 +10848,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -11154,7 +11227,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -11559,7 +11631,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -12198,7 +12269,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -12804,7 +12874,6 @@
 
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = null;
       };
@@ -13330,12 +13399,542 @@
 
 
     // ===============================
-    function lampauaRemoteSource(component, _object, aliases, sourceTitle, remoteOptions) {
+    // Kinozer / zerx.tv source
+    // ===============================
+
+    function kinozer(component, _object) {
       var network = new Lampa.Reguest();
       var object = _object;
-      remoteOptions = remoteOptions || {};
-      var host = remoteOptions.host || 'http://lampaua.mooo.com/';
-      if (host && host.slice(-1) !== '/') host += '/';
+      var select_title = '';
+      var host = 'https://zerx.tv/';
+      var ref = host;
+      var prox = component.proxy('kinozer') || component.proxy('iframe');
+      var prox_player = component.proxy('allohacdn') || component.proxy('alloha');
+      var user_agent = Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+      var extract = { pl: null, domain: '', token: '', player_url: '', postdata: '' };
+      var filter_items = {};
+      var choice = { season: 0, voice: 0, voice_name: '' };
+
+      function compact(value, len) {
+        value = (value == null ? '' : String(value)).replace(/\s+/g, ' ').trim();
+        len = len || 220;
+        return value.length > len ? value.slice(0, len) + '...' : value;
+      }
+
+      function decodeHtml(value) {
+        value = value == null ? '' : String(value);
+        try { return $('<textarea/>').html(value).text(); } catch (e) { return value; }
+      }
+
+      function cleanText(value) {
+        return decodeHtml(value).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+
+      function abs(url, base) {
+        url = decodeHtml(url || '').trim();
+        if (!url) return '';
+        if (/^\/\//.test(url)) return 'https:' + url;
+        if (/^https?:\/\//i.test(url)) return url;
+        base = base || host;
+        if (url.charAt(0) === '/') return base.replace(/\/$/, '') + url;
+        return base.replace(/\/[^\/]*$/, '/') + url;
+      }
+
+      function norm(value) {
+        return (value == null ? '' : String(value)).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-яіїєґ0-9]+/ig, '');
+      }
+
+      function yearFromMovie() {
+        var movie = object.movie || {};
+        return ((movie.release_date || movie.first_air_date || movie.year || '') + '').slice(0, 4);
+      }
+
+      function kinozerKnownRuAliases(value) {
+        var n = norm(value || '');
+        var map = {
+          'ззовні': 'Извне',
+          'ззовни': 'Извне'
+        };
+        return map[n] ? [map[n]] : [];
+      }
+
+      function pushUnique(arr, value) {
+        value = value == null ? '' : String(value).trim();
+        if (value && arr.indexOf(value) === -1) arr.push(value);
+      }
+
+      function requestText(url, success, fail, postdata, referer, headers_extra) {
+        url = abs(url, host);
+        var headers = {
+          'User-Agent': user_agent,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5',
+          'Referer': referer || ref
+        };
+        if (postdata) headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        if (headers_extra) {
+          for (var k in headers_extra) headers[k] = headers_extra[k];
+        }
+        var direct_first = /(?:stravers\.live|stloadi\.live|synthezoid)/i.test(url);
+        var proxy_url = component.proxyLink(url, prox, '', 'enc2t');
+
+        function runRequest(reqUrl, mode, fallback) {
+          stelsLog('kinozer-request', { url: url, request_url: reqUrl === url ? 'direct' : compact(reqUrl, 180), mode: mode, post: !!postdata, referer: headers.Referer });
+          network.clear();
+          network.timeout(18000);
+          network['native'](reqUrl, function (data) {
+            stelsLog('kinozer-response', { url: url, mode: mode, length: (data || '').length, preview: compact(data, 260) });
+            success(data || '');
+          }, function (a, c) {
+            var err = network.errorDecode ? network.errorDecode(a, c) : 'Kinozer request error';
+            stelsLog('kinozer-request-fail', { url: url, mode: mode, error: err, status: a && a.status, statusText: a && a.statusText });
+            if (fallback) fallback(err);
+            else if (fail) fail(err);
+          }, postdata || false, { dataType: 'text', headers: headers });
+        }
+
+        if (direct_first) runRequest(url, 'direct', function () { runRequest(proxy_url, 'proxy'); });
+        else runRequest(proxy_url, 'proxy');
+      }
+
+      function requestJson(url, success, fail, postdata, referer) {
+        var headers = {
+          'User-Agent': user_agent,
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5',
+          'Origin': (extract.domain || '').replace(/\/$/, ''),
+          'Referer': referer || extract.player_url || ref,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        };
+        var direct_first = /(?:stravers\.live|stloadi\.live|synthezoid)/i.test(url);
+        var proxy_url = component.proxyLink(url, prox_player, '', 'enc2t');
+
+        function runJson(reqUrl, mode, fallback) {
+          stelsLog('kinozer-stream-request', { url: url, request_url: reqUrl === url ? 'direct' : compact(reqUrl, 180), mode: mode, post: !!postdata, media_referer: headers.Referer });
+          network.clear();
+          network.timeout(18000);
+          network['native'](reqUrl, function (json) {
+            if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, {});
+            stelsLog('kinozer-stream-response', {
+              url: url,
+              mode: mode,
+              hls_count: json && json.hlsSource && json.hlsSource.length || 0,
+              tracks_count: json && json.tracks && json.tracks.length || 0,
+              keys: json && typeof json === 'object' ? Object.keys(json).slice(0, 20) : []
+            });
+            success(json || {});
+          }, function (a, c) {
+            var err = network.errorDecode ? network.errorDecode(a, c) : 'Kinozer stream error';
+            stelsLog('kinozer-stream-fail', { url: url, mode: mode, error: err, status: a && a.status, statusText: a && a.statusText });
+            if (fallback) fallback(err);
+            else if (fail) fail(err);
+          }, postdata || false, { headers: headers });
+        }
+
+        if (direct_first) runJson(url, 'direct', function () { runJson(proxy_url, 'proxy'); });
+        else runJson(proxy_url, 'proxy');
+      }
+
+      function queryList() {
+        var movie = object.movie || {};
+        var out = [];
+        [object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(function (v) { pushUnique(out, v); });
+
+        function addAltList(list) {
+          (list || []).forEach(function (t) {
+            if (!t) return;
+            if (typeof t === 'string') pushUnique(out, t);
+            else {
+              pushUnique(out, t.title);
+              pushUnique(out, t.name);
+            }
+          });
+        }
+
+        if (movie.alternative_titles) {
+          addAltList(movie.alternative_titles.results);
+          addAltList(movie.alternative_titles.titles);
+        }
+        addAltList(movie.alternative_names);
+        addAltList(movie.names);
+
+        out.slice(0).forEach(function (q) {
+          kinozerKnownRuAliases(q).forEach(function (alias) { pushUnique(out, alias); });
+        });
+
+        var y = yearFromMovie();
+        if (y) out.slice(0).forEach(function (q) { if (!/\b(?:19|20)\d{2}\b/.test(q)) pushUnique(out, q + ' ' + y); });
+        stelsLog('kinozer-query-list', { queries: out.slice(0, 20) });
+        return out;
+      }
+
+      function parseSearchResults(str, query) {
+        var html = $('<div>' + (str || '') + '</div>');
+        var results = [];
+        var seen = {};
+        function add(link, title, ctx) {
+          link = abs(link, host);
+          if (!/\.html(?:$|[?#])/i.test(link) || seen[link]) return;
+          title = cleanText(title || '');
+          if (!title) title = cleanText((ctx || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) && RegExp.$1 || '');
+          if (!title) title = link.split('/').pop().replace(/\.html.*/i, '').replace(/[-_]+/g, ' ');
+          seen[link] = true;
+          results.push({ title: title, link: link });
+        }
+        html.find('a[href]').each(function () {
+          var a = $(this);
+          var href = a.attr('href') || '';
+          if (!/\.html(?:$|[?#])/i.test(href)) return;
+          var card = a.closest('.o-card,.c-card-list__item,.c-card,.short,.news-item');
+          var title = a.find('[itemprop="name"]').text() || a.text() || '';
+          if (!title && card.length) title = card.find('.o-card__title,[itemprop="name"],.title,.short-title').first().text();
+          if (!title && card.length) title = card.find('img[alt]').first().attr('alt') || '';
+          add(href, title, card.length ? card.html() : a.parent().html());
+        });
+        (str || '').replace(/href=["']([^"']+\.html)["'][\s\S]{0,900}?(?:class=["'][^"']*o-card__title[^"']*["'][^>]*>|<span[^>]*itemprop=["']name["'][^>]*>|alt=["'])([^<"']+)/ig, function (_, href, title) {
+          add(href, title, _);
+          return _;
+        });
+        var wanted = [query, object.movie && object.movie.title, object.movie && object.movie.name, object.movie && object.movie.original_title, object.movie && object.movie.original_name].filter(Boolean).map(norm).filter(Boolean);
+        var y = yearFromMovie();
+        results.forEach(function (r) {
+          var n = norm(r.title + ' ' + r.link);
+          var score = 0;
+          wanted.forEach(function (w, i) {
+            if (!w) return;
+            if (n === w) score += 500 - i * 20;
+            else if (n.indexOf(w) !== -1) score += 180 - i * 12;
+            else if (w.indexOf(n) !== -1) score += 80;
+          });
+          if (score > 0 && y && (r.title + ' ' + r.link).indexOf(y) !== -1) score += 40;
+          if (score > 0 && object.movie && (object.movie.name || object.movie.title) && /сезон|serial|series/i.test(r.title + ' ' + r.link)) score += 35;
+          r.score = score;
+        });
+        results.sort(function (a, b) { return b.score - a.score; });
+        stelsLog('kinozer-search-parse', { query: query, count: results.length, sample: results.slice(0, 10).map(function (r) { return { title: r.title, link: r.link, score: r.score }; }) });
+        return results;
+      }
+
+      function searchByQueries(list, index) {
+        if (index >= list.length) {
+          component.loading(false);
+          component.emptyForQuery(select_title);
+          return;
+        }
+        var q = list[index];
+        var body = 'do=search&subaction=search&story=' + encodeURIComponent(q);
+        requestText(host, function (str) {
+          var results = parseSearchResults(str, q);
+          if (results.length && results[0].score > 0) loadPage(results[0].link);
+          else {
+            stelsLog('kinozer-search-skip-query', { query: q, reason: results.length ? 'low_score' : 'empty', best: results[0] || null });
+            var getUrl = host + 'index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
+            requestText(getUrl, function (str2) {
+              var results2 = parseSearchResults(str2, q);
+              if (results2.length && results2[0].score > 0) loadPage(results2[0].link);
+              else {
+                stelsLog('kinozer-search-skip-query', { query: q, mode: 'get', reason: results2.length ? 'low_score' : 'empty', best: results2[0] || null });
+                searchByQueries(list, index + 1);
+              }
+            }, function () { searchByQueries(list, index + 1); }, false, host);
+          }
+        }, function () { searchByQueries(list, index + 1); }, body, host);
+      }
+
+      function parsePlayerFrame(pageHtml, pageUrl) {
+        var frame = '';
+        try {
+          $('<div>' + (pageHtml || '') + '</div>').find('[data-videoframe]').each(function () {
+            var url = decodeHtml($(this).attr('data-videoframe') || '');
+            if (!frame && /stravers\.live|synthezoid/i.test(url) && !/youtube\.com/i.test(url)) frame = url;
+          });
+        } catch (e) {}
+        if (!frame) {
+          var m = (pageHtml || '').match(/data-videoframe=["']([^"']*(?:stravers\.live|synthezoid)[^"']*)["']/i);
+          if (m) frame = decodeHtml(m[1]);
+        }
+        stelsLog('kinozer-page-parse', { page: pageUrl, frame: frame, has_frame: !!frame, title: cleanText((pageHtml || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) && RegExp.$1 || '') });
+        return frame;
+      }
+
+      function loadPage(url) {
+        url = abs(url, host);
+        component.loading(true);
+        requestText(url, function (str) {
+          var frame = parsePlayerFrame(str, url);
+          if (!frame) {
+            component.loading(false);
+            component.empty('Kinozer: плеєр на сторінці не знайдено');
+            return;
+          }
+          loadPlayer(frame, url);
+        }, function (err) {
+          component.loading(false);
+          component.empty(err || 'Kinozer page error');
+        }, false, host);
+      }
+
+      function loadPlayer(frame, pageUrl) {
+        frame = abs(frame, pageUrl);
+        requestText(frame, function (str) {
+          parsePlayer(str, frame, pageUrl);
+        }, function (err) {
+          component.loading(false);
+          component.empty(err || 'Kinozer player error');
+        }, false, pageUrl);
+      }
+
+      function parsePlayer(str, frame, pageUrl) {
+        var token = '';
+        var tm = (str || '').match(/token:\s*['"]([^'"]+)['"]/i) || frame.match(/[?&]token=([^&]+)/i);
+        if (tm) token = decodeURIComponent(tm[1]);
+        var config_kp = '';
+        var cm = (str || '').match(/const\s+config\s*=\s*JSON\.parse\('([\s\S]*?)'\);/i);
+        if (cm) {
+          try {
+            var cfg = JSON.parse(cm[1]);
+            config_kp = cfg && cfg.ads && cfg.ads.replace && cfg.ads.replace['[kp]'] || '';
+          } catch (e) {}
+        }
+        stelsLog('kinozer-player-config', { frame: frame, kp: config_kp, expected_kp: object.movie && (object.movie.kinopoisk_id || object.movie.kp_id || object.movie.kpid) || '' });
+        var fm = (str || '').match(/fileList\s*=\s*JSON\.parse\('([\s\S]*?)'\);/i);
+        if (!fm) {
+          stelsLog('kinozer-player-no-filelist', { frame: frame, html_length: (str || '').length, preview: compact(str, 400) });
+          component.loading(false);
+          component.empty('Kinozer: fileList у плеєрі не знайдено');
+          return;
+        }
+        var pl = {};
+        try { pl = JSON.parse(fm[1]); } catch (e) { stelsLog('kinozer-filelist-json-error', { error: e && (e.message || e.toString()) }); }
+        var origin = frame.match(/^(https?:\/\/[^\/]+)/i);
+        extract = {
+          pl: pl,
+          domain: origin ? origin[1] + '/' : 'https://synthezoid-as.stravers.live/',
+          token: token,
+          player_url: frame,
+          page_url: pageUrl,
+          postdata: 'token=' + encodeURIComponent(token || '') + '&av1=true&autoplay=0&audio=&subtitle='
+        };
+        stelsLog('kinozer-player-parse', {
+          frame: frame,
+          page: pageUrl,
+          token_set: !!token,
+          type: pl && pl.type,
+          seasons: pl && pl.all ? Object.keys(pl.all).slice(0, 20) : [],
+          active: pl && pl.active || null
+        });
+        if (!(pl && pl.all)) {
+          component.loading(false);
+          component.empty('Kinozer: список серій порожній');
+          return;
+        }
+        component.loading(false);
+        filter();
+        append(filtred());
+      }
+
+      function filter() {
+        filter_items = { season: [], season_num: [], voice: [], voice_info: [] };
+        if (extract.pl && extract.pl.type === 'serial') {
+          for (var s_num in extract.pl.all) filter_items.season_num.push(s_num);
+          filter_items.season_num.sort(function (a, b) { return parseInt(a) - parseInt(b); });
+          filter_items.season = filter_items.season_num.map(function (s) { return Lampa.Lang.translate('torrent_serial_season') + ' ' + s; });
+          if (!filter_items.season[choice.season]) choice.season = 0;
+          var currentSeason = filter_items.season_num[choice.season];
+          var episodes = extract.pl.all[currentSeason] || {};
+          for (var e_num in episodes) {
+            var translations = episodes[e_num] || {};
+            for (var v_id in translations) {
+              if (!filter_items.voice_info.some(function (v) { return v.id === v_id; })) {
+                filter_items.voice.push(translations[v_id].translation || v_id);
+                filter_items.voice_info.push({ id: v_id });
+              }
+            }
+          }
+        } else {
+          var flat = flattenMedia(extract.pl && extract.pl.all || {});
+          flat.forEach(function (media) {
+            var name = media.translation || media.quality || 'Kinozer';
+            if (filter_items.voice.indexOf(name) === -1) {
+              filter_items.voice.push(name);
+              filter_items.voice_info.push({ title: name });
+            }
+          });
+        }
+        if (!filter_items.voice[choice.voice]) choice.voice = 0;
+        if (choice.voice_name) {
+          var inx = filter_items.voice.indexOf(choice.voice_name);
+          if (inx !== -1) choice.voice = inx;
+        }
+        component.filter(filter_items, choice);
+      }
+
+      function flattenMedia(obj, out) {
+        out = out || [];
+        if (!obj || typeof obj !== 'object') return out;
+        if (obj.id && (obj.translation || obj.quality || obj.id_quality)) out.push(obj);
+        else Object.keys(obj).forEach(function (k) { flattenMedia(obj[k], out); });
+        return out;
+      }
+
+      function filtred() {
+        var out = [];
+        if (extract.pl && extract.pl.type === 'serial') {
+          var s_num = filter_items.season_num[choice.season];
+          var v_id = filter_items.voice_info[choice.voice] && filter_items.voice_info[choice.voice].id;
+          var voice = filter_items.voice[choice.voice] || '';
+          var episodes = (extract.pl.all && extract.pl.all[s_num]) || {};
+          Object.keys(episodes).sort(function (a, b) { return parseInt(a) - parseInt(b); }).forEach(function (e_num) {
+            var media = episodes[e_num] && episodes[e_num][v_id];
+            if (!media) return;
+            out.push({
+              title: component.formatEpisodeTitle(s_num, e_num),
+              quality: '360p ~ ' + (media.uhd ? '2160p' : '1080p') + (media.quality ? ' / ' + media.quality : ''),
+              info: voice ? ' / ' + Lampa.Utils.shortText(voice, 50) : '',
+              season: s_num,
+              episode: e_num,
+              media: media
+            });
+          });
+        } else {
+          flattenMedia(extract.pl && extract.pl.all || {}).forEach(function (media) {
+            var name = media.translation || media.quality || select_title;
+            if (filter_items.voice[choice.voice] && name !== filter_items.voice[choice.voice]) return;
+            out.push({
+              title: name,
+              quality: '360p ~ ' + (media.uhd ? '2160p' : '1080p') + (media.quality ? ' / ' + media.quality : ''),
+              info: '',
+              media: media
+            });
+          });
+        }
+        stelsLog('kinozer-filtered', { count: out.length, season: filter_items.season_num[choice.season], voice: filter_items.voice[choice.voice], sample: out.slice(0, 10).map(function (e) { return { title: e.title, season: e.season, episode: e.episode, media_id: e.media && e.media.id }; }) });
+        return out;
+      }
+
+      function parseSubs(tracks) {
+        var subs = [];
+        (tracks || []).forEach(function (t) {
+          if (t && t.kind === 'captions' && t.src) subs.push({ label: t.label || t.language || 'sub', url: component.processSubs(component.proxyLink((t.src + '').split(' or ')[0], prox_player, '', 'enc2t')) });
+        });
+        return subs.length ? subs : false;
+      }
+
+      function extractQuality(hlsSource, media) {
+        var source = null;
+        var tr = norm(media && media.translation || '');
+        (hlsSource || []).forEach(function (s) {
+          if (!source && tr && norm(s.label || '').indexOf(tr) !== -1) source = s;
+        });
+        if (!source) source = (hlsSource || []).filter(function (s) { return s['default']; })[0] || (hlsSource || [])[0] || {};
+        var items = [];
+        var quality = source.quality || {};
+        for (var q_id in quality) {
+          var link = (quality[q_id] || '').split(' or ').filter(Boolean)[0] || '';
+          if (!link) continue;
+          items.push({ label: q_id + 'p', quality: parseInt(q_id, 10) || 0, file: component.proxyLink(component.fixLinkProtocol(link, false, true), prox_player, '', 'enc2t') });
+        }
+        items.sort(function (a, b) { return b.quality - a.quality; });
+        var file = items[0] && items[0].file || '';
+        var map = {};
+        items.forEach(function (i) { map[i.label] = i.file; });
+        return { file: file, qualitys: Object.keys(map).length ? map : false, selected_label: source.label || '' };
+      }
+
+      function getStream(element, call, error) {
+        if (element.stream) return call(element);
+        if (!(element.media && element.media.id && extract.domain)) return error();
+        var url = extract.domain.replace(/\/$/, '') + '/bnsi/movies/' + element.media.id;
+        requestJson(url, function (json) {
+          var q = extractQuality(json.hlsSource || [], element.media || {});
+          if (q.file) {
+            element.stream = q.file;
+            element.qualitys = q.qualitys;
+            element.subtitles = parseSubs(json.tracks || []);
+            stelsLog('kinozer-stream-ready', { title: element.title, media_id: element.media.id, selected_label: q.selected_label, has_quality: !!q.qualitys, subtitles_count: element.subtitles && element.subtitles.length || 0, url_preview: compact(q.file, 220) });
+            call(element);
+          } else {
+            stelsLog('kinozer-stream-empty', { title: element.title, media_id: element.media && element.media.id, hls_count: json.hlsSource && json.hlsSource.length || 0 });
+            error();
+          }
+        }, error, extract.postdata, extract.player_url);
+      }
+
+      function append(items) {
+        component.reset();
+        var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        var last_episode = component.getLastEpisode(items);
+        items.forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = last_episode;
+            element.translate_voice = filter_items.voice[choice.voice];
+          }
+          var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title || object.movie.original_name || select_title].join('') : object.movie.original_title || select_title);
+          var view = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', element);
+          var hash_file = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title || object.movie.original_name || select_title, filter_items.voice[choice.voice]].join('') : (object.movie.original_title || select_title) + element.title);
+          element.timeline = view;
+          item.append(Lampa.Timeline.render(view));
+          if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
+          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+          item.on('hover:enter', function () {
+            if (element.loading) return;
+            if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            element.loading = true;
+            getStream(element, function (element) {
+              element.loading = false;
+              var first = { url: component.getDefaultQuality(element.qualitys, element.stream), quality: component.renameQualityMap(element.qualitys), subtitles: element.subtitles, timeline: element.timeline, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title) };
+              Lampa.Player.play(first);
+              if (element.season && Lampa.Platform.version) {
+                var playlist = [];
+                items.forEach(function (elem) {
+                  if (elem == element) playlist.push(first);
+                  else {
+                    var cell = { timeline: elem.timeline, title: elem.title, url: function (done) { getStream(elem, function (ready) { cell.url = component.getDefaultQuality(ready.qualitys, ready.stream); cell.quality = component.renameQualityMap(ready.qualitys); cell.subtitles = ready.subtitles; done(); }, function () { cell.url = ''; done(); }); } };
+                    playlist.push(cell);
+                  }
+                });
+                Lampa.Player.playlist(playlist);
+              } else Lampa.Player.playlist([first]);
+              if (viewed.indexOf(hash_file) == -1) { viewed.push(hash_file); item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>'); Lampa.Storage.set('online_view', viewed); }
+            }, function () { element.loading = false; Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
+          });
+          component.append(item);
+          component.contextmenu({ item: item, view: view, viewed: viewed, hash_file: hash_file, element: element, file: function (call) { getStream(element, function (ready) { call({ file: ready.stream, quality: ready.qualitys }); }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); }); } });
+        });
+        component.start(true);
+      }
+
+      this.search = function (_object, kinopoisk_id, data) {
+        object = _object;
+        select_title = object.search || object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name || '';
+        component.loading(true);
+        choice = { season: 0, voice: 0, voice_name: '' };
+        extract = { pl: null, domain: '', token: '', player_url: '', postdata: '' };
+        if (data && data[0] && (data[0].url || data[0].link)) {
+          loadPage(data[0].url || data[0].link);
+          return;
+        }
+        searchByQueries(queryList(), 0);
+      };
+
+      this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
+      this.reset = function () { component.reset(); choice = { season: 0, voice: 0, voice_name: '' }; filter(); append(filtred()); component.saveChoice(choice); };
+      this.filter = function (type, a, b) {
+        choice[a.stype] = b.index;
+        if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index];
+        component.reset();
+        filter();
+        append(filtred());
+        component.saveChoice(choice);
+      };
+      this.destroy = function () { network.clear(); extract = null; };
+    }
+
+    function lampauaRemoteSource(component, _object, aliases, sourceTitle) {
+      var network = new Lampa.Reguest();
+      var object = _object;
+      var host = 'http://lampaua.mooo.com/';
       var select_title = '';
       var source_url = '';
       var memkey = '';
@@ -13344,16 +13943,6 @@
       var choice = { season: 0, voice: 0, voice_url: '', voice_name: sourceTitle || 'LampUA' };
       var current_videos = [];
       var current_source = null;
-
-      function remoteDirectUrl() {
-        var direct = remoteOptions.directPath || remoteOptions.directBalanser || '';
-        if (!direct) return '';
-        return host + 'lite/' + String(direct).replace(/^\/+/, '');
-      }
-
-      function remoteUseDirectFirst() {
-        return !!remoteOptions.preferDirect;
-      }
 
       function norm(value) {
         return (value == null ? '' : String(value)).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-яіїєґ0-9]+/ig, '');
@@ -13364,7 +13953,7 @@
 
       function account(url) {
         url = url + '';
-        var token = remoteOptions.token === false ? '' : (remoteOptions.token || atob('NTQ0OTYzNzQ1MQ=='));
+        var token = atob('NTQ0OTYzNzQ1MQ==');
         if (url.indexOf('account_email=') == -1) {
           var email = Lampa.Storage.get('account_email');
           if (!email && /^\d{6,}$/.test(token)) {
@@ -13390,201 +13979,8 @@
       }
 
       function addHeaders() {
-        var kit = Lampa.Storage.get(remoteOptions.headerKey || 'kit_aesgcmkey', '') || Lampa.Storage.get('bwaesgcmkey', '');
+        var kit = Lampa.Storage.get('kit_aesgcmkey', '');
         return kit ? { 'X-Kit-AesGcm': kit } : {};
-      }
-
-
-      function remoteHostBase() {
-        return (host || '').replace(/\/$/, '');
-      }
-
-      function remoteHostKey() {
-        return remoteHostBase().replace('http://', '').replace('https://', '');
-      }
-
-      function remoteAndroidVersion() {
-        if (!Lampa.Platform.is('android')) return 0;
-        try {
-          var current = AndroidJS.appVersion().split('-');
-          return parseInt(current.pop(), 10) || 0;
-        } catch (e) {
-          return 0;
-        }
-      }
-
-      function remoteRchEnsure() {
-        var hkey = remoteHostKey();
-        if (!window.rch_nws) window.rch_nws = {};
-        if (!window.rch_nws[hkey]) {
-          window.rch_nws[hkey] = {
-            type: Lampa.Platform.is('android') ? 'apk' : Lampa.Platform.is('tizen') ? 'cors' : undefined,
-            startTypeInvoke: false,
-            rchRegistry: false,
-            apkVersion: remoteAndroidVersion()
-          };
-        }
-        return window.rch_nws[hkey];
-      }
-
-      function remoteRchTypeInvoke(call) {
-        var hkey = remoteHostKey();
-        var base = remoteHostBase();
-        var state = remoteRchEnsure();
-        state.typeInvoke = state.typeInvoke || function (host_arg, cb) {
-          if (!state.startTypeInvoke) {
-            state.startTypeInvoke = true;
-            var check = function (good) {
-              state.type = Lampa.Platform.is('android') ? 'apk' : good ? 'cors' : 'web';
-              cb();
-            };
-            if (Lampa.Platform.is('android') || Lampa.Platform.is('tizen')) check(true);
-            else {
-              var net = new Lampa.Reguest();
-              net.silent(base.indexOf(location.host) >= 0 ? 'https://github.com/' : base + '/cors/check', function () {
-                check(true);
-              }, function () {
-                check(false);
-              }, false, { dataType: 'text' });
-            }
-          } else cb();
-        };
-        state.typeInvoke(base, call);
-      }
-
-      function remoteRchRegistry(client, startConnection) {
-        var hkey = remoteHostKey();
-        var base = remoteHostBase();
-        var state = remoteRchEnsure();
-        remoteRchTypeInvoke(function () {
-          try {
-            client.invoke('RchRegistry', {
-              host: location.host,
-              rchtype: Lampa.Platform.is('android') ? 'apk' : Lampa.Platform.is('tizen') ? 'cors' : (state.type || 'web'),
-              apkVersion: Lampa.Platform.is('android') ? (state.apkVersion || 0) : 0,
-              player: Lampa.Storage.field('player')
-            });
-          } catch (e) {
-            stelsLog('remote-rch-registry-invoke-error', { source: sourceTitle, host: base, error: e && (e.message || e.toString()) });
-          }
-
-          if (state.rchRegistry) return;
-          state.rchRegistry = true;
-
-          var handled = false;
-          client.on('RchRegistry', function () {
-            if (startConnection && !handled) {
-              handled = true;
-              startConnection();
-            }
-          });
-
-          client.on('RchClient', function (rchId, url, data, headers, returnHeaders) {
-            var net = new Lampa.Reguest();
-            function sendResult(uri, html) {
-              $.ajax({
-                url: base + '/rch/' + uri + '?id=' + rchId,
-                type: 'POST',
-                data: html,
-                async: true,
-                cache: false,
-                contentType: false,
-                processData: false,
-                success: function () {},
-                error: function () {
-                  try { client.invoke('RchResult', rchId, ''); } catch (e) {}
-                }
-              });
-            }
-            function result(html) {
-              if (Lampa.Arrays.isObject(html) || Lampa.Arrays.isArray(html)) html = JSON.stringify(html);
-              if (typeof CompressionStream !== 'undefined' && html && html.length > 1000) {
-                try {
-                  var compressionStream = new CompressionStream('gzip');
-                  var encoder = new TextEncoder();
-                  var readable = new ReadableStream({
-                    start: function (controller) {
-                      controller.enqueue(encoder.encode(html));
-                      controller.close();
-                    }
-                  });
-                  var compressedStream = readable.pipeThrough(compressionStream);
-                  new Response(compressedStream).arrayBuffer().then(function (compressedBuffer) {
-                    var compressedArray = new Uint8Array(compressedBuffer);
-                    if (compressedArray.length > html.length) sendResult('result', html);
-                    else sendResult('gzresult', compressedArray);
-                  })['catch'](function () { sendResult('result', html); });
-                } catch (e) {
-                  sendResult('result', html);
-                }
-              } else sendResult('result', html);
-            }
-
-            if (url == 'eval') {
-              try { result(eval(data)); } catch (e) { result(''); }
-            } else if (url == 'evalrun') {
-              try { eval(data); } catch (e) {}
-            } else if (url == 'ping') {
-              result('pong');
-            } else {
-              stelsLog('remote-rch-client-request', { source: sourceTitle, host: base, url: previewUrl(url || '') });
-              net['native'](url, result, function (e) {
-                stelsLog('remote-rch-client-empty', { source: sourceTitle, status: e && e.status, url: previewUrl(url || '') });
-                result('');
-              }, data, {
-                dataType: 'text',
-                timeout: 1000 * 8,
-                headers: headers,
-                returnHeaders: returnHeaders
-              });
-            }
-          });
-
-          client.on('Connected', function (connectionId) {
-            stelsLog('remote-rch-connected', { source: sourceTitle, host: base, connectionId: connectionId });
-            state.connectionId = connectionId;
-          });
-          client.on('Closed', function () { stelsLog('remote-rch-closed', { source: sourceTitle, host: base }); });
-          client.on('Error', function (err) { stelsLog('remote-rch-error', { source: sourceTitle, host: base, error: err && (err.message || err.toString ? err.toString() : err) }); });
-        });
-      }
-
-      function remoteRchInvoke(json, call) {
-        var hkey = remoteHostKey();
-        if (!window.nwsClient) window.nwsClient = {};
-        var client = window.nwsClient[hkey];
-        if (client && client.connectionId != null) return call();
-        if (client) {
-          stelsLog('remote-rch-reconnecting', { source: sourceTitle, host: remoteHostBase() });
-          try {
-            client.reconnect(function () { call(); });
-          } catch (e) {
-            call();
-          }
-          return;
-        }
-        if (typeof NativeWsClient == 'undefined') return call(false);
-        window.nwsClient[hkey] = new NativeWsClient(json.nws, { autoReconnect: true });
-        client = window.nwsClient[hkey];
-        client.on('Connected', function () {
-          remoteRchRegistry(client, function () { call(); });
-        });
-        client.connect();
-      }
-
-      function remoteRchRun(json, call) {
-        stelsLog('remote-rch-run', { source: sourceTitle, host: remoteHostBase(), has_nws: !!(json && json.nws) });
-        if (!json || !json.nws) return call(false);
-        if (typeof NativeWsClient == 'undefined') {
-          try {
-            Lampa.Utils.putScript([remoteHostBase() + '/js/nws-client-es5.js?v21042026'], function () {}, false, function () {
-              remoteRchInvoke(json, call);
-            }, true);
-          } catch (e) {
-            stelsLog('remote-rch-script-error', { source: sourceTitle, host: remoteHostBase(), error: e && (e.message || e.toString()) });
-            call(false);
-          }
-        } else remoteRchInvoke(json, call);
       }
 
       function absolute(url) {
@@ -13608,30 +14004,16 @@
         query.push('source=' + card_source);
         query.push('clarification=' + (object.clarification ? 1 : 0));
         query.push('similar=' + (object.similar ? true : false));
-        var rch_state = remoteRchEnsure();
-        var rch_type = Lampa.Platform.is('android') ? 'apk' : (Lampa.Platform.is('tizen') ? 'cors' : (rch_state.type || 'web'));
-        query.push('rchtype=' + encodeURIComponent(rch_type));
+        query.push('rchtype=' + (Lampa.Platform.is('android') ? 'apk' : ''));
         if (Lampa.Storage.get('account_email', '')) query.push('cub_id=' + Lampa.Utils.hash(Lampa.Storage.get('account_email', '')));
         return url + (url.indexOf('?') >= 0 ? '&' : '?') + query.join('&');
       }
 
       function sourceKey(j) {
         var raw = (j && (j.balanser || j.key || j.name || j.title || '')) + '';
-        var name = (j && j.name) || '';
-        var title = (j && j.title) || '';
-        var display = (j && j.display_name) || '';
         var first = raw.split(' ')[0];
-        var name_first = (name + '').split(' ')[0];
-        var title_first = (title + '').split(' ')[0];
-        var all = [
-          raw, first,
-          name, name_first,
-          title, title_first,
-          display,
-          (j && j.balanser) || '',
-          (j && j.key) || ''
-        ].map(norm).filter(Boolean);
-        return Lampa.Arrays.unique ? Lampa.Arrays.unique(all) : all.filter(function (v, i, a) { return a.indexOf(v) === i; });
+        var all = [raw, first, (j && j.display_name) || '', (j && j.title) || ''].map(norm).filter(Boolean);
+        return all;
       }
 
       function isWanted(j) {
@@ -13661,17 +14043,6 @@
 
       function loadSourceUrl(done, fail) {
         if (source_url) return done(source_url);
-        var direct = remoteDirectUrl();
-        function useDirect(reason) {
-          if (direct) {
-            current_source = { name: sourceTitle, balanser: remoteOptions.directPath || sourceTitle, url: direct, show: true };
-            source_url = direct;
-            stelsLog('remote-direct-source-url', { source: sourceTitle, direct: direct, reason: reason || '', prefer: remoteUseDirectFirst() });
-            return done(source_url);
-          }
-          fail(reason || ('Джерело ' + sourceTitle + ' не знайдено на сервері LampUA'));
-        }
-        if (remoteUseDirectFirst() && direct) return useDirect('preferDirect');
         life_wait_times = 0;
         var url = requestParams(host + 'lite/events?life=true');
         network.clear();
@@ -13680,18 +14051,17 @@
           if (json && json.accsdb) return fail(json.msg || 'Access denied');
           if (json && json.life) {
             memkey = json.memkey || '';
-            pollLife(done, function (err) { useDirect(err || 'lifeevents fallback'); });
+            pollLife(done, fail);
           } else {
             var src = pickSource(json);
             if (src && src.url) {
               current_source = src;
               source_url = src.url;
               done(source_url);
-            } else useDirect('events source not found');
+            } else fail('Джерело ' + sourceTitle + ' не знайдено на сервері LampUA');
           }
         }, function (a, c) {
-          var err = network.errorDecode ? network.errorDecode(a, c) : 'LampUA events error';
-          useDirect(err);
+          fail(network.errorDecode ? network.errorDecode(a, c) : 'LampUA events error');
         }, false, { headers: addHeaders() });
       }
 
@@ -13798,71 +14168,6 @@
         return typeof value == 'string' && value && (/^https?:\/\//i.test(value) || /\.(m3u8|mp4)(\?|$)/i.test(value));
       }
 
-
-      function remotePickPlayableFromHtml(str, originalFile) {
-        if (typeof str != 'string' || str.indexOf('videos__') === -1) return null;
-        var nested = parseJsonDate(str, '.videos__item') || [];
-        var playable = nested.filter(function (v) { return v && (v.method == 'play' || v.method == 'call' || v.stream || isPlayableUrl(v.url)); });
-        if (!playable.length) return null;
-        var found = lampauaFindSameEpisode(playable, originalFile || {}) || playable[0];
-        stelsLog('remote-html-playable-picked', {
-          source: sourceTitle,
-          count: playable.length,
-          picked_text: found && (found.text || found.title),
-          picked_method: found && found.method,
-          season: found && found.season,
-          episode: found && found.episode,
-          url_preview: previewUrl(found && found.url || '')
-        });
-        return found || null;
-      }
-
-      function normalizeRemotePlayableJson(json) {
-        if (!json || typeof json != 'object') return json;
-        if (json.url && typeof json.url == 'object') {
-          json.quality = json.quality || json.url;
-          var ukeys = Lampa.Arrays.getKeys(json.url || {});
-          json.url = ukeys.length ? json.url[ukeys[0]] : '';
-        }
-        if (!json.url && json.file) {
-          if (typeof json.file == 'string') json.url = json.file;
-          else if (typeof json.file == 'object') {
-            json.quality = json.quality || json.file;
-            var keys = Lampa.Arrays.getKeys(json.file || {});
-            if (keys.length) json.url = json.file[keys[0]];
-          }
-        }
-        if (!json.url && json.stream && typeof json.stream == 'string') json.url = json.stream;
-        if (!json.url && json.links && typeof json.links == 'object') {
-          json.quality = json.quality || json.links;
-          var lkeys = Lampa.Arrays.getKeys(json.links || {});
-          if (lkeys.length) json.url = json.links[lkeys[0]];
-        }
-        if (!json.url && json.sources && typeof json.sources == 'object') {
-          json.quality = json.quality || json.sources;
-          var skeys = Lampa.Arrays.getKeys(json.sources || {});
-          if (skeys.length) json.url = json.sources[skeys[0]];
-        }
-        if (!json.url && json.hls) json.url = json.hls;
-        if (!json.url && json.src) json.url = json.src;
-        if (json.url === true || json.url === false) json.url = '';
-        return json;
-      }
-
-      function remoteLooksLikeEndpoint(data) {
-        var url = data && (data.url || data.link || '') || '';
-        if (typeof url != 'string' || !url) return false;
-        if (isPlayableUrl(url)) return false;
-        return /(?:\/lite\/|\/movie(?:\?|$)|[?&]rjson=|[?&]href=|[?&]voice=)/i.test(url) || url.indexOf(remoteHostBase()) === 0;
-      }
-
-      function remotePickStreamFromText(text) {
-        if (typeof text != 'string') return null;
-        var m = text.match(/https?:\/\/[^'"\s<>]+?\.(?:m3u8|mp4)(?:\?[^'"\s<>]*)?/i);
-        if (!m) return null;
-        return { method: 'play', url: m[0], text: sourceTitle };
-      }
-
       function getFileUrl(file, call) {
         if (!file) return call(false, {});
 
@@ -13915,39 +14220,9 @@
         });
         network['native'](account(absolute(file.url)), function (json) {
           json = safeDecodeJson(json);
-          var htmlPlayable = remotePickPlayableFromHtml(json, file) || remotePickStreamFromText(json);
-          if (htmlPlayable) {
-            htmlPlayable = normalizeRemotePlayableJson(htmlPlayable) || htmlPlayable;
-            if ((htmlPlayable.method == 'call' || remoteLooksLikeEndpoint(htmlPlayable)) && htmlPlayable.url && htmlPlayable.url !== file.url) {
-              stelsLog('remote-html-playable-recursive-call', { source: sourceTitle, from: previewUrl(file.url), to: previewUrl(htmlPlayable.url), method: htmlPlayable.method || '', endpoint: remoteLooksLikeEndpoint(htmlPlayable) });
-              htmlPlayable.method = 'call';
-              return getFileUrl(htmlPlayable, call);
-            }
-            return call(htmlPlayable, htmlPlayable);
-          }
-          json = normalizeRemotePlayableJson(json);
           if (json && json.rch) {
-            stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, stage: 'getfile' });
-            return remoteRchRun(json, function (ok) {
-              if (!ok) return call(false, {});
-              var retry = new Lampa.Reguest();
-              retry.timeout(20000);
-              retry['native'](account(absolute(file.url)), function (json2) {
-                json2 = safeDecodeJson(json2);
-                var htmlPlayable2 = remotePickPlayableFromHtml(json2, file) || remotePickStreamFromText(json2);
-                if (htmlPlayable2) {
-                  htmlPlayable2 = normalizeRemotePlayableJson(htmlPlayable2) || htmlPlayable2;
-                  if ((htmlPlayable2.method == 'call' || remoteLooksLikeEndpoint(htmlPlayable2)) && htmlPlayable2.url && htmlPlayable2.url !== file.url) {
-                    htmlPlayable2.method = 'call';
-                    return getFileUrl(htmlPlayable2, call);
-                  }
-                  return call(htmlPlayable2, htmlPlayable2);
-                }
-                json2 = normalizeRemotePlayableJson(json2);
-                if (json2 && json2.rch) return call(false, {});
-                call(json2, json2 || {});
-              }, function () { call(false, {}); }, false, { headers: addHeaders() });
-            });
+            stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, note: 'Сервер повернув rch. Потрібен NativeWs/RCH як у зразку, якщо це джерело не дасть пряме посилання.' });
+            return call(false, {});
           }
           if (json && json.accsdb) {
             stelsLog('lampaua-getfile-access-denied', { source: sourceTitle, message: json.msg || json.denymsg || 'Access denied' });
@@ -13979,16 +14254,11 @@
       }
 
       function preparePlayable(item, json, json_call) {
-        json = normalizeRemotePlayableJson(safeDecodeJson(json) || {}) || {};
-        json_call = normalizeRemotePlayableJson(safeDecodeJson(json_call) || {}) || {};
+        json = safeDecodeJson(json) || {};
+        json_call = safeDecodeJson(json_call) || {};
         var q = json_call.quality || json.quality || item.qualitys || item.quality || false;
         q = normalizeQualityMap(q);
         var url = json.url || json.stream || json.file || '';
-        if (url && typeof url == 'object') {
-          q = q || url;
-          var pkeys = Lampa.Arrays.getKeys(url || {});
-          url = pkeys.length ? url[pkeys[0]] : '';
-        }
         // Для method=call не можна брати item.url/item.stream як запасний варіант:
         // item.url — це LampUA endpoint, а item.stream часто boolean true.
         if (!url && item.method != 'call') url = isRealStreamValue(item.stream) ? item.stream : item.url || '';
@@ -14035,205 +14305,6 @@
         return play;
       }
 
-      function lampauaIsRezka720() {
-        return norm(sourceTitle || '') == norm('Rezka ~ 720') || wanted.indexOf('rezka720') !== -1 || wanted.indexOf('pizdatoehd') !== -1;
-      }
-
-      function lampauaPlayableReady(json, item) {
-        return json && (json.url || json.stream || json.file || (item && item.method != 'call' && (item.url || isRealStreamValue(item.stream))));
-      }
-
-      function lampauaCurrentEpisodeElement(fallback) {
-        var out = {};
-        for (var k in (fallback || {})) out[k] = fallback[k];
-        try {
-          var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-          var cs = parseInt(current.season || 0, 10);
-          var ce = parseInt(current.episode || 0, 10);
-          if (cs) out.season = cs;
-          if (ce) out.episode = ce;
-          if (current.title) out.title = current.title;
-          if (current.voice_name) out.voice_name = current.voice_name;
-        } catch (e) {}
-        return out;
-      }
-
-      function lampauaExtractSeasonFromUrl(url) {
-        var m = String(url || '').match(/(?:^|[\/?&])s(?:=|%3D)(\d+)/i) || String(url || '').match(/(?:^|[\/])(\d+)-season(?:[\/]|$)/i);
-        return m ? parseInt(m[1], 10) : 0;
-      }
-
-      function lampauaExtractEpisodeFromUrl(url) {
-        var m = String(url || '').match(/(?:^|[\/?&])e(?:=|%3D)(\d+)/i) || String(url || '').match(/(?:^|[\/])(\d+)-episode(?:[\/]|$)/i);
-        return m ? parseInt(m[1], 10) : 0;
-      }
-
-      function lampauaFindSameEpisode(items, element) {
-        var videos = (items || []).filter(function (v) { return v && (v.method == 'play' || v.method == 'call' || v.stream); });
-        if (!videos.length) return null;
-        var season = parseInt(element.season || 0, 10);
-        var episode = parseInt(element.episode || 0, 10);
-        var need_exact = !!(season || episode);
-        var found = null;
-        videos.forEach(function (v) {
-          if (found) return;
-          var vs = parseInt(v.season || 0, 10) || lampauaExtractSeasonFromUrl(v.url || v.stream || '');
-          var ve = parseInt(v.episode || 0, 10) || lampauaExtractEpisodeFromUrl(v.url || v.stream || '');
-          var season_ok = !season || vs == season;
-          var episode_ok = !episode || ve == episode;
-          if (season_ok && episode_ok) found = v;
-        });
-        return found || (need_exact ? null : videos[0]);
-      }
-
-      function lampauaFindSameSeasonLink(items, element) {
-        var links = (items || []).filter(function (v) { return v && v.method == 'link' && v.url; });
-        if (!links.length) return null;
-        var season = parseInt(element.season || 0, 10);
-        var found = null;
-        links.forEach(function (v) {
-          if (found) return;
-          var vs = parseInt(v.season || 0, 10) || lampauaExtractSeasonFromUrl(v.url || '');
-          if (!vs && v.text) {
-            var m = String(v.text).match(/(\d+)/);
-            if (m) vs = parseInt(m[1], 10);
-          }
-          if (!season || vs == season) found = v;
-        });
-        return found || (season ? null : links[0]);
-      }
-
-      function lampauaRequestUrlItems(url, tag, call) {
-        if (!url) return call([]);
-        var req = new Lampa.Reguest();
-        req.timeout(15000);
-        req['native'](account(absolute(url)), function (str) {
-          var items = parseJsonDate(str, '.videos__item');
-          stelsLog('lampaua-rezka720-' + (tag || 'url') + '-items', {
-            source: sourceTitle,
-            count: items.length,
-            sample: items.slice(0, 8).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, url: previewUrl(i.url || '') }; })
-          });
-          call(items || []);
-        }, function (a, c) {
-          var err = req.errorDecode ? req.errorDecode(a, c) : 'LampUA request error';
-          stelsLog('lampaua-rezka720-' + (tag || 'url') + '-items-fail', { source: sourceTitle, url: previewUrl(url), error: err, status: a && a.status });
-          call([]);
-        }, false, { dataType: 'text', headers: addHeaders() });
-      }
-
-      function lampauaRequestVoiceItems(voice, call) {
-        if (!voice || !voice.url) return call([]);
-        var req = new Lampa.Reguest();
-        req.timeout(15000);
-        req['native'](account(absolute(voice.url)), function (str) {
-          var items = parseJsonDate(str, '.videos__item');
-          stelsLog('lampaua-rezka720-voice-items', {
-            source: sourceTitle,
-            voice: voice.title,
-            count: items.length,
-            sample: items.slice(0, 8).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, url: previewUrl(i.url || '') }; })
-          });
-          call(items || []);
-        }, function (a, c) {
-          var err = req.errorDecode ? req.errorDecode(a, c) : 'LampUA voice request error';
-          stelsLog('lampaua-rezka720-voice-items-fail', { source: sourceTitle, voice: voice.title, url: previewUrl(voice.url), error: err, status: a && a.status });
-          call([]);
-        }, false, { dataType: 'text', headers: addHeaders() });
-      }
-
-      function lampauaResolveVoicePlayable(element, voice, call) {
-        if (!voice) return call(false);
-        var target = lampauaCurrentEpisodeElement(element || {});
-        var use_current = voice.active || voice.url == choice.voice_url || voice.title == choice.voice_name;
-        var finish = function (item) {
-          if (!item) return call(false);
-          if (!item.voice_name) item.voice_name = voice.title || sourceTitle;
-          getFileUrl(item, function (json, json_call) {
-            if (lampauaPlayableReady(json, item)) {
-              var play = preparePlayable(item, json || {}, json_call || {});
-              play.voice_name = voice.title || play.voice_name;
-              play.season = target.season || play.season;
-              play.episode = target.episode || play.episode;
-              call(play);
-            } else call(false);
-          });
-        };
-        if (use_current) return finish(target);
-        lampauaRequestVoiceItems(voice, function (items) {
-          var same = lampauaFindSameEpisode(items, target);
-          if (same) return finish(same);
-          var season_link = lampauaFindSameSeasonLink(items, target);
-          if (!season_link) {
-            stelsLog('lampaua-rezka720-voice-season-missing', { source: sourceTitle, voice: voice.title, season: target.season, episode: target.episode });
-            return call(false);
-          }
-          stelsLog('lampaua-rezka720-voice-season-link', {
-            source: sourceTitle,
-            voice: voice.title,
-            season: target.season,
-            episode: target.episode,
-            link_text: season_link.text,
-            link_url: previewUrl(season_link.url || '')
-          });
-          lampauaRequestUrlItems(season_link.url, 'voice-season', function (season_items) {
-            var episode_item = lampauaFindSameEpisode(season_items, target);
-            if (!episode_item) {
-              stelsLog('lampaua-rezka720-voice-episode-missing', { source: sourceTitle, voice: voice.title, season: target.season, episode: target.episode, count: (season_items || []).length });
-              return call(false);
-            }
-            finish(episode_item);
-          });
-        });
-      }
-
-      function lampauaRezkaVoiceovers(element, selected_index) {
-        if (!lampauaIsRezka720() || !(filter_find.voice && filter_find.voice.length > 1)) return false;
-        return filter_find.voice.map(function (voice, index) {
-          return {
-            index: index,
-            language: voice.title || ('Voice ' + (index + 1)),
-            name: voice.title || ('Voice ' + (index + 1)),
-            label: sourceTitle,
-            selected: index == selected_index,
-            enabled: index == selected_index,
-            onSelect: function () {
-              if (index == selected_index) return;
-              try { Lampa.Player.loading(true); } catch (e) {}
-              var voice_target = lampauaCurrentEpisodeElement(element || {});
-              stelsLog('lampaua-rezka720-voice-switch-start', {
-                source: sourceTitle,
-                voice: voice.title,
-                season: voice_target.season,
-                episode: voice_target.episode
-              });
-              lampauaResolveVoicePlayable(voice_target, voice, function (play) {
-                try { Lampa.Player.loading(false); } catch (e) {}
-                if (play && play.url) {
-                  var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-                  play.title = current.title || play.title;
-                  play.timeline = current.timeline || play.timeline;
-                  play.subtitles = play.subtitles || current.subtitles;
-                  play.segments = play.segments || current.segments;
-                  play.voiceovers = lampauaRezkaVoiceovers(element, index);
-                  stelsLog('lampaua-rezka720-voice-switch-play', {
-                    source: sourceTitle,
-                    voice: voice.title,
-                    has_url: !!play.url,
-                    url_preview: previewUrl(play.url || '')
-                  });
-                  Lampa.Player.play(play);
-                  if (play.playlist) Lampa.Player.playlist(play.playlist);
-                } else {
-                  stelsLog('lampaua-rezka720-voice-switch-empty', { source: sourceTitle, voice: voice.title, season: element.season, episode: element.episode });
-                  Lampa.Noty.show('Не вдалося завантажити доріжку: ' + (voice.title || ''));
-                }
-              });
-            }
-          };
-        });
-      }
-
       function display(videos) {
         current_videos = videos || [];
         component.reset();
@@ -14268,7 +14339,6 @@
               element.loading = false;
               if (json && (json.url || json.stream || json.file || (element.method != 'call' && (element.url || isRealStreamValue(element.stream))))) {
                 var first = preparePlayable(element, json, json_call || {});
-                if (lampauaIsRezka720()) first.voiceovers = lampauaRezkaVoiceovers(element, choice.voice);
                 var playlist = [];
                 if (element.season) {
                   current_videos.forEach(function (elem) {
@@ -14286,7 +14356,6 @@
                             this.subtitles = cell.subtitles;
                             this.subtitles_call = cell.subtitles_call;
                             this.segments = cell.segments;
-                            if (lampauaIsRezka720()) this.voiceovers = lampauaRezkaVoiceovers(elem, choice.voice);
                           } else this.url = '';
                           call();
                         }.bind(this));
@@ -14296,8 +14365,7 @@
                       season: elem.season,
                       episode: elem.episode,
                       voice_name: elem.voice_name,
-                      thumbnail: elem.thumbnail,
-                      voiceovers: lampauaIsRezka720() ? lampauaRezkaVoiceovers(elem, choice.voice) : false
+                      thumbnail: elem.thumbnail
                     });
                   });
                 } else playlist.push(first);
@@ -14345,28 +14413,9 @@
         if (json && json.accsdb) return component.empty(json.msg || 'Access denied');
         if (json && json.rch) {
           stelsLog('lampaua-rch-needed', { source: sourceTitle, stage: 'parse', json: json });
-          return remoteRchRun(json, function (ok) {
-            if (!ok) return component.empty('Джерело потребує RCH/NativeWs, але NativeWs не запустився. Дивись лог Stels_Online.');
-            if (source_url) request(requestParams(source_url));
-            else loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { component.empty(err); });
-          });
+          return component.empty('Джерело потребує RCH/NativeWs. Дивись лог Stels_Online.');
         }
         try {
-          if (json && typeof json == 'object' && !json.rch && !json.accsdb && str && String(str).charAt(0) !== '<') {
-            var jkeys = Lampa.Arrays.getKeys(json || {});
-            if (json.type == 'similar' && json.data && json.data.length) {
-              var jitems = json.data.map(function (elem) { elem.title = elem.title || elem.text; elem.link = elem.url || elem.link; elem.balanser = elem.balanser || (remoteOptions.directPath || sourceTitle); return elem; });
-              stelsLog('remote-json-similar', { source: sourceTitle, count: jitems.length });
-              component.similars(jitems);
-              component.loading(false);
-              return;
-            }
-            if (jkeys.length && typeof json[jkeys[0]] == 'string' && /^https?:\/\//i.test(json[jkeys[0]])) {
-              stelsLog('remote-json-link-follow', { source: sourceTitle, key: jkeys[0], url: previewUrl(json[jkeys[0]]) });
-              request(json[jkeys[0]]);
-              return;
-            }
-          }
           var items = parseJsonDate(str, '.videos__item');
           var buttons = parseJsonDate(str, '.videos__button');
           stelsLog('lampaua-parse', { source: sourceTitle, items_count: items.length, buttons_count: buttons.length, methods: items.slice(0, 20).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, similar: !!i.similar, url: i.url }; }) });
@@ -14462,7 +14511,6 @@
       };
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         current_videos = [];
       };
@@ -16336,7 +16384,6 @@
       };
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         extract = [];
         title_page_episodes = [];
@@ -16655,6 +16702,13 @@
       var collapsBlocked = (!startsWith(window.location.protocol, 'http') || window.location.hostname.indexOf('lampa') !== -1) && disable_dbg;
       var all_sources = [
 {
+        name: 'kinozer',
+        title: 'Kinozer',
+        source: new kinozer(this, object),
+        search: true,
+        kp: true,
+        imdb: false
+      }, {
         name: 'lampaua-uaflix',
         title: 'UaFlix',
         source: new lampauaRemoteSource(this, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix'),
@@ -16665,13 +16719,6 @@
         name: 'lampaua-klonfun',
         title: 'KlonFun',
         source: new lampauaRemoteSource(this, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun'),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'lampaua-jacktor',
-        title: 'JackTor',
-        source: new lampauaRemoteSource(this, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor'),
         search: true,
         kp: true,
         imdb: true
@@ -16704,44 +16751,16 @@
         kp: true,
         imdb: true
       }, {
-        name: 'rc-kinotochka',
-        title: 'KinoTochka',
-        source: new lampauaRemoteSource(this, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka' }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'rc-iremux',
-        title: 'iRemux',
-        source: new lampauaRemoteSource(this, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'rc-veoveo',
-        title: 'VeoVeo',
-        source: new lampauaRemoteSource(this, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'rc-collaps-dash',
-        title: 'Collaps (DASH)',
-        source: new lampauaRemoteSource(this, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
-        search: false,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'eneyida',
-        title: 'Eneyida',
-        source: new eneyida(this, object),
+        name: 'uaflix',
+        title: 'UAflix',
+        source: new uaflix(this, object),
         search: true,
         kp: false,
         imdb: false
       }, {
-        name: 'uaflix',
-        title: 'UAflix',
-        source: new uaflix(this, object),
+        name: 'eneyida',
+        title: 'Eneyida',
+        source: new eneyida(this, object),
         search: true,
         kp: false,
         imdb: false
@@ -16970,15 +16989,8 @@
         (list || []).forEach(function (s) {
           if (!s || !s.name) return;
           var internal_key = stelsNormalizeSourceKey(s.name);
-          if (internal_key.indexOf('lampaua-') === 0 || internal_key.indexOf('rc-') === 0) return;
+          if (internal_key.indexOf('lampaua-') === 0) return;
           pushDisplaySource(s.name);
-        });
-
-        result.sort(function (a, b) {
-          var au = stelsIsUaPrioritySource(a) ? 1 : 0;
-          var bu = stelsIsUaPrioritySource(b) ? 1 : 0;
-          if (au !== bu) return bu - au;
-          return 0;
         });
 
         stelsLog('sources-hybrid-build', {
@@ -16997,223 +17009,6 @@
       var filter_sources = obj_filter_sources.map(function (s) {
         return s.name;
       });
-      var stelsSourceStatus = {};
-      // 1.0.32: статуси джерел кешуються тільки в поточній сесії відкритої картки.
-      // Після перезапуску Lampa вони не підтягуються зі Storage, а precheck запускається заново.
-      function stelsSaveSourceStatus() {}
-      function stelsMarkSourceStatus(source, status, message) {
-        source = stelsNormalizeSourceKey(source || balanser);
-        if (!source) return;
-        stelsSourceStatus[source] = { status: status, message: message || '', time: Date.now() };
-        stelsSaveSourceStatus();
-      }
-      function stelsSourceTitleWithStatus(source) {
-        var key = stelsNormalizeSourceKey(source && source.name || source);
-        var title = source && source.title || stelsSourceTitle(key);
-        var status = stelsSourceStatus[key] && stelsSourceStatus[key].status;
-        try {
-          var watch = stelsGetWatchHistory(object && object.movie);
-          if (watch && watch.source === key) title += ' • останнє' + (watch.season && watch.episode ? ' S' + watch.season + 'E' + watch.episode : '');
-        } catch (e) {}
-        if (status === 'ok') return title + ' ✅';
-        if (status === 'empty' || status === 'error') return title + ' ❌';
-        if (status === 'wait') return title + ' ⏳';
-        return title;
-      }
-
-      var stelsPrecheckTimer = null;
-      var stelsPrecheckToken = 0;
-      var stelsPrecheckRunning = false;
-      function stelsPatchOpenSourceSortMenu() {
-        try {
-          var map = {};
-          obj_filter_sources.forEach(function (s) {
-            var clean = String(s.title || '').replace(/\s*[✅❌⏳]\s*$/g, '').trim();
-            map[clean] = stelsSourceTitleWithStatus(s);
-          });
-          $('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item').each(function () {
-            var el = $(this);
-            var txt = (el.text() || '').replace(/\s+/g, ' ').replace(/\s*[✅❌⏳]\s*$/g, '').trim();
-            if (!map[txt]) return;
-            var target = el.children().filter(function () {
-              var t = ($(this).text() || '').replace(/\s+/g, ' ').replace(/\s*[✅❌⏳]\s*$/g, '').trim();
-              return t === txt;
-            }).first();
-            if (!target.length) target = el.find('span,div').filter(function () {
-              var t = ($(this).text() || '').replace(/\s+/g, ' ').replace(/\s*[✅❌⏳]\s*$/g, '').trim();
-              return t === txt;
-            }).first();
-            if (target.length) target.text(map[txt]);
-            else el.text(map[txt]);
-          });
-          stelsPatchUaFlagIcons(document.body);
-        } catch (e) {}
-      }
-
-      function stelsRefreshSourceFilterTitles() {
-        try {
-          var need = Lampa.Storage.get('stels_online_filter', '{}') || {};
-          var selectedIndex = filter_sources.indexOf(balanser);
-          if (selectedIndex < 0) selectedIndex = 0;
-          var existing = need || {};
-          existing.source = selectedIndex;
-          Lampa.Storage.set('stels_online_filter', existing);
-          filter.chosen('sort', [stelsSourceTitleWithStatus(obj_filter_sources[selectedIndex] || balanser)]);
-          filter.set('sort', obj_filter_sources.map(function (e) {
-            return { source: e.name, title: stelsSourceTitleWithStatus(e), selected: e.name === balanser };
-          }));
-          stelsPatchOpenSourceSortMenu();
-          setTimeout(stelsPatchOpenSourceSortMenu, 120);
-        } catch (e) {}
-      }
-
-      function stelsMakeProbeComponent(sourceName, token, done) {
-        var real = this;
-        var finished = false;
-        var probe = {};
-        for (var key in real) {
-          if (typeof real[key] === 'function') {
-            try { probe[key] = real[key].bind(real); } catch (e) { probe[key] = real[key]; }
-          }
-        }
-        function finish(status, message) {
-          if (finished || token !== stelsPrecheckToken) return;
-          finished = true;
-          stelsMarkSourceStatus(sourceName, status, message || '');
-          stelsLog('source-precheck-result', { source: sourceName, status: status, message: message || '' });
-          stelsRefreshSourceFilterTitles();
-          if (done) done();
-        }
-        probe.loading = function () {};
-        probe.reset = function () {};
-        probe.filter = function () {};
-        probe.selected = function () {};
-        probe.start = function () {};
-        probe.closeFilter = function () {};
-        probe.contextmenu = function () {};
-        probe.saveChoice = function () {};
-        probe.append = function () { finish('ok'); };
-        probe.empty = function (msg) { finish(msg ? 'error' : 'empty', msg || ''); };
-        probe.emptyForQuery = function (query) { finish('empty', query || ''); };
-        probe.similars = function (items) { finish(items && items.length ? 'ok' : 'empty'); };
-        return { component: probe, finish: finish };
-      }
-
-      function stelsMakeProbeSource(entry, fake) {
-        var name = stelsNormalizeSourceKey(entry && entry.name);
-        var engine = stelsNormalizeSourceKey(entry && (entry.engine || entry.name));
-        try {
-          if (name === 'uaflix' || engine === 'lampaua-uaflix') return new lampauaRemoteSource(fake, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix');
-          if (name === 'klonfun' || engine === 'lampaua-klonfun') return new lampauaRemoteSource(fake, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun');
-          if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno');
-          if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
-          if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino');
-          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
-          if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
-          if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
-          if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
-          if (engine === 'lumex') return new lumex(fake, object);
-          if (engine === 'lumex2') return new lumex2(fake, object);
-          if (engine === 'rezka2') return new rezka2(fake, object);
-          if (engine === 'kinobase') return new kinobase(fake, object);
-          if (engine === 'collaps') return new collaps(fake, object, false);
-          if (engine === 'collaps-dash') return new collaps(fake, object, true);
-          if (engine === 'cdnmovies') return new cdnmovies(fake, object);
-          if (engine === 'filmix') return new filmix(fake, object);
-          if (engine === 'zetflix') return new zetflix(fake, object);
-          if (engine === 'fancdn') return new fancdn(fake, object);
-          if (engine === 'fancdn2') return new fancdn2(fake, object);
-          if (engine === 'fanserials') return new fanserials(fake, object);
-          if (engine === 'videoseed') return new videoseed(fake, object);
-          if (engine === 'vibix') return new vibix(fake, object);
-          if (engine === 'redheadsound') return new redheadsound(fake, object, false);
-          if (engine === 'redheadsound-dash') return new redheadsound(fake, object, true);
-          if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
-          if (engine === 'anilibria') return new anilibria(fake, object);
-          if (engine === 'anilibria2') return new anilibria2(fake, object);
-          if (engine === 'animelib') return new animelib(fake, object);
-          if (engine === 'kodik') return new kodik(fake, object);
-          if (engine === 'alloha') return new alloha(fake, object);
-          if (engine === 'kinopub') return new kinopub(fake, object);
-        } catch (e) {
-          stelsLog('source-precheck-create-error', { source: name, engine: engine, error: e && (e.message || e.toString()) });
-        }
-        return null;
-      }
-
-      function stelsStartSafePrecheck() {
-        var self = this;
-        clearTimeout(stelsPrecheckTimer);
-        stelsPrecheckTimer = setTimeout(function () {
-          if (stelsPrecheckRunning) return;
-          var now = Date.now();
-          var queue = obj_filter_sources.filter(function (entry) {
-            if (!entry || !entry.name || entry.disabled) return false;
-            if (entry.name === balanser) return false;
-            var info = stelsSourceStatus[entry.name];
-            return !(info && info.time && now - info.time < 20 * 60 * 1000);
-          });
-          if (!queue.length) return;
-          stelsPrecheckRunning = true;
-          var token = ++stelsPrecheckToken;
-          var active = 0;
-          var limit = Math.min(3, Math.max(1, queue.length));
-          stelsLog('source-precheck-start', { count: queue.length, limit: limit, sources: queue.map(function (s) { return s.name; }) });
-          stelsRefreshSourceFilterTitles();
-          function pump() {
-            if (token !== stelsPrecheckToken) { stelsPrecheckRunning = false; return; }
-            while (active < limit && queue.length) runOne(queue.shift());
-            if (!active && !queue.length) { stelsPrecheckRunning = false; stelsRefreshSourceFilterTitles(); stelsLog('source-precheck-finish', {}); }
-          }
-          function runOne(entry) {
-            active++;
-            stelsMarkSourceStatus(entry.name, 'wait', '');
-            stelsRefreshSourceFilterTitles();
-            var probe = null;
-            var probePack = stelsMakeProbeComponent.call(self, entry.name, token, function () {
-              try { if (probe && probe.destroy) probe.destroy(); } catch (e) {}
-              active--;
-              setTimeout(pump, 80);
-            });
-            probe = stelsMakeProbeSource(entry, probePack.component);
-            if (!probe) {
-              probePack.finish('error', 'precheck unsupported');
-              return;
-            }
-            var doneByTimeout = false;
-            var timeout = setTimeout(function () {
-              doneByTimeout = true;
-              try { if (probe && probe.destroy) probe.destroy(); } catch (e) {}
-              probePack.finish('empty', 'timeout');
-            }, 7000);
-            var originalFinish = probePack.finish;
-            probePack.finish = function (status, message) {
-              if (!doneByTimeout) clearTimeout(timeout);
-              originalFinish(status, message);
-            };
-            try {
-              if (!object.clarification && +object.movie.kinopoisk_id && entry.kp) probe.search(object, +object.movie.kinopoisk_id);
-              else if (!object.clarification && object.movie.imdb_id && entry.imdb) probe.search(object, object.movie.imdb_id);
-              else if (entry.search) probe.search(object);
-              else probePack.finish('empty', 'no search id');
-            } catch (e) {
-              clearTimeout(timeout);
-              probePack.finish('error', e && (e.message || e.toString()) || 'precheck error');
-            }
-          }
-          pump();
-        }, 450);
-      }
-
-      function stelsStopSafePrecheck() {
-        clearTimeout(stelsPrecheckTimer);
-        stelsPrecheckToken++;
-        stelsPrecheckRunning = false;
-      }
       var sources = {};
       obj_filter_sources.forEach(function (s) {
         sources[s.name] = s.source;
@@ -17346,10 +17141,8 @@
         }, {
           source: 0
         });
-        stelsStopSafePrecheck();
         this.reset();
         this.find();
-        stelsStartSafePrecheck.call(this);
       };
 
       this.cleanTitle = function (str) {
@@ -18150,7 +17943,7 @@
           reset: true
         });
         filter_items.source = obj_filter_sources.map(function (s) {
-          return stelsSourceTitleWithStatus(s);
+          return s.title;
         });
         add('source', Lampa.Lang.translate('stels_online_balanser'));
         if (filter_items.voice && filter_items.voice.length) add('voice', Lampa.Lang.translate('torrent_parser_voice'));
@@ -18163,13 +17956,12 @@
         filter.set('sort', obj_filter_sources.map(function (e) {
           return {
             source: e.name,
-            title: stelsSourceTitleWithStatus(e),
+            title: e.title,
             selected: e.name === balanser
           };
         }));
-        stelsPatchOpenSourceSortMenu();
-        setTimeout(stelsPatchOpenSourceSortMenu, 80);
-        setTimeout(stelsPatchOpenSourceSortMenu, 260);
+        setTimeout(function () { stelsPatchUaFlagIcons(document.body); }, 80);
+        setTimeout(function () { stelsPatchUaFlagIcons(document.body); }, 260);
         this.selected(filter_items);
       };
       /**
@@ -18199,7 +17991,7 @@
           return e.name === balanser;
         })[0];
         filter.chosen('filter', select);
-        filter.chosen('sort', [source_obj ? stelsSourceTitleWithStatus(source_obj) : balanser]);
+        filter.chosen('sort', [source_obj ? source_obj.title : balanser]);
       };
       /**
        * Добавить файл
@@ -18207,7 +17999,6 @@
 
 
       this.append = function (item) {
-        stelsMarkSourceStatus(balanser, 'ok');
         stelsDecorateItemWithImage(item);
         item.on('hover:focus', function (e) {
           last = e.target;
@@ -18222,11 +18013,6 @@
 
       this.contextmenu = function (params) {
         contextmenu_all.push(params);
-        try {
-          params.item.on('hover:enter', function () {
-            stelsSaveWatchHistory(object.movie, balanser, stelsSourceTitle(balanser), params.element || {}, { item_title: params.item && params.item.find ? params.item.find('.online__title').text() : '' });
-          });
-        } catch (e) {}
         params.item.on('hover:long', function () {
           function selectQuality(title, callback) {
             return function (extra) {
@@ -18391,7 +18177,6 @@
 
 
       this.empty = function (msg) {
-        stelsMarkSourceStatus(balanser, msg ? 'error' : 'empty', msg || '');
         stelsLog('empty', { balanser: balanser, message: msg || '' });
         var empty = Lampa.Template.get('list_empty');
         if (msg) empty.find('.empty__descr').text(msg);
@@ -18419,77 +18204,6 @@
        * Начать навигацию по файлам
        */
 
-
-
-      function stelsFindResumeContext(history) {
-        if (!history || !(history.season || history.episode)) return null;
-        var best = null;
-        contextmenu_all.forEach(function (params) {
-          var el = params && params.element || {};
-          var s = parseInt(el.season || 0, 10) || 0;
-          var e = parseInt(el.episode || 0, 10) || 0;
-          if (!best && history.season && history.episode && s === parseInt(history.season, 10) && e === parseInt(history.episode, 10)) best = params;
-        });
-        if (!best && history.episode) {
-          contextmenu_all.forEach(function (params) {
-            var el = params && params.element || {};
-            var e = parseInt(el.episode || 0, 10) || 0;
-            if (!best && e === parseInt(history.episode, 10)) best = params;
-          });
-        }
-        return best;
-      }
-
-      function stelsMaybeShowResumePrompt() {
-        try {
-          if (!object || !object.movie || !object.movie.number_of_seasons) return;
-          if (window.stels_online_resume_prompt_lock) return;
-          var history = stelsGetWatchHistory(object.movie);
-          if (!history || !(history.season || history.episode)) return;
-          var cardKey = stelsCardKeyFromMovie(object.movie);
-          var promptKey = cardKey + ':' + (history.time || 0) + ':' + balanser;
-          if (window.stels_online_last_resume_prompt === promptKey) return;
-          window.stels_online_last_resume_prompt = promptKey;
-          var params = stelsFindResumeContext(history);
-          var controller = Lampa.Controller.enabled().name;
-          var currentSource = stelsSourceTitle(balanser);
-          var lastText = stelsFormatWatchHistory(history);
-          var html = $('<div class="stels-online-resume-modal">' +
-            '<div style="font-size:1.05em;margin-bottom:.75em">Останній перегляд: <b>' + stelsEscapeHtml(lastText || '') + '</b></div>' +
-            (history.source && history.source !== balanser ? '<div style="opacity:.75;margin-bottom:.75em">Зараз відкрито джерело: <b>' + stelsEscapeHtml(currentSource) + '</b>. Останнє джерело: <b>' + stelsEscapeHtml(history.source_title || stelsSourceTitle(history.source)) + '</b>.</div>' : '') +
-            '<div style="display:flex;gap:.6em;flex-wrap:wrap;margin-top:.8em">' +
-              '<div class="simple-button selector" data-action="continue">Продовжити</div>' +
-              '<div class="simple-button selector" data-action="choose">Обрати іншу серію</div>' +
-            '</div>' +
-          '</div>');
-          html.find('[data-action="continue"]').on('hover:enter click', function () {
-            Lampa.Modal.close();
-            Lampa.Controller.toggle('content');
-            if (params && params.item) params.item.trigger('hover:enter');
-            else Lampa.Noty.show('Не знайшов цю серію у поточному списку');
-          });
-          html.find('[data-action="choose"]').on('hover:enter click', function () {
-            Lampa.Modal.close();
-            Lampa.Controller.toggle('content');
-          });
-          window.stels_online_resume_prompt_lock = true;
-          Lampa.Modal.open({
-            title: 'Продовжити перегляд?',
-            html: html,
-            size: 'small',
-            scroll_to_center: true,
-            select: html.find('[data-action="continue"]')[0],
-            onBack: function () {
-              Lampa.Modal.close();
-              Lampa.Controller.toggle(controller || 'content');
-            }
-          });
-          setTimeout(function () { window.stels_online_resume_prompt_lock = false; }, 1000);
-          stelsLog('watch-history-resume-prompt', { source: history.source, current_source: balanser, season: history.season, episode: history.episode, found: !!params });
-        } catch (e) {
-          stelsLog('watch-history-resume-error', { error: e && (e.message || e.toString()) });
-        }
-      }
 
       this.start = function (first_select) {
         if (Lampa.Activity.active().activity !== this.activity) return; //обязательно, иначе наблюдается баг, активность создается но не стартует, в то время как компонент загружается и стартует самого себя.
@@ -18522,7 +18236,6 @@
           back: this.back
         });
         if (this.inActivity()) Lampa.Controller.toggle('content');
-        if (first_select) setTimeout(stelsMaybeShowResumePrompt, 260);
       };
 
       this.render = function () {
@@ -18538,7 +18251,6 @@
       this.stop = function () {};
 
       this.destroy = function () {
-        stelsStopSafePrecheck();
         network.clear();
         files.destroy();
         scroll.destroy();
@@ -18647,8 +18359,6 @@
       Lampa.Params.trigger('stels_online_full_episode_title', false);
       Lampa.Params.trigger('stels_online_av1_support', true);
       Lampa.Params.trigger('stels_online_save_last_balanser', false);
-      Lampa.Params.trigger('stels_online_log_enabled', true);
-      Lampa.Params.trigger('stels_online_android_player_fix', false);
       Lampa.Params.trigger('stels_online_rezka2_fix_stream', false);
       Lampa.Params.select('stels_online_kinobase_mirror', '', '');
       Lampa.Params.select('stels_online_kinobase_cookie', '', '');
@@ -19300,7 +19010,7 @@
         }
       };
       Lampa.Manifest.plugins = manifest;
-      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"" + mod_version + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
+      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"stels_online " + mod_version + "\">\n        <img src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
       Lampa.Listener.follow('full', function (e) {
         if (e.type == 'complite') {
           var btn = $(Lampa.Lang.translate(button));
@@ -19894,54 +19604,12 @@
     } ///////Онлайн Мод/////////
 
 
-    function stelsBuildSettingsFolder() {
-      return $(Lampa.Lang.translate('<div class="settings-folder selector stels-online-settings-folder" data-component="stels_online" data-title="Stels_Online" data-subtitle="' + STELS_ONLINE_VERSION + '">' +
-        '<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true">' +
-          '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">' +
-        '</div>' +
-        '<div class="settings-folder__name">#{stels_online_title_full}</div>' +
-      '</div>'));
-    }
-
-    function stelsPlaceSettingsFolder() {
-      if (!(Lampa.Settings.main && Lampa.Settings.main())) return;
-      var body = Lampa.Settings.main().render();
-      if (!body || !body.length) return;
-
-      var field = body.find('[data-component="stels_online"]').first();
-      if (!field.length) field = stelsBuildSettingsFolder();
-      else field.detach();
-      field.addClass('stels-online-settings-folder');
-      if (!field.find('.settings-folder__icon').length) field.prepend('<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true"></div>');
-      if (!field.find('.settings-folder__name').length) field.append('<div class="settings-folder__name"></div>');
-
-      // На деяких збірках Lampa замість іконки/підпису зліва підставляється службовий data-component.
-      // Примусово лишаємо тільки іконку та чисту назву без "stels_online".
-      field.attr('data-subtitle', STELS_ONLINE_VERSION);
-      field.find('.full-start__subtitle, .selector__subtitle, .settings-folder__subtitle').filter(function () {
-        return /^stels_online\b/i.test(($(this).text() || '').trim());
-      }).text(STELS_ONLINE_VERSION);
-      field.find('.settings-folder__icon').html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">');
-      field.find('.settings-folder__name').text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
-      field.children().filter(function () {
-        var node = $(this);
-        if (node.hasClass('settings-folder__icon') || node.hasClass('settings-folder__name')) return false;
-        return /^\s*stels_online\s*$/i.test((node.text() || '').trim());
-      }).remove();
-
-      var folders = body.find('.settings-folder.selector, .settings-folder').not(field);
-      if (folders.length) folders.eq(0).after(field); // завжди другий пункт у загальному списку налаштувань
-      else body.prepend(field);
-
-      try { Lampa.Settings.main().update(); } catch (e) {}
-    }
-
     function addSettingsOnlineMod() {
-      stelsPlaceSettingsFolder();
-      setTimeout(stelsPlaceSettingsFolder, 100);
-      setTimeout(stelsPlaceSettingsFolder, 500);
-      setTimeout(stelsPlaceSettingsFolder, 1200);
-      setTimeout(stelsPlaceSettingsFolder, 2500);
+      if (Lampa.Settings.main && Lampa.Settings.main() && !Lampa.Settings.main().render().find('[data-component="stels_online"]').length) {
+        var field = $(Lampa.Lang.translate("<div class=\"settings-folder selector\" data-component=\"stels_online\">\n            <div class=\"settings-folder__icon\">\n                <img src=\"" + STELS_ICON_URL + "\" style=\"width:2.6em;height:2.6em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n            </div>\n            <div class=\"settings-folder__name\">#{stels_online_title_full}</div>\n        </div>"));
+        Lampa.Settings.main().render().find('[data-component="more"]').after(field);
+        Lampa.Settings.main().update();
+      }
     }
 
     function initSettings() {
@@ -19991,7 +19659,7 @@
       }
 
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_full_episode_title\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_full_episode_title}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_save_last_balanser\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_save_last_balanser}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_last_balanser\" data-static=\"true\">\n            <div class=\"settings-param__name\">#{stels_online_clear_last_balanser}</div>\n            <div class=\"settings-param__status\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_watch_history\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити історію перегляду Stels_Online</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_save_last_balanser\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_save_last_balanser}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_last_balanser\" data-static=\"true\">\n            <div class=\"settings-param__name\">#{stels_online_clear_last_balanser}</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
 
       if (Utils.isDebug()) {
         template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_kinobase_mirror\" data-type=\"input\" placeholder=\"#{settings_cub_not_specified}\">\n            <div class=\"settings-param__name\">#{stels_online_kinobase_mirror}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
@@ -20050,8 +19718,6 @@
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_sources\" data-static=\"true\">\n            <div class=\"settings-param__name\">Джерела</div>\n            <div class=\"settings-param__descr\">Увімкнення або вимкнення джерел у меню Сортувати</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_plugin_cache\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити кеш Stels_Online</div>\n            <div class=\"settings-param__descr\">Скинути збережені сезони, вибір озвучки, останні джерела та позначки перегляду. Налаштування джерел, проксі та cookie не очищаються.</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Android: сумісний запуск відео</div>\n            <div class=\"settings-param__descr\">Вмикати, якщо на Android у вбудованому плеєрі Lampa серії/фільми не стартують, хоча на Windows працюють. Режим прибирає lazy-плейлист сезону, відключає quality-map для m3u8 і залишає один конкретний потік.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
@@ -20062,7 +19728,6 @@
         });
       }
       Lampa.Settings.listener.follow('open', function (e) {
-        if (!e.name || e.name == 'main') stelsPlaceSettingsFolder();
         if (e.name == 'stels_online') {
           var stels_sources_button = e.body.find('[data-name="stels_online_sources"]');
           stels_sources_button.unbind('hover:enter').on('hover:enter', function () {
@@ -20105,11 +19770,6 @@
             Lampa.Storage.set('stels_online_last_balanser', {});
             Lampa.Storage.set('stels_online_balanser', '');
             $('.settings-param__status', clear_last_balanser).removeClass('active error wait').addClass('active');
-          });
-          var clear_watch_history = e.body.find('[data-name="stels_online_clear_watch_history"]');
-          clear_watch_history.unbind('hover:enter').on('hover:enter', function () {
-            stelsClearWatchHistory();
-            $('.settings-param__status', clear_watch_history).removeClass('active error wait').addClass('active');
           });
           var rezka2_login = e.body.find('[data-name="stels_online_rezka2_login"]');
           rezka2_login.unbind('hover:enter').on('hover:enter', function () {
@@ -20158,8 +19818,7 @@
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
-      stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.52: Eneyida переведено на прямий парсер eneyida.tv + hdvbua.pro без LampUA, історія перегляду збережена.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: 'Kinozer 1.0.22: виправлено вибір результату пошуку, додано direct/fallback запити до player/bnsi та розширено діагностику.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
