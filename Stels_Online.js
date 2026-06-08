@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.70';
+    var STELS_ONLINE_VERSION = '1.0.71';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9897,11 +9897,35 @@
         return matched / needleTokens.length;
       }
 
+      function stelsCleanAltTitlePart(value) {
+        var n = normalizeForCompare(value || '');
+        // У повному GET-пошуку Eneyida до назви часто додає службовий хвіст "онлайн в HD".
+        n = n.replace(/\s+онлайн(?:\s+в\s+hd)?$/i, '').replace(/\s+в\s+hd$/i, '').trim();
+        return n;
+      }
+
+      function stelsIsAltTitleExactMatch(title, needle) {
+        var needleN = stelsCleanAltTitlePart(needle || '');
+        if (!needleN) return false;
+        var parts = String(title || '').split(/\s*(?:\/|\||\u2022|•|—|–)\s*/).map(stelsCleanAltTitlePart).filter(Boolean);
+        if (parts.length < 2) return false;
+        for (var i = 0; i < parts.length; i++) {
+          if (parts[i] === needleN) return true;
+          var pt = stelsCompareTokens(parts[i]);
+          var nt = stelsCompareTokens(needleN);
+          if (pt.length === 1 && nt.length === 1 && pt[0].length >= 6 && nt[0].length >= 6 && stelsEditDistanceLimited(pt[0], nt[0], 1) <= 1) return true;
+        }
+        return false;
+      }
+
       function stelsIsStrictFullTitleMatch(title, needle) {
-        var titleN = normalizeForCompare(title || '');
-        var needleN = normalizeForCompare(needle || '');
+        var titleN = stelsCleanAltTitlePart(title || '');
+        var needleN = stelsCleanAltTitlePart(needle || '');
         if (!titleN || !needleN) return false;
         if (titleN === needleN) return true;
+        // В Eneyida назви часто записані як "Хлопаки / Хлопці". Це має збігатися із запитом "Хлопаки",
+        // але не має відкривати "Друзі та сусіди" для однословного запиту "Друзі".
+        if (stelsIsAltTitleExactMatch(title || '', needle || '')) return true;
         var titleTokens = stelsCompareTokens(titleN);
         var needleTokens = stelsCompareTokens(needleN);
         if (!titleTokens.length || !needleTokens.length) return false;
@@ -21158,11 +21182,48 @@
       Lampa.Manifest.plugins = manifest;
       var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"" + STELS_ONLINE_VERSION + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
 
+      function stelsBindFullButton(btn, movie) {
+        try {
+          if (!btn || !btn.length || !movie) return;
+          btn.off('hover:enter.stelsOnline click.stelsOnline tap.stelsOnline').on('hover:enter.stelsOnline click.stelsOnline tap.stelsOnline', function () {
+            online_loading = false;
+            loadOnline(movie);
+          });
+        } catch (e) {}
+      }
+
       function stelsCreateFullButton(movie) {
         var btn = $(Lampa.Lang.translate(button));
-        online_loading = false;
-        btn.on('hover:enter', function () { loadOnline(movie); });
+        stelsBindFullButton(btn, movie);
         return btn;
+      }
+
+      function stelsRepairExistingFullButton(render, movie) {
+        var existing = render.find('.view--stels_online, [data-component="stels_online"]').filter(function () {
+          var el = $(this);
+          return el.hasClass('full-start__button') || el.closest('.full-start, .full-start__buttons, .full-start-new__buttons').length;
+        });
+        if (!existing.length) return false;
+        existing.each(function () {
+          var el = $(this);
+          el.addClass('full-start__button selector view--stels_online')
+            .attr('data-subtitle', STELS_ONLINE_VERSION)
+            .attr('data-component', 'stels_online')
+            .removeAttr('hidden')
+            .removeClass('hide hidden selector--hidden');
+          el.css({ display: '', visibility: '', opacity: '', pointerEvents: '' });
+          if (!el.find('.stels-online-plugin-icon').length) el.prepend(STELS_ICON_HTML);
+          if (!el.find('span').length) el.append('<span>' + stelsEscapeHtml(Lampa.Lang.translate('stels_online_title') || 'Stels_Online') + '</span>');
+          stelsBindFullButton(el, movie);
+        });
+        try {
+          if (Lampa.Controller && Lampa.Controller.enabled && Lampa.Controller.collectionSet) {
+            var enabled = Lampa.Controller.enabled();
+            if (enabled && enabled.name && /full|content|card/i.test(enabled.name)) Lampa.Controller.collectionSet(render, render.find('.selector'));
+          }
+        } catch (e) {}
+        stelsLog('full-button-repair-existing', { count: existing.length, title: movie && (movie.title || movie.name || movie.original_title) || '', id: movie && (movie.id || movie.tmdb_id) || '' });
+        return true;
       }
 
       function stelsEnsureFullButton(e) {
@@ -21171,9 +21232,10 @@
           var activity = active && (active.activity || active);
           if (!activity || !activity.render) return false;
           var render = activity.render();
-          if (!render || !render.length || render.find('.view--stels_online').length) return false;
+          if (!render || !render.length) return false;
           var movie = e && e.data && e.data.movie || active.movie || active.data && active.data.movie || active.object || active.data || null;
           if (!movie || !(movie.id || movie.tmdb_id || movie.title || movie.name || movie.original_title)) return false;
+          if (render.find('.view--stels_online, [data-component="stels_online"]').length) return stelsRepairExistingFullButton(render, movie);
           var target = render.find('.view--torrent').first();
           if (!target.length) target = render.find('.full-start__button.selector').not('.view--stels_online').first();
           if (target.length) target.after(stelsCreateFullButton(movie));
@@ -21183,6 +21245,12 @@
             if (!container.length) return false;
             container.append(stelsCreateFullButton(movie));
           }
+          try {
+            if (Lampa.Controller && Lampa.Controller.enabled && Lampa.Controller.collectionSet) {
+              var enabled = Lampa.Controller.enabled();
+              if (enabled && enabled.name && /full|content|card/i.test(enabled.name)) Lampa.Controller.collectionSet(render, render.find('.selector'));
+            }
+          } catch (e2) {}
           stelsLog('full-button-ensure', { ok: true, title: movie.title || movie.name || movie.original_title || '', id: movie.id || movie.tmdb_id || '' });
           return true;
         } catch (err) {
@@ -21195,11 +21263,12 @@
         try {
           if (!e || e.type !== 'complite' || !e.object || !e.object.activity || !e.object.activity.render) return false;
           var render = e.object.activity.render();
-          if (!render || !render.length || render.find('.view--stels_online').length) return false;
-          var target = render.find('.view--torrent').first();
-          if (!target.length) return false;
+          if (!render || !render.length) return false;
           var movie = e.data && e.data.movie || e.object.movie || null;
           if (!movie) return false;
+          if (render.find('.view--stels_online, [data-component="stels_online"]').length) return stelsRepairExistingFullButton(render, movie);
+          var target = render.find('.view--torrent').first();
+          if (!target.length) return false;
           var btn = stelsCreateFullButton(movie);
           target.after(btn);
           stelsLog('full-button-ensure-legacy58', { ok: true, title: movie.title || movie.name || movie.original_title || '', id: movie.id || movie.tmdb_id || '' });
@@ -22097,7 +22166,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.70: Eneyida шукає спочатку українською назвою; тільки якщо український пошук не дав точного результату, переходить до оригінальної/інших назв.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.71: виправлено Eneyida пошук назв через слеш (Хлопаки / Хлопці) і примусове відображення/активацію кнопки Stels_Online на головній картці.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
