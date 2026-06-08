@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.77';
+    var STELS_ONLINE_VERSION = '1.0.78';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9769,7 +9769,7 @@
           network.timeout(timeoutMs);
           network["native"](url, finishOk, finishFail, postdata, {
             dataType: 'text',
-            withCredentials: false,
+            withCredentials: true,
             headers: reqHeaders
           });
         } catch (e) {
@@ -9816,10 +9816,14 @@
       }
 
       function stelsIsLikelyRussianAlias(value) {
-        var n = normalizeForCompare(value || '');
+        var raw = cleanText(value || '');
+        var n = normalizeForCompare(raw);
         if (!n) return false;
-        if (/[ыэёъ]/i.test(value || '')) return true;
-        return ['друзья', 'извне', 'пацаны'].indexOf(n) !== -1;
+        // Російські літери, яких немає в українській, або відомі російські службові/назви.
+        if (/[ыэъё]/i.test(raw)) return true;
+        if (/(^|\s)(друзья|соседи|пацаны|извне|рик|морти|реальные)(\s|$)/i.test(n)) return true;
+        if (/(^|\s)и(\s|$)/i.test(n) && /(друз|сосед|рик|морти)/i.test(n)) return true;
+        return ['друзья', 'извне', 'пацаны', 'друзья и соседи', 'друзья соседи', 'рик и морти'].indexOf(n) !== -1;
       }
 
       function stelsKnownTitleAliases() {
@@ -9866,7 +9870,7 @@
         var out = raw
           .replace(/Друзья/gi, 'Друзі')
           .replace(/Соседи/gi, 'Сусіди')
-          .replace(/и/gi, 'та')
+          .replace(/(^|\s)и(?=\s|$)/gi, '$1та')
           .replace(/Извне/gi, 'Ззовні')
           .replace(/Пацаны/gi, 'Хлопаки')
           .replace(/Рик\s+и\s+Морти/gi, 'Рік та Морті');
@@ -9905,28 +9909,40 @@
         var movie = object.movie || {};
         var originalNorm = normalizeForCompare(movie.original_title || movie.original_name || '');
         var out = [];
-        var alts = movie.alternative_titles && movie.alternative_titles.results || movie.titles && movie.titles.results || [];
-        if (Array.isArray(alts)) {
-          alts.forEach(function (a) { if (stelsIsUkrainianAlt(a)) stelsPushUniqueClean(out, a.title || a.name); });
-        }
-        stelsKnownTitleAliases().forEach(function (t) {
-          if (!stelsIsLikelyRussianAlias(t) && !stelsIsMostlyLatin(t)) stelsPushUniqueClean(out, t);
-        });
-        [select_title, object.search, movie.title, movie.name].forEach(function (t) {
+        function pushUkCandidate(t) {
           t = cleanText(t || '');
           if (!t) return;
-          // Для Eneyida основний пошук має бути українською. Якщо Lampa/CUB віддала російську назву,
-          // спочатку пробуємо український відповідник, а російську залишаємо тільки як fallback.
           if (originalNorm && normalizeForCompare(t) === originalNorm && stelsIsMostlyLatin(t)) return;
           var uk = stelsUkrainizeRussianTitle(t);
-          if (uk) stelsPushUniqueClean(out, uk);
-          if (!stelsIsLikelyRussianAlias(t)) stelsPushUniqueClean(out, t);
-        });
+          if (uk) { stelsPushUniqueClean(out, uk); return; }
+          if (!stelsIsLikelyRussianAlias(t) && !stelsIsMostlyLatin(t)) stelsPushUniqueClean(out, t);
+        }
+        var alts = movie.alternative_titles && movie.alternative_titles.results || movie.titles && movie.titles.results || [];
+        if (Array.isArray(alts)) {
+          alts.forEach(function (a) { if (stelsIsUkrainianAlt(a)) pushUkCandidate(a.title || a.name); });
+        }
+        // TMDB/Lampa інколи передає переклади окремим масивом translations.
+        try {
+          var trs = movie.translations && (movie.translations.translations || movie.translations.results) || [];
+          if (Array.isArray(trs)) trs.forEach(function (tr) {
+            var iso = String((tr && (tr.iso_3166_1 || tr.iso_639_1 || tr.country || tr.locale)) || '').toUpperCase();
+            if (iso === 'UA' || iso === 'UK' || iso === 'UKR') {
+              var d = tr.data || tr;
+              pushUkCandidate(d.title || d.name || d.original_title || d.original_name);
+            }
+          });
+        } catch (e) {}
+        // Значення, яке реально бачить користувач у Lampa, має пріоритет, але тільки якщо воно українське
+        // або може бути надійно приведене з російської до української. Саму російську назву не кладемо в primary.
+        [select_title, object.search, movie.title, movie.name].forEach(pushUkCandidate);
+        // Відомі відповідники використовуємо як резерв для локалізації, але raw-російські назви не проходять у primary.
+        stelsKnownTitleAliases().forEach(pushUkCandidate);
         stelsLog('eneyida-uk-title-candidates', {
           title: select_title,
           movie_title: movie.title || movie.name || '',
           original: movie.original_title || movie.original_name || '',
-          result: out.slice(0, 8)
+          alt_count: Array.isArray(alts) ? alts.length : 0,
+          result: out.slice(0, 10)
         });
         return out;
       }
@@ -9957,10 +9973,9 @@
         var fallback = [];
         var primaryBase = stelsEneyidaUkrainianTitles();
         primaryBase.forEach(function (t) { stelsPushTitleAndYear(primary, t); });
-        [movie.original_title, movie.original_name].forEach(function (t) { stelsPushUniqueClean(fallback, t); });
-        stelsKnownTitleAliases().forEach(function (t) {
-          if (primary.indexOf(t) === -1) stelsPushUniqueClean(fallback, t);
-        });
+        // fallback: все, що реально передала Lampa/TMDB, але тільки після українських primary-запитів.
+        [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(function (t) { stelsPushUniqueClean(fallback, t); });
+        stelsKnownTitleAliases().forEach(function (t) { stelsPushUniqueClean(fallback, t); });
         var cleaned = [];
         primary.concat(fallback).forEach(function (t) {
           var c = component.cleanTitle(t || '');
@@ -9969,9 +9984,9 @@
         stelsLog('eneyida-variant-order', {
           primary_uk: primary,
           fallback: fallback,
-          result: cleaned.slice(0, 8)
+          result: cleaned.slice(0, 10)
         });
-        return cleaned.slice(0, 8);
+        return cleaned.slice(0, 10);
       }
 
       function looksCategory(url) {
@@ -11454,6 +11469,7 @@
       var playerToken = '';
       var playerHost = '';
       var mainReferer = '';
+      var kinogoDleHash = '';
 
       function cleanText(value) {
         return component.decodeHtml(String(value == null ? '' : value)
@@ -11487,6 +11503,15 @@
         }
         return value;
       }
+      function kinogoBrowserUserAgent() {
+        return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
+      }
+      function extractDleHash(html) {
+        var m = String(html || '').match(/dle_login_hash\s*=\s*['"]([^'"]+)/i) ||
+                String(html || '').match(/dle_hash\s*[:=]\s*['"]?([a-f0-9]{20,40})/i) ||
+                String(html || '').match(/name\s*=\s*['"]dle_hash['"][^>]*value\s*=\s*['"]([^'"]+)/i);
+        return m ? (m[1] || '') : '';
+      }
       function kinogoLooksLikeValidSearchPage(text) {
         text = String(text || '');
         return /<title>\s*Поиск[\s\S]{0,80}найдено:/i.test(text) || /class=["'](?:short|shortstory|th-item|movie-item)/i.test(text) || /href=["'][^"']+\.html/i.test(text);
@@ -11508,7 +11533,8 @@
           network.timeout(options.timeout || 10000);
           network["native"](url, function (html) {
             html = maybeDecode(html || '');
-            stelsLog('kinogo-request-done', { url: url, length: String(html || '').length, valid_search: kinogoLooksLikeValidSearchPage(html), sample: String(html || '').slice(0, 260) });
+            var dh = extractDleHash(html); if (dh) kinogoDleHash = dh;
+            stelsLog('kinogo-request-done', { url: url, length: String(html || '').length, valid_search: kinogoLooksLikeValidSearchPage(html), hash: !!dh, sample: String(html || '').slice(0, 260) });
             if (kinogoIsCloudflare(html)) {
               stelsLog('kinogo-cloudflare-detected', { url: url, has_valid_search: kinogoLooksLikeValidSearchPage(html), sample: String(html || '').slice(0, 520) });
               if (fail) fail(kinogoReadableError(html));
@@ -11524,12 +11550,20 @@
           }, options.postdata || false, {
             dataType: 'text',
             withCredentials: false,
-            headers: {
-              'User-Agent': Utils.baseUserAgent(),
-              'Accept': options.accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5',
-              'Referer': options.referer || host() + '/'
-            }
+            headers: (function () {
+              var h = {
+                'User-Agent': kinogoBrowserUserAgent(),
+                'Accept': options.accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5',
+                'Referer': options.referer || host() + '/'
+              };
+              if (options.ajax) {
+                h['X-Requested-With'] = 'XMLHttpRequest';
+                h['Origin'] = host();
+                h['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+              }
+              return h;
+            })()
           });
         } catch (e) { if (fail) fail(e && (e.message || e.toString()) || 'request error'); }
       }
@@ -11893,8 +11927,21 @@
         });
         component.start(true);
       }
+      function warmKinogoNews(item, done) {
+        if (!item || !item.link || !kinogoDleHash) { if (done) done(); return; }
+        var post = 'news=' + encodeURIComponent(item.link) + '&dle_hash=' + encodeURIComponent(kinogoDleHash);
+        stelsLog('kinogo-news-warm-start', { page: item.link, hash: !!kinogoDleHash, post: post });
+        requestText(host() + '/engine/lazydev/dle_search/ajax.php', function (html) {
+          stelsLog('kinogo-news-warm-done', { page: item.link, length: String(html || '').length });
+          if (done) done();
+        }, function (err) {
+          stelsLog('kinogo-news-warm-fail', { page: item.link, error: err || '' });
+          if (done) done();
+        }, { postdata: post, referer: host() + '/', timeout: 8000, ajax: true, accept: 'text/html,*/*;q=0.8' });
+      }
       function loadPage(item) {
         component.loading(true);
+        function startPageRequest() {
         requestText(item.link, function (html) {
           if (destroyed) return;
           var mt = html.match(/<meta\s+property=["']og:title["'][^>]*content=["']([^"']+)/i) || html.match(/<title>([^<]+)/i);
@@ -11934,7 +11981,16 @@
               requestText(purl, handlePlayer, function (err3) { component.loading(false); component.empty(err3 || err2 || err || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
             }, { referer: host() + '/', timeout: 14000 });
           }, { referer: item.link, timeout: 12000 });
-        }, function (err) { component.loading(false); component.empty(err || 'Kinogo page error'); }, { timeout: 12000 });
+        }, function (err) {
+          if (!item._warmed_retry && kinogoDleHash) {
+            item._warmed_retry = true;
+            stelsLog('kinogo-page-retry-after-warm', { page: item.link, error: err || '' });
+            return warmKinogoNews(item, startPageRequest);
+          }
+          component.loading(false); component.empty(err || 'Kinogo page error');
+        }, { timeout: 12000, referer: host() + '/' });
+        }
+        warmKinogoNews(item, startPageRequest);
       }
       this.search = function (_object, kinopoisk_id, data) {
         object = _object || object || {};
@@ -22267,7 +22323,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.77: Eneyida отримує українські варіанти назви перед російськими; Kinogo отримує російські fallback-назви, покращено пошук iframe/лог сторінки.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.78: Eneyida шукає українські/локалізовані назви з Lampa/TMDB у primary, російські назви лише fallback; Kinogo prewarm DLE news перед відкриттям сторінки, додано hash/news лог.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
