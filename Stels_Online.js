@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.63';
+    var STELS_ONLINE_VERSION = '1.0.64';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -211,10 +211,10 @@
           });
           // Деякі екрани Lampa (наприклад список джерел "Джерело") будуються не через data-component,
           // а простим пунктом з текстом Stels_Online + версія. Патчимо їх окремо по тексту.
-          scope.find('.selector, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').addBack('.selector, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').each(function () {
+          scope.find('.selector, .selectbox-item, .selectbox__item, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').each(function () {
             var el = $(this);
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*\d+\.\d+\.\d+$/.test(text);
+            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text);
             if (el.find('.stels-online-plugin-icon').length) {
               if (flatMatch) stelsPatchFlatPluginEntry(el);
               return;
@@ -20492,7 +20492,7 @@
       var manifest = {
         type: 'video',
         version: mod_version,
-        name: Lampa.Lang.translate('stels_online_title_full') + ' - ' + mod_version,
+        name: Lampa.Lang.translate('stels_online_title_full'),
         description: Lampa.Lang.translate('stels_online_watch'),
         icon: STELS_ICON_HTML,
         icon_url: STELS_ICON_URL,
@@ -20512,16 +20512,40 @@
       };
       Lampa.Manifest.plugins = manifest;
       var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"" + STELS_ONLINE_VERSION + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
-      Lampa.Listener.follow('full', function (e) {
-        if (e.type == 'complite') {
-          var btn = $(Lampa.Lang.translate(button));
-          online_loading = false;
-          btn.on('hover:enter', function () {
-            loadOnline(e.data.movie);
-          });
-          e.object.activity.render().find('.view--torrent').after(btn);
+
+      function stelsCreateFullButton(movie) {
+        var btn = $(Lampa.Lang.translate(button));
+        online_loading = false;
+        btn.on('hover:enter', function () { loadOnline(movie); });
+        return btn;
+      }
+
+      function stelsEnsureFullButton(e) {
+        try {
+          var active = (e && e.object) ? e.object : (Lampa.Activity && Lampa.Activity.active ? Lampa.Activity.active() : null);
+          var activity = active && (active.activity || active);
+          if (!activity || !activity.render) return false;
+          var render = activity.render();
+          if (!render || !render.length || render.find('.view--stels_online').length) return false;
+          var torrent = render.find('.view--torrent').first();
+          if (!torrent.length) return false;
+          var movie = e && e.data && e.data.movie || active.movie || active.data && active.data.movie || active.object || null;
+          if (!movie || !(movie.id || movie.tmdb_id || movie.title || movie.name || movie.original_title)) return false;
+          torrent.after(stelsCreateFullButton(movie));
+          stelsLog('full-button-ensure', { ok: true, title: movie.title || movie.name || movie.original_title || '', id: movie.id || movie.tmdb_id || '' });
+          return true;
+        } catch (err) {
+          stelsLog('full-button-ensure-error', { error: err && (err.message || err.toString()) });
+          return false;
         }
+      }
+
+      Lampa.Listener.follow('full', function (e) {
+        if (e.type == 'complite') stelsEnsureFullButton(e);
       });
+      // Якщо плагін підвантажився вже після події full:complite, кнопка має з'явитись без ручного оновлення сторінки.
+      setTimeout(function () { stelsEnsureFullButton(); }, 250);
+      setTimeout(function () { stelsEnsureFullButton(); }, 900);
 
       if (Lampa.Storage.get('stels_online_use_stream_proxy', '') === '') {
         $.ajax({
@@ -21370,7 +21394,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.63: Eneyida: виправлено визначення змішаного PlayerJS дерева для Рік та Морті, сезони/озвучки не міняються місцями, додано діагностику shape.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.64: Eneyida: виправлено parseSeasonOnly для формату 7 сезон, повернуто озвучки у Переклад, виправлено кнопку на картці та відображення версії/іконки в списку джерел.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
