@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.76';
+    var STELS_ONLINE_VERSION = '1.0.77';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9835,7 +9835,43 @@
         if (originalNorm === 'from') {
           ['Ззовні', 'Извне', 'From'].forEach(function (t) { stelsPushUniqueClean(out, t); });
         }
+        if (originalNorm === 'your friends neighbors' || originalNorm === 'your friends and neighbors') {
+          ['Друзі та сусіди', 'Друзі і сусіди', 'Друзья и соседи', 'Your Friends & Neighbors'].forEach(function (t) { stelsPushUniqueClean(out, t); });
+        }
+        if (originalNorm === 'rick and morty') {
+          ['Рік та Морті', 'Рик и Морти', 'Rick and Morty'].forEach(function (t) { stelsPushUniqueClean(out, t); });
+        }
         return out;
+      }
+
+      function stelsIsUkrainianAlt(a) {
+        var iso = String((a && (a.iso_3166_1 || a.country || a.iso || a.locale || a.language)) || '').toUpperCase();
+        var note = String((a && (a.type || a.note || a.language)) || '');
+        return iso === 'UA' || iso === 'UK' || iso === 'UKR' || /укра/i.test(note);
+      }
+
+      function stelsUkrainizeRussianTitle(value) {
+        var raw = cleanText(value || '');
+        if (!raw) return '';
+        var n = normalizeForCompare(raw);
+        var known = {
+          'друзья и соседи': 'Друзі та сусіди',
+          'друзья соседи': 'Друзі та сусіди',
+          'друзья': 'Друзі',
+          'пацаны': 'Хлопаки',
+          'извне': 'Ззовні',
+          'рик и морти': 'Рік та Морті'
+        };
+        if (known[n]) return known[n];
+        var out = raw
+          .replace(/Друзья/gi, 'Друзі')
+          .replace(/Соседи/gi, 'Сусіди')
+          .replace(/и/gi, 'та')
+          .replace(/Извне/gi, 'Ззовні')
+          .replace(/Пацаны/gi, 'Хлопаки')
+          .replace(/Рик\s+и\s+Морти/gi, 'Рік та Морті');
+        if (out !== raw) return out;
+        return '';
       }
 
       function stelsSearchYear() {
@@ -9869,17 +9905,28 @@
         var movie = object.movie || {};
         var originalNorm = normalizeForCompare(movie.original_title || movie.original_name || '');
         var out = [];
+        var alts = movie.alternative_titles && movie.alternative_titles.results || movie.titles && movie.titles.results || [];
+        if (Array.isArray(alts)) {
+          alts.forEach(function (a) { if (stelsIsUkrainianAlt(a)) stelsPushUniqueClean(out, a.title || a.name); });
+        }
+        stelsKnownTitleAliases().forEach(function (t) {
+          if (!stelsIsLikelyRussianAlias(t) && !stelsIsMostlyLatin(t)) stelsPushUniqueClean(out, t);
+        });
         [select_title, object.search, movie.title, movie.name].forEach(function (t) {
           t = cleanText(t || '');
           if (!t) return;
-          // Для Eneyida основний пошук має йти локалізованою назвою з картки Lampa.
-          // original_title/original_name та російські fallback-и додаються тільки у другий етап.
+          // Для Eneyida основний пошук має бути українською. Якщо Lampa/CUB віддала російську назву,
+          // спочатку пробуємо український відповідник, а російську залишаємо тільки як fallback.
           if (originalNorm && normalizeForCompare(t) === originalNorm && stelsIsMostlyLatin(t)) return;
-          stelsPushUniqueClean(out, t);
-        });
-        stelsKnownTitleAliases().forEach(function (t) {
-          // Відомі українські відповідники залишаємо в першому етапі, російські — нижче у fallback.
+          var uk = stelsUkrainizeRussianTitle(t);
+          if (uk) stelsPushUniqueClean(out, uk);
           if (!stelsIsLikelyRussianAlias(t)) stelsPushUniqueClean(out, t);
+        });
+        stelsLog('eneyida-uk-title-candidates', {
+          title: select_title,
+          movie_title: movie.title || movie.name || '',
+          original: movie.original_title || movie.original_name || '',
+          result: out.slice(0, 8)
         });
         return out;
       }
@@ -11319,6 +11366,7 @@
         object = _object || object || {};
         select_title = object.search || (object.movie && (object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name)) || '';
         destroyed = false;
+        try { stelsLog('eneyida-search-object', { title: select_title, movie_title: object.movie && (object.movie.title || object.movie.name) || '', original: object.movie && (object.movie.original_title || object.movie.original_name) || '', year: object.search_date || object.movie && (object.movie.release_date || object.movie.first_air_date) || '', alt_count: object.movie && object.movie.alternative_titles && object.movie.alternative_titles.results ? object.movie.alternative_titles.results.length : 0 }); } catch (e) {}
         extract = [];
         component.loading(true);
 
@@ -11511,10 +11559,12 @@
         }
         var orig = normalizeForCompare(movie.original_title || movie.original_name || '');
         var title = normalizeForCompare(movie.title || movie.name || select_title || '');
-        // Мінімальні відомі відповідники як fallback, якщо Lampa не передала RU alternative_titles.
-        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') ['Пацаны', 'Пацани', 'Хлопаки', 'Хлопці', 'The Boys'].forEach(push);
-        if (orig === 'from' || title === 'ззовні' || title === 'извне') ['Извне', 'Ззовні', 'From', 'FROM'].forEach(push);
-        if (orig === 'friends' || title === 'друзі' || title === 'друзья') ['Друзья', 'Друзі', 'Friends'].forEach(push);
+        // Kinogo — російськомовний сайт, тому російські назви мають бути першими.
+        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') ['Пацаны', 'The Boys', 'Хлопаки', 'Хлопці'].forEach(push);
+        if (orig === 'from' || title === 'ззовні' || title === 'извне') ['Извне', 'From', 'Ззовні'].forEach(push);
+        if (orig === 'friends' || title === 'друзі' || title === 'друзья') ['Друзья', 'Friends', 'Друзі'].forEach(push);
+        if (orig === 'rick and morty' || title === 'рік та морті' || title === 'рик и морти') ['Рик и Морти', 'Rick and Morty', 'Рік та Морті'].forEach(push);
+        if (orig === 'your friends neighbors' || orig === 'your friends and neighbors' || title === 'друзі та сусіди' || title === 'друзья и соседи') ['Друзья и соседи', 'Your Friends & Neighbors', 'Друзі та сусіди'].forEach(push);
         [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(push);
         if (Array.isArray(alts)) {
           alts.forEach(function (a) { if (!isRuAlt(a)) push(a.title || a.name); });
@@ -11557,7 +11607,7 @@
         if (!t || !n) return false;
         if (t === n) return true;
         if (n.length < 4) return false;
-        return new RegExp('(^|\s)' + stelsEscapeRegExp(n) + '($|\s)').test(t);
+        return new RegExp('(^|\\s)' + stelsEscapeRegExp(n) + '($|\\s)').test(t);
       }
       function titleSeasonNumber(title) {
         var m = normalizeForCompare(title || '').match(/(?:^|\s)(\d{1,2})\s*(?:сезон|season)(?:\s|$)/i);
@@ -11708,11 +11758,39 @@
       }
       function parseIframe(html, pageUrl) {
         html = maybeDecode(html || '');
+        var decoded = component.decodeHtml(String(html || '')).replace(/\\//g, '/');
         var re = /https?:\/\/[^"'<>\s]+stravers\.live\/\?[^"'<>\s]+/ig, m;
-        while ((m = re.exec(html))) return absolute(m[0], pageUrl);
-        var root = $('<div>' + html + '</div>');
-        var src = root.find('iframe[src*="stravers.live"],li[data-src*="stravers.live"]').first().attr('src') || root.find('li[data-src*="stravers.live"]').first().attr('data-src') || '';
+        while ((m = re.exec(decoded))) return absolute(m[0], pageUrl);
+        var root = $('<div>' + decoded + '</div>');
+        var src = root.find('iframe[src*="stravers.live"],li[data-src*="stravers.live"],div[data-src*="stravers.live"],a[href*="stravers.live"]').first().attr('src') ||
+                  root.find('li[data-src*="stravers.live"],div[data-src*="stravers.live"]').first().attr('data-src') ||
+                  root.find('a[href*="stravers.live"]').first().attr('href') || '';
+        stelsLog('kinogo-iframe-detect', { page: pageUrl, found: !!src, stravers_index: decoded.indexOf('stravers.live'), sample: decoded.indexOf('stravers.live') >= 0 ? decoded.slice(Math.max(0, decoded.indexOf('stravers.live') - 180), decoded.indexOf('stravers.live') + 260) : decoded.slice(0, 260) });
         return absolute(src, pageUrl);
+      }
+      function parseSeasonPageLinks(html, pageUrl) {
+        html = maybeDecode(html || '');
+        var decoded = component.decodeHtml(String(html || '')).replace(/\\//g, '/');
+        var root = $('<div>' + decoded + '</div>');
+        var links = [];
+        var seen = {};
+        root.find('a[href]').each(function () {
+          var a = $(this);
+          var href = absolute(a.attr('href') || '', pageUrl);
+          if (!href || seen[href] || href === pageUrl || href.indexOf(host()) !== 0 || !/\.html(?:$|\?)/i.test(href)) return;
+          var text = cleanText(a.attr('title') || a.text() || '');
+          var combo = normalizeForCompare(text + ' ' + href);
+          if (!/(сезон|season|sezon|s\d{1,2})/i.test(combo)) return;
+          var score = searchScore({ title: text || select_title, link: href, year: '' }, select_title);
+          var sm = combo.match(/(?:^|\s)(\d{1,2})\s*(?:сезон|season|sezon)(?:\s|$)/i);
+          var sn = sm ? parseInt(sm[1], 10) || 0 : 0;
+          if (sn && !expectedSeasonNumber() && sn > 1) score -= sn * 8;
+          links.push({ title: text || ('Сезон ' + (sn || 1)), link: href, poster: '', year: '', score: score });
+          seen[href] = true;
+        });
+        links.sort(function (a, b) { return (b.score || 0) - (a.score || 0); });
+        stelsLog('kinogo-season-links', { page: pageUrl, count: links.length, sample: links.slice(0, 10).map(function (i) { return i.title + '|' + i.score + '|' + i.link; }) });
+        return links;
       }
       function getParam(url, key) {
         var m = String(url || '').match(new RegExp('[?&]' + key + '=([^&]+)'));
@@ -11824,8 +11902,19 @@
           var title = cleanText((mt && mt[1]) || item.title || select_title);
           var poster = absolute((mi && mi[1]) || item.poster || '', item.link);
           var iframe = parseIframe(html, item.link);
-          stelsLog('kinogo-page', { page: item.link, title: title, iframe: iframe, poster: !!poster });
-          if (!iframe) { component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return; }
+          var decodedPage = component.decodeHtml(maybeDecode(html || '')).replace(/\\//g, '/');
+          var si = decodedPage.indexOf('stravers.live');
+          stelsLog('kinogo-page', { page: item.link, title: title, iframe: iframe, poster: !!poster, html_length: decodedPage.length, stravers_index: si, html_sample: si >= 0 ? decodedPage.slice(Math.max(0, si - 220), si + 320) : decodedPage.slice(0, 360) });
+          if (!iframe) {
+            var seasonLinks = item._followedSeason ? [] : parseSeasonPageLinks(html, item.link);
+            if (seasonLinks.length) {
+              stelsLog('kinogo-page-follow-season', { from: item.link, to: seasonLinks[0].link, title: seasonLinks[0].title });
+              seasonLinks[0]._followedSeason = true;
+              component.loading(false);
+              return loadPage(seasonLinks[0]);
+            }
+            component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return;
+          }
           mainReferer = item.link;
           function handlePlayer(playerHtml) {
             if (destroyed) return;
@@ -11851,6 +11940,7 @@
         object = _object || object || {};
         select_title = object.search || (object.movie && (object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name)) || '';
         destroyed = false;
+        try { stelsLog('kinogo-search-object', { title: select_title, movie_title: object.movie && (object.movie.title || object.movie.name) || '', original: object.movie && (object.movie.original_title || object.movie.original_name) || '', year: object.search_date || object.movie && (object.movie.release_date || object.movie.first_air_date) || '', alt_count: object.movie && object.movie.alternative_titles && object.movie.alternative_titles.results ? object.movie.alternative_titles.results.length : 0 }); } catch (e) {}
         if (data && data[0] && data[0].link) return loadPage(data[0]);
         component.loading(true);
         function runSearch(list, index) {
@@ -11991,7 +12081,7 @@
         if (!t || !n) return false;
         if (t === n) return true;
         if (n.length < 4) return false;
-        return new RegExp('(^|\s)' + stelsEscapeRegExp(n) + '($|\s)').test(t);
+        return new RegExp('(^|\\s)' + stelsEscapeRegExp(n) + '($|\\s)').test(t);
       }
       function titleSeasonNumber(title) {
         var m = normalizeForCompare(title || '').match(/(?:^|\s)(\d{1,2})\s*(?:сезон|season)(?:\s|$)/i);
@@ -22177,7 +22267,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.76: повернено manifest name/version для списку джерел, але головна кнопка залишається icon-only; Kinogo не плутає валідну сторінку пошуку з Cloudflare, додано детальний лог пошуку/парсингу.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.77: Eneyida отримує українські варіанти назви перед російськими; Kinogo отримує російські fallback-назви, покращено пошук iframe/лог сторінки.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
