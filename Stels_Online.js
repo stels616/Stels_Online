@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.55';
+    var STELS_ONLINE_VERSION = '1.0.57';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -10030,7 +10030,7 @@
         season = season || meta.season || (episode ? 1 : 0);
         uniquePush(list, {
           title: title || (episode ? component.formatEpisodeTitle(season || 1, episode) : select_title),
-          quality: /\.m3u8/i.test(url) ? 'HLS' : 'Eneyida',
+          quality: 'Eneyida',
           info: info || '',
           season: season || 0,
           episode: episode || 0,
@@ -10096,6 +10096,18 @@
         if (node.episodes) walkPlayerNode(node.episodes, list, { title: title || ctx.title, info: info, referer: ctx.referer, poster: ctx.poster, season: season, episode: episode });
       }
 
+      function eneyidaPlainDirectUrls(file) {
+        file = String(file || '').trim();
+        if (!file) return [];
+        if (/^https?:\/\/[^\s"'<>\\]+(?:\.m3u8|\.mp4)(?:\?[^\s"'<>\\]*)?$/i.test(file)) return [file];
+        var urls = [];
+        var re = /https?:\/\/[^\s"'<>\\,]+(?:\.m3u8|\.mp4)(?:\?[^\s"'<>\\,]*)?/ig;
+        var m;
+        while ((m = re.exec(file))) urls.push(m[0]);
+        var stripped = file.replace(re, '').replace(/[\s,;|\[\]{}()"']+/g, '');
+        return stripped ? [] : urls;
+      }
+
       function parseFilesFromString(file, list, title, info, referer, poster, season, episode) {
         file = maybeDecodeBase64(unescapeJs(file || ''));
         // HDVBUA serials store the full structure in Playerjs.file as:
@@ -10110,11 +10122,20 @@
           return;
         }
 
+        var directOnly = eneyidaPlainDirectUrls(file);
+        if (directOnly.length) {
+          directOnly.forEach(function (u) {
+            addDirectStream(list, u, title && !/^hls$/i.test(title) ? title : select_title, info, referer, season, episode, poster);
+          });
+          return;
+        }
+
         try {
           var playlist = component.parsePlaylist ? component.parsePlaylist(file) : [];
           if (playlist && playlist.length) {
             playlist.forEach(function (pl) {
               var label = cleanText(pl.label || title || '');
+              if (/^hls$/i.test(label)) label = cleanText(title || select_title || '');
               var voice = cleanText(pl.voice || info || '');
               var meta = parseSeasonEpisode(label + ' ' + title);
               var sNum = season || meta.season || (meta.episode ? 1 : 0);
@@ -10192,12 +10213,12 @@
           }
         }
         // Fallback: some Playerjs configs are valid JS but not strict JSON because of
-        // comments/trailing fields. Extract file: '...' / file: "..." directly.
+        // comments/trailing fields or variables inside object. Extract only real player fields.
         if (!list.length) {
-          var fm = /file\s*:\s*(['"])((?:\\.|(?!)[\s\S])*?)/ig;
-          var f;
-          while ((f = fm.exec(html || ''))) {
-            parseFilesFromString(f[2] || '', list, select_title, '', referer || ref, poster || '');
+          var fileRe = /(?:^|[,{\s])file\s*:\s*(["'])([\s\S]*?)\1/ig;
+          var ff;
+          while ((ff = fileRe.exec(html || ''))) {
+            parseFilesFromString(ff[2] || '', list, select_title, '', referer || ref, poster || '');
           }
         }
         return list;
@@ -10206,6 +10227,19 @@
       function parseEmbeddedPlayers(html, pageUrl, poster) {
         var root = $('<div>' + (html || '') + '</div>');
         var list = [];
+
+        // If this HTML is a Playerjs iframe, use the Playerjs config as source of truth.
+        // Generic URL scanning sees preload/preconnect/stat links and creates duplicate movie rows.
+        var playerItemsFirst = parsePlayerjsObjects(html, pageUrl, poster);
+        if (playerItemsFirst && playerItemsFirst.length) {
+          stelsLog('eneyida-playerjs-priority', {
+            page: pageUrl,
+            count: playerItemsFirst.length,
+            direct_count: playerItemsFirst.filter(function (i) { return !!i.stream; }).length,
+            sample: playerItemsFirst.slice(0, 8).map(function (i) { return 'S' + (i.season || 0) + 'E' + (i.episode || 0) + '|' + (i.voice || i.info || '') + '|' + (i.stream || i.iframe || '').slice(0, 120); })
+          });
+          return playerItemsFirst;
+        }
 
         root.find('iframe[src],iframe[data-src],video[src],source[src]').each(function (index) {
           var node = $(this);
@@ -10291,7 +10325,7 @@
         var poster = absolute(epNode.poster || fallbackPoster || '', referer);
         uniquePush(list, {
           title: title,
-          quality: /\.m3u8/i.test(stream) ? 'HLS' : 'Eneyida',
+          quality: 'Eneyida',
           info: voiceName ? ' / ' + voiceName : '',
           voice: voiceName,
           season: seasonNum,
@@ -10378,6 +10412,44 @@
         return added > 0;
       }
 
+      function eneyidaNormalizeFinalItems(items, title, poster, source) {
+        items = items || [];
+        var hasSerial = items.some(function (i) { return !!(i && i.season && i.episode); });
+        var out = [];
+        var seen = {};
+        items.forEach(function (item) {
+          if (!item) return;
+          var stream = item.stream || '';
+          var iframe = item.iframe || '';
+          if (/playerjs\.55|\.(?:js|css|jpg|jpeg|png|webp|gif|ico|woff2?)(?:$|\?)/i.test(stream || iframe)) return;
+          if (!hasSerial && item.season) { item.season = 0; item.episode = 0; }
+          if (!hasSerial && /^hls$/i.test(item.title || '')) item.title = title || select_title;
+          if (!item.title || item.title === select_title || /^hls$/i.test(item.title || '')) item.title = title || select_title;
+          if (!item.poster) item.poster = poster || '';
+          var key = hasSerial ? [item.season || 0, item.episode || 0, itemVoiceName(item), stream || iframe].join('|') : (stream || iframe || item.title);
+          if (seen[key]) return;
+          seen[key] = true;
+          out.push(item);
+        });
+
+        // Для фільму Playerjs може дати той самий файл через кілька шляхів
+        // або generic scanner може знайти службові iframe. У каталозі має бути один фільм.
+        if (!hasSerial && out.length > 1) {
+          var direct = out.filter(function (i) { return !!i.stream && /\.(?:m3u8|mp4)(?:$|\?)/i.test(i.stream); });
+          var hdvbDirect = direct.filter(function (i) { return /hdvbua\.pro/i.test(i.stream || ''); });
+          out = (hdvbDirect.length ? hdvbDirect : (direct.length ? direct : out)).slice(0, 1);
+        }
+
+        stelsLog('eneyida-final-normalize', {
+          source: source || '',
+          input_count: items.length,
+          output_count: out.length,
+          has_serial: hasSerial,
+          sample: out.slice(0, 8).map(function (i) { return 'S' + (i.season || 0) + 'E' + (i.episode || 0) + '|' + itemVoiceName(i) + '|' + (i.title || '') + '|' + (i.stream || i.iframe || '').slice(0, 140); })
+        });
+        return out;
+      }
+
       function pagePoster(root, pageUrl, fallback) {
         return absolute(
           fallback ||
@@ -10431,6 +10503,7 @@
               if (!item.title || item.title === select_title) item.title = h1 || select_title;
               if (!item.poster) item.poster = poster;
             });
+            items = eneyidaNormalizeFinalItems(items || [], h1 || select_title, poster, source || '');
             extract = items || [];
             stelsLog('eneyida-extract-ready', {
               source: source || '',
@@ -10588,6 +10661,69 @@
         if (fail) fail('no stream');
       }
 
+      function eneyidaFindAltEpisode(element, voiceName) {
+        voiceName = cleanText(voiceName || '');
+        var season = parseInt(element && element.season || 0, 10) || 0;
+        var episode = parseInt(element && element.episode || 0, 10) || 0;
+        if (!season || !episode || !voiceName) return null;
+        var found = null;
+        (extract || []).forEach(function (item) {
+          if (found) return;
+          if ((parseInt(item.season || 0, 10) || 0) === season && (parseInt(item.episode || 0, 10) || 0) === episode && itemVoiceName(item) === voiceName) found = item;
+        });
+        return found;
+      }
+
+      function eneyidaVoiceovers(element, selectedVoice) {
+        if (!(filter_items.voice && filter_items.voice.length > 1) || !(element && element.season && element.episode)) return false;
+        selectedVoice = selectedVoice || itemVoiceName(element);
+        return filter_items.voice.map(function (voiceName, index) {
+          return {
+            index: index,
+            language: voiceName,
+            name: voiceName,
+            label: 'Eneyida',
+            selected: voiceName === selectedVoice,
+            enabled: true,
+            onSelect: function () {
+              if (voiceName === selectedVoice) return;
+              var target = eneyidaFindAltEpisode(element, voiceName);
+              if (!target) {
+                Lampa.Noty.show('Не вдалося знайти озвучку: ' + voiceName);
+                stelsLog('eneyida-voice-switch-missing', { voice: voiceName, season: element.season, episode: element.episode });
+                return;
+              }
+              try { Lampa.Player.loading(true); } catch (e) {}
+              stelsLog('eneyida-voice-switch-start', { voice: voiceName, season: target.season, episode: target.episode, title: target.title || '' });
+              getStream(target, function (item) {
+                try { Lampa.Player.loading(false); } catch (e2) {}
+                var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+                var play = stelsSanitizeAndroidPlayable({
+                  url: component.getDefaultQuality(item.qualitys, item.stream),
+                  quality: component.renameQualityMap(item.qualitys),
+                  subtitles: item.subtitles || current.subtitles || false,
+                  headers: item.headers || false,
+                  timeline: current.timeline || item.timeline || element.timeline,
+                  poster: current.poster || item.poster || element.poster || '',
+                  title: current.title || item.title || element.title || select_title,
+                  season: item.season,
+                  episode: item.episode,
+                  voice_name: voiceName,
+                  translate: { tracks: eneyidaVoiceovers(item, voiceName) || [] },
+                  voiceovers: eneyidaVoiceovers(item, voiceName)
+                }, 'eneyida-voice-switch');
+                Lampa.Player.play(play);
+                stelsLog('eneyida-voice-switch-play', { voice: voiceName, url_preview: (item.stream || '').slice(0, 160) });
+              }, function (err) {
+                try { Lampa.Player.loading(false); } catch (e3) {}
+                stelsLog('eneyida-voice-switch-fail', { voice: voiceName, error: err || '', season: element.season, episode: element.episode });
+                Lampa.Noty.show('Не вдалося завантажити озвучку: ' + voiceName);
+              });
+            }
+          };
+        });
+      }
+
       function getStream(element, success, fail) {
         if (element.stream) return success(element);
         if (!element.iframe) {
@@ -10650,7 +10786,12 @@
                 headers: element.headers || false,
                 timeline: element.timeline,
                 poster: element.poster || '',
-                title: element.title || select_title
+                title: element.title || select_title,
+                season: element.season || 0,
+                episode: element.episode || 0,
+                voice_name: itemVoiceName(element),
+                translate: { tracks: eneyidaVoiceovers(element, itemVoiceName(element)) || [] },
+                voiceovers: eneyidaVoiceovers(element, itemVoiceName(element))
               }, 'eneyida-first');
 
               Lampa.Player.play(first);
@@ -10676,7 +10817,12 @@
                       },
                       timeline: elem.timeline,
                       poster: elem.poster || '',
-                      title: elem.title || ''
+                      title: elem.title || '',
+                      season: elem.season || 0,
+                      episode: elem.episode || 0,
+                      voice_name: itemVoiceName(elem),
+                      translate: { tracks: eneyidaVoiceovers(elem, itemVoiceName(elem)) || [] },
+                      voiceovers: eneyidaVoiceovers(elem, itemVoiceName(elem))
                     };
                     playlist.push(cell);
                   }
@@ -20787,7 +20933,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.55: Eneyida бере основний iframe hdvbua.pro/embed, парсить Playerjs file як структура сезон → озвучка → серії, додано розширений лог фільтрів.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.57: Eneyida: одна картка для фільму, без HLS у назві; voice button у плеєрі для серіалів.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
