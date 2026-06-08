@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.62';
+    var STELS_ONLINE_VERSION = '1.0.63';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -180,6 +180,20 @@
         } catch (e) {}
       }
 
+      function stelsPatchFlatPluginEntry(el) {
+        try {
+          if (!el || !el.length) return;
+          if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
+          el.addClass('stels-online-source-entry');
+          var display = el.css('display');
+          if (display === 'inline') el.css('display', 'inline-flex');
+          else if (display === 'block') el.css('display', 'flex');
+          el.css('align-items', 'center');
+          el.html('<img class="stels-online-plugin-icon stels-online-source-icon" src="' + STELS_ICON_URL + '" style="width:2.15em;height:2.15em;object-fit:contain;display:block;flex-shrink:0;margin-right:.7em" alt="Stels_Online">' +
+            '<div class="stels-online-source-title-wrap" style="display:flex;flex-direction:column;line-height:1.25"><div>Stels_Online</div><div class="stels-online-version-under" style="font-size:.72em;opacity:.65;margin-top:.15em">' + stelsEscapeHtml(STELS_ONLINE_VERSION) + '</div></div>');
+        } catch (e) {}
+      }
+
       function patch(root) {
         try {
           var scope = root ? $(root) : $(document.body);
@@ -199,16 +213,14 @@
           // а простим пунктом з текстом Stels_Online + версія. Патчимо їх окремо по тексту.
           scope.find('.selector, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').addBack('.selector, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').each(function () {
             var el = $(this);
-            if (el.find('.stels-online-plugin-icon').length) return;
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-            if (!(text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text))) return;
-            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
-            el.addClass('stels-online-source-entry');
-            var display = el.css('display');
-            if (display === 'inline') el.css('display', 'inline-flex');
-            else if (display === 'block') el.css('display', 'flex');
-            el.css('align-items', 'center');
-            el.prepend('<img class="stels-online-plugin-icon stels-online-source-icon" src="' + STELS_ICON_URL + '" style="width:2.15em;height:2.15em;object-fit:contain;display:block;flex-shrink:0;margin-right:.7em" alt="Stels_Online">');
+            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*\d+\.\d+\.\d+$/.test(text);
+            if (el.find('.stels-online-plugin-icon').length) {
+              if (flatMatch) stelsPatchFlatPluginEntry(el);
+              return;
+            }
+            if (!flatMatch) return;
+            stelsPatchFlatPluginEntry(el);
           });
           stelsPatchUaFlagIcons(scope);
         } catch (e) {
@@ -10127,6 +10139,15 @@
         return { season: parseSeasonOnly(text), episode: parseEpisodeOnly(text) };
       }
 
+
+      function parseSeasonEpisodeFromUrl(url) {
+        url = String(url || '');
+        var m = url.match(/s0*(\d{1,2})e0*(\d{1,3})/i);
+        if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
+        m = url.match(/\/content\/stream\/\d{4}\/\d+\/0*(\d{1,2})\/0*(\d{1,3})\/\d+\/index\.m3u8/i);
+        if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
+        return { season: 0, episode: 0 };
+      }
       function normalizeStreamUrl(url, referer) {
         url = maybeDecodeBase64(unescapeJs(url || ''));
         url = url.split(' or ').filter(Boolean)[0] || url;
@@ -10453,6 +10474,9 @@
         voiceName = cleanText(voiceName || epNode.voice || epNode.translation || 'Eneyida');
         var stream = normalizeStreamUrl(file, referer);
         if (!stream) return false;
+        var urlMeta = parseSeasonEpisodeFromUrl(stream || file);
+        if (urlMeta.season) seasonNum = urlMeta.season;
+        if (urlMeta.episode) episodeNum = urlMeta.episode;
         var title = component.formatEpisodeTitle ? component.formatEpisodeTitle(seasonNum, episodeNum) : ('Сезон ' + seasonNum + ' Серія ' + episodeNum);
         var poster = absolute(epNode.poster || fallbackPoster || '', referer);
         uniquePush(list, {
@@ -10499,22 +10523,46 @@
         function rootShape(nodes) {
           var seasonTop = 0;
           var voiceTop = 0;
+          var diagnostics = [];
           (nodes || []).forEach(function (top) {
             var topTitle = titleOf(top);
             var topFolder = folderOf(top);
-            if (parseSeasonOnly(topTitle)) seasonTop++;
-            if (!parseSeasonOnly(topTitle) && topFolder.some(function (child) { return folderOf(child).length && parseSeasonOnly(titleOf(child)); })) voiceTop++;
+            var topSeason = parseSeasonOnly(topTitle);
+            var childSeasonCount = 0;
+            var childVoiceCount = 0;
+            topFolder.forEach(function (child) {
+              var childTitle = titleOf(child);
+              var childSeason = parseSeasonOnly(childTitle);
+              var childEpisode = parseEpisodeOnly(childTitle);
+              if (childSeason && folderOf(child).length) childSeasonCount++;
+              if (!childSeason && !childEpisode && folderOf(child).length) childVoiceCount++;
+            });
+            if (topSeason) seasonTop++;
+            if (!topSeason && childSeasonCount > 0) voiceTop++;
+            diagnostics.push({ title: topTitle, topSeason: topSeason, childSeasonCount: childSeasonCount, childVoiceCount: childVoiceCount, children: topFolder.slice(0, 8).map(function (c) { return titleOf(c); }) });
           });
-          if (voiceTop > seasonTop) return 'voice-season-episode';
-          if (seasonTop > 0) return 'season-voice-episode';
-          return 'auto';
+          var shape = 'auto';
+          if (voiceTop > seasonTop) shape = 'voice-season-episode';
+          else if (seasonTop > 0) shape = 'season-voice-episode';
+          stelsLog('eneyida-shape-detect', { shape: shape, root_count: (nodes || []).length, seasonTop: seasonTop, voiceTop: voiceTop, sample: diagnostics.slice(0, 10) });
+          return shape;
         }
 
         function addSeasonVoiceEpisodes(seasonNode, seasonIndex) {
           var seasonTitle = titleOf(seasonNode);
-          var seasonNum = parseSeasonOnly(seasonTitle) || parseInt(seasonNode.season || seasonNode.season_id || seasonNode.id || 0, 10) || (seasonIndex + 1);
-          var stat = { season: seasonNum, title: seasonTitle, voices: [] };
           var seasonFolder = folderOf(seasonNode);
+          var explicitSeason = parseSeasonOnly(seasonTitle) || parseInt(seasonNode.season || seasonNode.season_id || seasonNode.id || 0, 10) || 0;
+
+          // Defensive correction for mixed Eneyida PlayerJS trees.
+          // Example current Rick and Morty iframe may be: BaibaKoTV -> 7 сезон -> 1 серія.
+          // In that case top node is a voice, not season #1.
+          if (!explicitSeason && seasonFolder.some(function (child) { return parseSeasonOnly(titleOf(child)) && folderOf(child).length; })) {
+            addVoiceSeasonEpisodes(seasonNode, seasonIndex);
+            return;
+          }
+
+          var seasonNum = explicitSeason || (seasonIndex + 1);
+          var stat = { season: seasonNum, title: seasonTitle, voices: [] };
 
           seasonFolder.forEach(function (child, childIndex) {
             var childTitle = titleOf(child);
@@ -10577,7 +10625,7 @@
         } else {
           // Mixed/unknown fallback: choose branch per top node.
           json.forEach(function (node, index) {
-            if (!parseSeasonOnly(titleOf(node)) && folderOf(node).some(function (child) { return folderOf(child).length && parseSeasonOnly(titleOf(child)); })) addVoiceSeasonEpisodes(node, index);
+            if (!parseSeasonOnly(titleOf(node)) && folderOf(node).some(function (child) { return parseSeasonOnly(titleOf(child)) && folderOf(child).length; })) addVoiceSeasonEpisodes(node, index);
             else addSeasonVoiceEpisodes(node, index);
           });
         }
@@ -20463,7 +20511,7 @@
         }
       };
       Lampa.Manifest.plugins = manifest;
-      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"" + mod_version + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
+      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"" + STELS_ONLINE_VERSION + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
       Lampa.Listener.follow('full', function (e) {
         if (e.type == 'complite') {
           var btn = $(Lampa.Lang.translate(button));
@@ -21322,7 +21370,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.62: Eneyida: сувора перевірка частин/сіквелів, серіал не відкривається як фільм, PlayerJS дерево визначається глобально: season->voice->episode або voice->season->episode.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.63: Eneyida: виправлено визначення змішаного PlayerJS дерева для Рік та Морті, сезони/озвучки не міняються місцями, додано діагностику shape.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
