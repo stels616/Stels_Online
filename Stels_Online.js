@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.78';
+    var STELS_ONLINE_VERSION = '1.0.79';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -11507,9 +11507,11 @@
         return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
       }
       function extractDleHash(html) {
-        var m = String(html || '').match(/dle_login_hash\s*=\s*['"]([^'"]+)/i) ||
-                String(html || '').match(/dle_hash\s*[:=]\s*['"]?([a-f0-9]{20,40})/i) ||
-                String(html || '').match(/name\s*=\s*['"]dle_hash['"][^>]*value\s*=\s*['"]([^'"]+)/i);
+        html = String(html || '');
+        var m = html.match(/\bdle_login_hash\s*=\s*['"]([^'"]+)/i) ||
+                html.match(/\bdle_hash\s*[:=]\s*['"]?([a-f0-9]{20,40})/i) ||
+                html.match(/name\s*=\s*['"](?:dle_hash|user_hash)['"][^>]*value\s*=\s*['"]([^'"]+)/i) ||
+                html.match(/value\s*=\s*['"]([a-f0-9]{20,40})['"][^>]*name\s*=\s*['"](?:dle_hash|user_hash)['"]/i);
         return m ? (m[1] || '') : '';
       }
       function kinogoLooksLikeValidSearchPage(text) {
@@ -11549,7 +11551,7 @@
             if (fail) fail(message);
           }, options.postdata || false, {
             dataType: 'text',
-            withCredentials: false,
+            withCredentials: true,
             headers: (function () {
               var h = {
                 'User-Agent': kinogoBrowserUserAgent(),
@@ -11557,7 +11559,7 @@
                 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5',
                 'Referer': options.referer || host() + '/'
               };
-              if (options.ajax) {
+              if (options.ajax || options.postdata) {
                 h['X-Requested-With'] = 'XMLHttpRequest';
                 h['Origin'] = host();
                 h['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
@@ -11588,17 +11590,21 @@
           return iso === 'RU' || iso === 'RUS' || /рус|рос/i.test(String((a && (a.type || a.note || a.language)) || ''));
         }
         var alts = movie.alternative_titles && movie.alternative_titles.results || movie.titles && movie.titles.results || [];
-        if (Array.isArray(alts)) {
-          alts.forEach(function (a) { if (isRuAlt(a)) push(a.title || a.name); });
-        }
         var orig = normalizeForCompare(movie.original_title || movie.original_name || '');
         var title = normalizeForCompare(movie.title || movie.name || select_title || '');
-        // Kinogo — російськомовний сайт, тому російські назви мають бути першими.
+
+        // Для Kinogo російська назва має бути першою, але не кожна RU alternative title якісна.
+        // Спочатку ставимо найнадійніший відповідник за original_title/назвою Lampa, потім інші RU альтернативи.
         if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') ['Пацаны', 'The Boys', 'Хлопаки', 'Хлопці'].forEach(push);
         if (orig === 'from' || title === 'ззовні' || title === 'извне') ['Извне', 'From', 'Ззовні'].forEach(push);
         if (orig === 'friends' || title === 'друзі' || title === 'друзья') ['Друзья', 'Friends', 'Друзі'].forEach(push);
         if (orig === 'rick and morty' || title === 'рік та морті' || title === 'рик и морти') ['Рик и Морти', 'Rick and Morty', 'Рік та Морті'].forEach(push);
         if (orig === 'your friends neighbors' || orig === 'your friends and neighbors' || title === 'друзі та сусіди' || title === 'друзья и соседи') ['Друзья и соседи', 'Your Friends & Neighbors', 'Друзі та сусіди'].forEach(push);
+        if (orig === 'the flash' || title === 'флеш') ['Флэш', 'The Flash', 'Флеш'].forEach(push);
+
+        if (Array.isArray(alts)) {
+          alts.forEach(function (a) { if (isRuAlt(a)) push(a.title || a.name); });
+        }
         [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(push);
         if (Array.isArray(alts)) {
           alts.forEach(function (a) { if (!isRuAlt(a)) push(a.title || a.name); });
@@ -11761,7 +11767,12 @@
           if (!best || score > best.score) best = { item: item, score: score };
         });
         stelsLog('kinogo-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0, scores: scores.slice(0, 12) });
-        return best && best.item || (items && items[0]);
+        // Якщо збіг слабкий, не відкриваємо випадковий фільм/серіал, а пробуємо наступну назву.
+        if (!best || best.score < 130) {
+          stelsLog('kinogo-search-best-reject', { query: query, best_title: best && best.item && best.item.title || '', best_score: best && best.score || 0, reason: 'low-score' });
+          return null;
+        }
+        return best.item;
       }
       function parseSearchItems(html) {
         html = maybeDecode(html || '');
@@ -12013,12 +12024,16 @@
               return requestText(url, function (html2) {
                 var items2 = parseSearchItems(html2);
                 if (!items2.length) return runSearch(list, index + 1);
+                var best2 = selectBest(items2, query);
+                if (!best2) return runSearch(list, index + 1);
                 component.loading(false);
-                loadPage(selectBest(items2, query));
+                loadPage(best2);
               }, function (err) { stelsLog('kinogo-search-get-fail', { query: query, error: err || '' }); runSearch(list, index + 1); }, { timeout: 12000 });
             }
+            var best = selectBest(items, query);
+            if (!best) return runSearch(list, index + 1);
             component.loading(false);
-            loadPage(selectBest(items, query));
+            loadPage(best);
           }, function (err) { stelsLog('kinogo-search-post-fail', { query: query, error: err || '' }); runSearch(list, index + 1); }, { postdata: post, timeout: 12000 });
         }
         runSearch(variants(), 0);
@@ -22323,7 +22338,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.78: Eneyida шукає українські/локалізовані назви з Lampa/TMDB у primary, російські назви лише fallback; Kinogo prewarm DLE news перед відкриттям сторінки, додано hash/news лог.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.79: Eneyida шукає українські/локалізовані назви з Lampa/TMDB у primary, російські назви лише fallback; Kinogo prewarm DLE news перед відкриттям сторінки, додано hash/news лог.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
