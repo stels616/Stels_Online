@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.75';
+    var STELS_ONLINE_VERSION = '1.0.76';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -193,15 +193,17 @@
       function stelsPatchFlatPluginEntry(el) {
         try {
           if (!el || !el.length) return;
-          if (el.hasClass('view--stels_online') || el.hasClass('full-start__button')) return;
+          if (el.hasClass('view--stels_online')) return;
           if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
           el.addClass('stels-online-source-entry');
           var display = el.css('display');
           if (display === 'inline') el.css('display', 'inline-flex');
           else if (display === 'block') el.css('display', 'flex');
           el.css('align-items', 'center');
+          el.attr('data-subtitle', STELS_ONLINE_VERSION);
           el.html('<img class="stels-online-plugin-icon stels-online-source-icon" src="' + STELS_ICON_URL + '" style="width:2.15em;height:2.15em;object-fit:contain;display:block;flex-shrink:0;margin-right:.7em" alt="Stels_Online">' +
             '<div class="stels-online-source-title-wrap" style="display:flex;flex-direction:column;line-height:1.25"><div>Stels_Online</div><div class="stels-online-version-under" style="font-size:.72em;opacity:.65;margin-top:.15em">' + stelsEscapeHtml(STELS_ONLINE_VERSION) + '</div></div>');
+          stelsLog('plugin-source-entry-patched', { class_name: el.attr('class') || '', component: el.attr('data-component') || '', text: (el.text() || '').replace(/\s+/g, ' ').trim() });
         } catch (e) {}
       }
 
@@ -211,26 +213,31 @@
           scope.find('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').addBack('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').each(function () {
             var el = $(this);
             if (el.hasClass('view--stels_online')) {
+              // Головна кнопка на картці має залишатися тільки іконкою SO.
               el.removeAttr('data-subtitle');
-              el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
+              el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under,span').remove();
+              return;
             }
             var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
-            if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) stelsPatchSettingsFolderElement(el);
+            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) {
+              stelsPatchSettingsFolderElement(el);
+              return;
+            }
+            if (componentKey === 'stels_online') {
+              stelsPatchFlatPluginEntry(el);
+              return;
+            }
             if (!shouldPatch(el)) return;
-            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
-            var display = el.css('display');
-            if (display === 'inline') el.css('display', 'inline-flex');
-            else if (display === 'block') el.css('display', 'flex');
-            el.css('align-items', 'center');
-            if (!el.find('.stels-online-plugin-icon').length) el.prepend(STELS_ICON_HTML);
+            stelsPatchFlatPluginEntry(el);
           });
           // Деякі екрани Lampa (наприклад список джерел "Джерело") будуються не через data-component,
           // а простим пунктом з текстом Stels_Online + версія. Патчимо їх окремо по тексту.
           scope.find('.selector, .selectbox-item, .selectbox__item, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').addBack('.selector, .selectbox-item, .selectbox__item, .full-start__button, .settings-folder, .source__item, .extensions__item, .menu__item, .simple-button').each(function () {
             var el = $(this);
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text);
-            if (el.hasClass('view--stels_online') || el.hasClass('full-start__button')) return;
+            var componentKey = String(el.attr('data-component') || el.data('component') || el.attr('data-name') || el.attr('data-source') || '').toLowerCase();
+            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text) || componentKey === 'stels_online';
+            if (el.hasClass('view--stels_online')) return;
             if (el.find('.stels-online-plugin-icon').length) {
               if (flatMatch) stelsPatchFlatPluginEntry(el);
               return;
@@ -11432,9 +11439,14 @@
         }
         return value;
       }
+      function kinogoLooksLikeValidSearchPage(text) {
+        text = String(text || '');
+        return /<title>\s*Поиск[\s\S]{0,80}найдено:/i.test(text) || /class=["'](?:short|shortstory|th-item|movie-item)/i.test(text) || /href=["'][^"']+\.html/i.test(text);
+      }
       function kinogoIsCloudflare(text) {
         text = String(text || '');
-        return /Just a moment|challenges\.cloudflare\.com|cf-browser-verification|cf_clearance|Cloudflare/i.test(text);
+        if (kinogoLooksLikeValidSearchPage(text)) return false;
+        return /Just a moment|challenges\.cloudflare\.com|cf-browser-verification|cf_clearance|Attention Required|Checking your browser|cf_chl_/i.test(text);
       }
       function kinogoReadableError(message) {
         message = String(message || '');
@@ -11448,8 +11460,9 @@
           network.timeout(options.timeout || 10000);
           network["native"](url, function (html) {
             html = maybeDecode(html || '');
+            stelsLog('kinogo-request-done', { url: url, length: String(html || '').length, valid_search: kinogoLooksLikeValidSearchPage(html), sample: String(html || '').slice(0, 260) });
             if (kinogoIsCloudflare(html)) {
-              stelsLog('kinogo-cloudflare-detected', { url: url, sample: String(html || '').slice(0, 360) });
+              stelsLog('kinogo-cloudflare-detected', { url: url, has_valid_search: kinogoLooksLikeValidSearchPage(html), sample: String(html || '').slice(0, 520) });
               if (fail) fail(kinogoReadableError(html));
               return;
             }
@@ -11671,15 +11684,18 @@
         var root = $('<div>' + html + '</div>');
         var items = [];
         var seen = {};
+        var rawLinks = 0;
+        var skipped = [];
         root.find('a[href]').each(function () {
           var a = $(this);
           var href = absolute(a.attr('href') || '', host() + '/');
+          rawLinks++;
           if (!href || seen[href] || href.indexOf(host()) !== 0 || !/\.html(?:$|\?)/i.test(href)) return;
           var box = a.closest('.short,article,.th-item,.movie-item,.item,.story,.shortstory,li');
           var title = cleanText(a.attr('title') || a.find('.short-title,.th-title,.title,h1,h2,h3').first().text() || '');
           if (!title && box && box.length) title = cleanText(box.find('.short-title,.th-title,.title,h1,h2,h3').first().text());
           if (!title) title = cleanText(a.text());
-          if (!title || !isRelevantTitle(title)) return;
+          if (!title || !isRelevantTitle(title)) { if (skipped.length < 12) skipped.push((title || '[no-title]') + '|' + href); return; }
           var poster = '';
           var text = cleanText((box && box.length ? box.text() : a.parent().text()) || title || '');
           var ym = (text + ' ' + title).match(/\b(19|20)\d{2}\b/);
@@ -11687,7 +11703,7 @@
           items.push({ title: title, link: href, poster: absolute(poster, href), year: ym ? ym[0] : '' });
           seen[href] = true;
         });
-        stelsLog('kinogo-search-results', { count: items.length, sample: items.slice(0, 10).map(function (i) { return i.title + '|' + i.link; }) });
+        stelsLog('kinogo-search-results', { count: items.length, raw_links: rawLinks, skipped_sample: skipped, sample: items.slice(0, 10).map(function (i) { return i.title + '|' + i.link + '|' + (i.year || '') ; }) });
         return items;
       }
       function parseIframe(html, pageUrl) {
@@ -21256,8 +21272,8 @@
       resetTemplates();
       var manifest = {
         type: 'video',
-        version: '',
-        name: Lampa.Lang.translate('stels_online_title_full'),
+        version: STELS_ONLINE_VERSION,
+        name: 'Stels_Online',
         description: Lampa.Lang.translate('stels_online_watch'),
         icon: STELS_ICON_HTML,
         icon_url: STELS_ICON_URL,
@@ -22161,7 +22177,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.75: Eneyida шукає Назва+Рік перед короткою назвою; головна кнопка Stels_Online стала icon-only без назви/версії; додано лог full-card-event/full-button-insert; Kinogo ловить Cloudflare.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.76: повернено manifest name/version для списку джерел, але головна кнопка залишається icon-only; Kinogo не плутає валідну сторінку пошуку з Cloudflare, додано детальний лог пошуку/парсингу.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
