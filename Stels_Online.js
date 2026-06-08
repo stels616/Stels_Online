@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.73';
+    var STELS_ONLINE_VERSION = '1.0.74';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -160,7 +160,12 @@
         if (el.find('.stels-online-plugin-icon').length) return false;
         var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-        if (componentKey === 'stels_online' || el.hasClass('view--stels_online') || el.hasClass('stels-online-settings-folder')) return true;
+        if (el.hasClass('view--stels_online')) {
+          el.removeAttr('data-subtitle');
+          el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
+          return false;
+        }
+        if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) return true;
         if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text)) return true;
         return false;
       }
@@ -204,6 +209,10 @@
           var scope = root ? $(root) : $(document.body);
           scope.find('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').addBack('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').each(function () {
             var el = $(this);
+            if (el.hasClass('view--stels_online')) {
+              el.removeAttr('data-subtitle');
+              el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
+            }
             var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
             if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) stelsPatchSettingsFolderElement(el);
             if (!shouldPatch(el)) return;
@@ -639,6 +648,8 @@
           '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
           '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-episode-badge{font-size:.7em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
+          '.full-start__button.view--stels_online .full-start__subtitle,.full-start__button.view--stels_online .selector__subtitle,.full-start__button.view--stels_online [class*="subtitle"],.full-start__button.view--stels_online .stels-online-version-under{display:none!important;}' +
+          '.full-start__button.view--stels_online:after{content:none!important;display:none!important;}' +
           '.settings-folder.stels-online-settings-folder{display:grid!important;grid-template-columns:2.35em auto!important;column-gap:.65em!important;align-items:center!important;justify-content:start!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{display:flex!important;align-items:center!important;justify-content:center!important;width:2.25em!important;height:2.25em!important;min-width:2.25em!important;max-width:2.25em!important;margin:0!important;padding:0!important;font-size:1rem!important;color:transparent!important;overflow:visible!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__name{margin:0!important;padding:0!important;left:auto!important;transform:none!important;}' +
@@ -9830,10 +9841,10 @@
         if (/\b(19|20)\d{2}\b/.test(title)) return false;
         var n = normalizeForCompare(title);
         if (!n) return false;
-        var tokens = n.split(/\s+/).filter(Boolean);
-        // Eneyida часто не повертає старі короткі назви по одному слову (приклад: "Друзі"),
-        // але знаходить їх по "назва + рік". Для довгих назв рік не додаємо, щоб не погіршувати пошук.
-        return tokens.length <= 2;
+        // Якщо Eneyida повертає багато схожих назв або не знаходить точну, запит "назва + рік"
+        // часто дає правильну сторінку. Додаємо рік глобально для всіх назв без року,
+        // а не тільки для коротких назв типу "Друзі".
+        return true;
       }
 
       function stelsAddTitleYearVariants(source, target) {
@@ -21210,7 +21221,7 @@
       resetTemplates();
       var manifest = {
         type: 'video',
-        version: mod_version,
+        version: '',
         name: Lampa.Lang.translate('stels_online_title_full'),
         description: Lampa.Lang.translate('stels_online_watch'),
         icon: STELS_ICON_HTML,
@@ -21234,6 +21245,8 @@
       Lampa.Listener.follow('full', function (e) {
         if (e.type == 'complite') {
           var btn = $(Lampa.Lang.translate(button));
+          btn.removeAttr('data-subtitle');
+          btn.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
           online_loading = false;
           btn.on('hover:enter', function () {
             loadOnline(e.data.movie);
@@ -22090,7 +22103,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.72: повернено логіку кнопки головної картки зі стабільної версії та додано Eneyida fallback пошук коротких назв з роком.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.74: прибрано версію з кнопки головної картки через manifest/css/runtime cleanup, Eneyida додає запит з роком глобально для всіх назв.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
