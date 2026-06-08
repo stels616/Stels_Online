@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.64';
+    var STELS_ONLINE_VERSION = '1.0.65';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -10117,15 +10117,21 @@
 
       function parseSeasonOnly(text) {
         text = cleanText(text || '');
-        var m = text.match(/(?:сезон|season|s)\s*0*(\d+)/i) ||
-                text.match(/0*(\d+)\s*(?:сезон|season)\b/i);
+        if (!text) return 0;
+        var lower = text.toLowerCase().replace(/[\u00a0\u200b\u200c\u200d]/g, ' ');
+        var m = lower.match(/(?:сезон|season)\s*[:№#-]?\s*0*(\d{1,2})/) ||
+                lower.match(/0*(\d{1,2})\s*[-–—]?\s*(?:сезон|season)/) ||
+                lower.match(/(?:^|[^a-zа-яіїєґ])s\s*0*(\d{1,2})(?:[^0-9]|$)/i);
         return m ? (parseInt(m[1], 10) || 0) : 0;
       }
 
       function parseEpisodeOnly(text) {
         text = cleanText(text || '');
-        var m = text.match(/(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i) ||
-                text.match(/0*(\d+)\s*(?:сер(?:і|и)я|episode|епізод|эпизод)\b/i);
+        if (!text) return 0;
+        var lower = text.toLowerCase().replace(/[\u00a0\u200b\u200c\u200d]/g, ' ');
+        var m = lower.match(/(?:сер(?:і|и)я|episode|епізод|эпизод)\s*[:№#-]?\s*0*(\d{1,3})/) ||
+                lower.match(/0*(\d{1,3})\s*[-–—]?\s*(?:сер(?:і|и)я|episode|епізод|эпизод)/) ||
+                lower.match(/(?:^|[^a-zа-яіїєґ])e\s*0*(\d{1,3})(?:[^0-9]|$)/i);
         return m ? (parseInt(m[1], 10) || 0) : 0;
       }
 
@@ -10534,12 +10540,12 @@
               var childTitle = titleOf(child);
               var childSeason = parseSeasonOnly(childTitle);
               var childEpisode = parseEpisodeOnly(childTitle);
-              if (childSeason && folderOf(child).length) childSeasonCount++;
+              if ((childSeason || /сезон|season/i.test(childTitle)) && folderOf(child).length) childSeasonCount++;
               if (!childSeason && !childEpisode && folderOf(child).length) childVoiceCount++;
             });
-            if (topSeason) seasonTop++;
+            if (topSeason || /^(?:\s*\d+\s*[-–—]?\s*)?(?:сезон|season)|^(?:сезон|season)\s*\d+/i.test(topTitle)) seasonTop++;
             if (!topSeason && childSeasonCount > 0) voiceTop++;
-            diagnostics.push({ title: topTitle, topSeason: topSeason, childSeasonCount: childSeasonCount, childVoiceCount: childVoiceCount, children: topFolder.slice(0, 8).map(function (c) { return titleOf(c); }) });
+            diagnostics.push({ title: topTitle, topSeason: topSeason, childSeasonCount: childSeasonCount, childVoiceCount: childVoiceCount, title_codes: topTitle ? topTitle.split('').slice(0, 16).map(function(ch){ return ch.charCodeAt(0); }) : [], children: topFolder.slice(0, 8).map(function (c) { return titleOf(c); }) });
           });
           var shape = 'auto';
           if (voiceTop > seasonTop) shape = 'voice-season-episode';
@@ -10556,7 +10562,7 @@
           // Defensive correction for mixed Eneyida PlayerJS trees.
           // Example current Rick and Morty iframe may be: BaibaKoTV -> 7 сезон -> 1 серія.
           // In that case top node is a voice, not season #1.
-          if (!explicitSeason && seasonFolder.some(function (child) { return parseSeasonOnly(titleOf(child)) && folderOf(child).length; })) {
+          if (!explicitSeason && seasonFolder.some(function (child) { var ct = titleOf(child); return (parseSeasonOnly(ct) || /сезон|season/i.test(ct)) && folderOf(child).length; })) {
             addVoiceSeasonEpisodes(seasonNode, seasonIndex);
             return;
           }
@@ -10625,7 +10631,7 @@
         } else {
           // Mixed/unknown fallback: choose branch per top node.
           json.forEach(function (node, index) {
-            if (!parseSeasonOnly(titleOf(node)) && folderOf(node).some(function (child) { return parseSeasonOnly(titleOf(child)) && folderOf(child).length; })) addVoiceSeasonEpisodes(node, index);
+            if (!parseSeasonOnly(titleOf(node)) && folderOf(node).some(function (child) { var ct = titleOf(child); return (parseSeasonOnly(ct) || /сезон|season/i.test(ct)) && folderOf(child).length; })) addVoiceSeasonEpisodes(node, index);
             else addSeasonVoiceEpisodes(node, index);
           });
         }
@@ -10815,7 +10821,8 @@
 
       function itemVoiceName(item) {
         var voice = cleanText(item && (item.voice || String(item.info || '').replace(/^\s*\/\s*/, '') || 'Eneyida') || 'Eneyida');
-        if (/^(?:сезон|season)\s*\d+$/i.test(voice)) return 'Eneyida';
+        // Якщо через неправильне дерево у voice потрапив "1 сезон" / "Сезон 1", не показуємо це як переклад.
+        if (parseSeasonOnly(voice) && !parseEpisodeOnly(voice)) return 'Eneyida';
         return voice;
       }
 
@@ -20546,6 +20553,30 @@
       // Якщо плагін підвантажився вже після події full:complite, кнопка має з'явитись без ручного оновлення сторінки.
       setTimeout(function () { stelsEnsureFullButton(); }, 250);
       setTimeout(function () { stelsEnsureFullButton(); }, 900);
+      setTimeout(function () { stelsEnsureFullButton(); }, 1800);
+      setTimeout(function () { stelsEnsureFullButton(); }, 3200);
+
+      // Lampa іноді домальовує ряд джерел/плагінів асинхронно після full:complite.
+      // Через це кнопка Stels_Online з'являлась тільки після відкриття/закриття списку джерел.
+      try {
+        if (!window.stels_online_full_button_observer_installed) {
+          window.stels_online_full_button_observer_installed = true;
+          var fullButtonTimer = null;
+          var fullButtonObserver = new MutationObserver(function () {
+            clearTimeout(fullButtonTimer);
+            fullButtonTimer = setTimeout(function () { stelsEnsureFullButton(); }, 120);
+          });
+          fullButtonObserver.observe(document.body, { childList: true, subtree: true });
+          var fullButtonTries = 0;
+          var fullButtonInterval = setInterval(function () {
+            fullButtonTries++;
+            var ok = stelsEnsureFullButton();
+            if (ok || fullButtonTries >= 20) clearInterval(fullButtonInterval);
+          }, 500);
+        }
+      } catch (e) {
+        stelsLog('full-button-observer-error', { error: e && (e.message || e.toString()) });
+      }
 
       if (Lampa.Storage.get('stels_online_use_stream_proxy', '') === '') {
         $.ajax({
@@ -21394,7 +21425,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.64: Eneyida: виправлено parseSeasonOnly для формату 7 сезон, повернуто озвучки у Переклад, виправлено кнопку на картці та відображення версії/іконки в списку джерел.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.65: Eneyida: ручне розпізнавання сезонів/серій без залежності від JS word-boundary, виправлено Рік та Морті voice-season дерево, додано watcher кнопки Stels_Online на картці.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
