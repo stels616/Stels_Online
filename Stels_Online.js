@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.69';
+    var STELS_ONLINE_VERSION = '1.0.70';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9780,32 +9780,84 @@
         );
       }
 
-      function movieTitles() {
+      function stelsPushUniqueClean(list, value) {
+        value = cleanText(value || '');
+        if (value && list.indexOf(value) === -1) list.push(value);
+      }
+
+      function stelsIsMostlyLatin(value) {
+        value = cleanText(value || '');
+        if (!value) return false;
+        var letters = value.replace(/[^A-Za-zА-Яа-яІіЇїЄєҐґЁё]/g, '');
+        if (!letters) return false;
+        var latin = (letters.match(/[A-Za-z]/g) || []).length;
+        return latin >= Math.max(2, letters.length * 0.7);
+      }
+
+      function stelsKnownTitleAliases() {
         var movie = object.movie || {};
         var out = [];
-        [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(function (t) {
-          t = cleanText(t || '');
-          if (t && out.indexOf(t) === -1) out.push(t);
-        });
-        if (normalizeForCompare(movie.original_title || movie.original_name || '') === 'the boys') {
-          ['Хлопаки', 'Хлопці', 'Пацани', 'Пацаны'].forEach(function (t) {
-            if (out.indexOf(t) === -1) out.push(t);
-          });
+        var originalNorm = normalizeForCompare(movie.original_title || movie.original_name || '');
+        if (originalNorm === 'the boys') {
+          ['Хлопаки', 'Хлопці', 'Пацани', 'Пацаны'].forEach(function (t) { stelsPushUniqueClean(out, t); });
+        }
+        if (originalNorm === 'friends') {
+          ['Друзі', 'Друзья'].forEach(function (t) { stelsPushUniqueClean(out, t); });
+        }
+        if (originalNorm === 'from') {
+          ['Ззовні', 'Извне', 'From'].forEach(function (t) { stelsPushUniqueClean(out, t); });
         }
         return out;
       }
 
-      function variants() {
+      function stelsEneyidaUkrainianTitles() {
+        var movie = object.movie || {};
+        var originalNorm = normalizeForCompare(movie.original_title || movie.original_name || '');
         var out = [];
-        movieTitles().forEach(function (t) {
-          if (t && out.indexOf(t) === -1) out.push(t);
+        [select_title, object.search, movie.title, movie.name].forEach(function (t) {
+          t = cleanText(t || '');
+          if (!t) return;
+          // Для Eneyida основний пошук має йти локалізованою назвою з картки Lampa.
+          // original_title/original_name та російські fallback-и додаються тільки у другий етап.
+          if (originalNorm && normalizeForCompare(t) === originalNorm && stelsIsMostlyLatin(t)) return;
+          stelsPushUniqueClean(out, t);
+        });
+        stelsKnownTitleAliases().forEach(function (t) {
+          // Відомі українські відповідники залишаємо в першому етапі, російські — нижче у fallback.
+          if (!/[ыэё]/i.test(t)) stelsPushUniqueClean(out, t);
+        });
+        return out;
+      }
+
+      function movieTitles() {
+        var movie = object.movie || {};
+        var out = [];
+        stelsEneyidaUkrainianTitles().forEach(function (t) { stelsPushUniqueClean(out, t); });
+        [movie.original_title, movie.original_name].forEach(function (t) { stelsPushUniqueClean(out, t); });
+        stelsKnownTitleAliases().forEach(function (t) { stelsPushUniqueClean(out, t); });
+        return out;
+      }
+
+      function variants() {
+        var movie = object.movie || {};
+        var primary = [];
+        var fallback = [];
+        stelsEneyidaUkrainianTitles().forEach(function (t) { stelsPushUniqueClean(primary, t); });
+        [movie.original_title, movie.original_name].forEach(function (t) { stelsPushUniqueClean(fallback, t); });
+        stelsKnownTitleAliases().forEach(function (t) {
+          if (primary.indexOf(t) === -1) stelsPushUniqueClean(fallback, t);
         });
         var cleaned = [];
-        out.forEach(function (t) {
+        primary.concat(fallback).forEach(function (t) {
           var c = component.cleanTitle(t || '');
           if (c && cleaned.indexOf(c) === -1) cleaned.push(c);
         });
-        return cleaned.slice(0, 7);
+        stelsLog('eneyida-variant-order', {
+          primary_uk: primary,
+          fallback: fallback,
+          result: cleaned.slice(0, 8)
+        });
+        return cleaned.slice(0, 8);
       }
 
       function looksCategory(url) {
@@ -22045,7 +22097,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.69: Kinogo виправлено вибір точного результату (Пацаны 2019 замість Реальные пацаны); кнопка Stels_Online повернена до надійної логіки 1.0.58 з додатковими повторними вставками.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.70: Eneyida шукає спочатку українською назвою; тільки якщо український пошук не дав точного результату, переходить до оригінальної/інших назв.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
