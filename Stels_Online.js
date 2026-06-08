@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.58';
+    var STELS_ONLINE_VERSION = '1.0.59';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9827,15 +9827,54 @@
         return matched / needleTokens.length;
       }
 
+      function stelsEditDistanceLimited(a, b, limit) {
+        a = String(a || '');
+        b = String(b || '');
+        limit = limit == null ? 1 : limit;
+        if (a === b) return 0;
+        if (Math.abs(a.length - b.length) > limit) return limit + 1;
+        var prev = [];
+        for (var j = 0; j <= b.length; j++) prev[j] = j;
+        for (var i = 1; i <= a.length; i++) {
+          var cur = [i];
+          var rowMin = cur[0];
+          for (var k = 1; k <= b.length; k++) {
+            var cost = a.charAt(i - 1) === b.charAt(k - 1) ? 0 : 1;
+            var val = Math.min(prev[k] + 1, cur[k - 1] + 1, prev[k - 1] + cost);
+            cur[k] = val;
+            if (val < rowMin) rowMin = val;
+          }
+          if (rowMin > limit) return limit + 1;
+          prev = cur;
+        }
+        return prev[b.length];
+      }
+
+      function stelsHasFuzzyTitleTokenMatch(title, needle) {
+        var titleTokens = stelsCompareTokens(title);
+        var needleTokens = stelsCompareTokens(needle);
+        if (!titleTokens.length || !needleTokens.length) return false;
+        var matched = 0;
+        needleTokens.forEach(function (needleToken) {
+          var ok = titleTokens.some(function (titleToken) {
+            if (needleToken === titleToken) return true;
+            if (needleToken.length < 6 || titleToken.length < 6) return false;
+            return stelsEditDistanceLimited(needleToken, titleToken, 1) <= 1;
+          });
+          if (ok) matched++;
+        });
+        return matched === needleTokens.length;
+      }
+
       function isRelevantTitle(title, query) {
         var titleN = normalizeForCompare(title);
         var qN = normalizeForCompare(query);
         if (!titleN) return false;
-        if (qN && (titleN === qN || stelsHasTitleTokenMatch(titleN, qN) || stelsTitleOverlapScore(titleN, qN) >= 0.75)) return true;
+        if (qN && (titleN === qN || stelsHasTitleTokenMatch(titleN, qN) || stelsHasFuzzyTitleTokenMatch(titleN, qN) || stelsTitleOverlapScore(titleN, qN) >= 0.75)) return true;
         var titles = movieTitles();
         for (var i = 0; i < titles.length; i++) {
           var t = normalizeForCompare(titles[i]);
-          if (t && (titleN === t || stelsHasTitleTokenMatch(titleN, t) || stelsTitleOverlapScore(titleN, t) >= 0.75)) return true;
+          if (t && (titleN === t || stelsHasTitleTokenMatch(titleN, t) || stelsHasFuzzyTitleTokenMatch(titleN, t) || stelsTitleOverlapScore(titleN, t) >= 0.75)) return true;
         }
         return false;
       }
@@ -9905,12 +9944,14 @@
         var score = 0;
         if (q && title === q) score += 120;
         else if (q && stelsHasTitleTokenMatch(title, q)) score += 55;
+        else if (q && stelsHasFuzzyTitleTokenMatch(title, q)) score += 95;
         else if (q) score += Math.round(stelsTitleOverlapScore(title, q) * 45);
         var titles = movieTitles();
         titles.forEach(function (t) {
           var tn = normalizeForCompare(t);
           if (tn && title === tn) score += 105;
           else if (tn && stelsHasTitleTokenMatch(title, tn)) score += 50;
+          else if (tn && stelsHasFuzzyTitleTokenMatch(title, tn)) score += 85;
           else if (tn) score += Math.round(stelsTitleOverlapScore(title, tn) * 40);
         });
         var movie = object.movie || {};
@@ -10469,9 +10510,17 @@
         return added > 0;
       }
 
+      function stelsEneyidaExpectedSerial() {
+        var movie = object && object.movie || {};
+        if (object && (object.serial === true || object.serial === 1 || object.serial === '1')) return true;
+        if (movie.number_of_seasons || movie.media_type === 'tv' || movie.first_air_date) return true;
+        return false;
+      }
+
       function eneyidaNormalizeFinalItems(items, title, poster, source) {
         items = items || [];
-        var hasSerial = items.some(function (i) { return !!(i && i.season && i.episode); });
+        var expectedSerial = stelsEneyidaExpectedSerial();
+        var hasSerial = expectedSerial && items.some(function (i) { return !!(i && i.season && i.episode); });
         var out = [];
         var seen = {};
         items.forEach(function (item) {
@@ -10479,7 +10528,7 @@
           var stream = item.stream || '';
           var iframe = item.iframe || '';
           if (/playerjs\.55|\.(?:js|css|jpg|jpeg|png|webp|gif|ico|woff2?)(?:$|\?)/i.test(stream || iframe)) return;
-          if (!hasSerial && item.season) { item.season = 0; item.episode = 0; }
+          if (!hasSerial) { item.season = 0; item.episode = 0; item.voice = ''; item.info = ''; }
           if (!hasSerial && /^hls$/i.test(item.title || '')) item.title = title || select_title;
           if (!item.title || item.title === select_title || /^hls$/i.test(item.title || '')) item.title = title || select_title;
           if (!item.poster) item.poster = poster || '';
@@ -10502,6 +10551,7 @@
           input_count: items.length,
           output_count: out.length,
           has_serial: hasSerial,
+          expected_serial: expectedSerial,
           sample: out.slice(0, 8).map(function (i) { return 'S' + (i.season || 0) + 'E' + (i.episode || 0) + '|' + itemVoiceName(i) + '|' + (i.title || '') + '|' + (i.stream || i.iframe || '').slice(0, 140); })
         });
         return out;
@@ -20990,7 +21040,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.57: Eneyida: одна картка для фільму, без HLS у назві; voice button у плеєрі для серіалів.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.59: Eneyida: fuzzy-збіг назв Самітник/Самотник; фільми не перетворюються на серіали через службовий текст.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
