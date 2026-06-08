@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.49';
+    var STELS_ONLINE_VERSION = '1.0.50';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -48,7 +48,7 @@
 
     var STELS_SOURCE_ENGINE_ALIAS = {
       lumex: 'lumex', lumex2: 'lumex2', rezka2: 'rezka2', kinobase: 'kinobase', collaps: 'collaps',
-      'collaps-dash': 'rc-collaps-dash', cdnmovies: 'cdnmovies', filmix: 'filmix', zetflix: 'zetflix',
+      'collaps-dash': 'collaps-dash', cdnmovies: 'cdnmovies', filmix: 'filmix', zetflix: 'zetflix',
       fancdn: 'fancdn', fancdn2: 'fancdn2', fanserials: 'fanserials', videoseed: 'videoseed', vibix: 'vibix',
       redheadsound: 'redheadsound', 'redheadsound-dash': 'redheadsound-dash', cdnvideohub: 'cdnvideohub',
       anilibria: 'anilibria', anilibria2: 'anilibria2', animelib: 'animelib', kodik: 'kodik', alloha: 'alloha',
@@ -16634,7 +16634,7 @@
       }, {
         name: 'rc-collaps-dash',
         title: 'Collaps (DASH)',
-        source: new lampauaRemoteSource(this, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'collaps-dash' }),
+        source: new lampauaRemoteSource(this, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
         search: false,
         kp: true,
         imdb: true
@@ -17015,7 +17015,7 @@
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'collaps-dash' });
+          if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
