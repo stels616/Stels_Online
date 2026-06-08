@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.66';
+    var STELS_ONLINE_VERSION = '1.0.67';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -11311,15 +11311,103 @@
           t = cleanText(t || '');
           if (t && out.indexOf(t) === -1) out.push(t);
         });
+        var orig = normalizeForCompare(movie.original_title || movie.original_name || '');
+        var title = normalizeForCompare(movie.title || movie.name || select_title || '');
+        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') {
+          ['Пацаны', 'Пацани', 'Хлопаки', 'Хлопці', 'The Boys'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
+        }
+        if (orig === 'from' || title === 'ззовні' || title === 'извне') {
+          ['Извне', 'Ззовні', 'From', 'FROM'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
+        }
         return out;
+      }
+      function variants() {
+        var out = [];
+        movieTitles().forEach(function (t) {
+          var c = cleanText(t || '');
+          if (c && out.indexOf(c) === -1) out.push(c);
+        });
+        return out.slice(0, 8);
+      }
+      function stelsEscapeRegExp(value) {
+        return String(value == null ? '' : value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      function compareTokens(value) {
+        value = normalizeForCompare(value || '');
+        if (!value) return [];
+        return value.split(/\s+/).filter(function (t) { return t && t.length > 1; });
+      }
+      function overlapScore(title, needle) {
+        var a = compareTokens(title), b = compareTokens(needle);
+        if (!a.length || !b.length) return 0;
+        var map = {};
+        a.forEach(function (t) { map[t] = true; });
+        var m = 0;
+        b.forEach(function (t) { if (map[t]) m++; });
+        return m / b.length;
+      }
+      function titleHasWholeNeedle(title, needle) {
+        var t = normalizeForCompare(title || ''), n = normalizeForCompare(needle || '');
+        if (!t || !n) return false;
+        if (t === n) return true;
+        if (n.length < 4) return false;
+        return new RegExp('(^|\s)' + stelsEscapeRegExp(n) + '($|\s)').test(t);
+      }
+      function titleSeasonNumber(title) {
+        var m = normalizeForCompare(title || '').match(/(?:^|\s)(\d{1,2})\s*(?:сезон|season)(?:\s|$)/i);
+        return m ? parseInt(m[1], 10) || 0 : 0;
+      }
+      function expectedSeasonNumber() {
+        var movie = object.movie || {};
+        var s = parseInt(object.season || object.s || movie.season_number || 0, 10) || 0;
+        if (!s && object.search) s = titleSeasonNumber(object.search);
+        return s;
       }
       function isRelevantTitle(title) {
         var t = normalizeForCompare(title || '');
         if (!t) return false;
         return movieTitles().some(function (x) {
           var n = normalizeForCompare(x || '');
-          return n && (t === n || t.indexOf(n) !== -1 || n.indexOf(t) !== -1);
+          return n && (t === n || titleHasWholeNeedle(t, n) || overlapScore(t, n) >= 0.75);
         });
+      }
+      function searchScore(item, query) {
+        var title = (item && item.title) || '';
+        var t = normalizeForCompare(title);
+        var q = normalizeForCompare(query || '');
+        var score = 0;
+        if (q && t === q) score += 120;
+        else if (q && titleHasWholeNeedle(t, q)) score += 70;
+        else if (q) score += Math.round(overlapScore(t, q) * 60);
+        movieTitles().forEach(function (mt) {
+          var n = normalizeForCompare(mt || '');
+          if (!n) return;
+          if (t === n) score += 110;
+          else if (titleHasWholeNeedle(t, n)) score += 65;
+          else score += Math.round(overlapScore(t, n) * 45);
+        });
+        var movie = object.movie || {};
+        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || '').slice(0, 4), 10) || 0;
+        if (year && item.year && Math.abs(parseInt(item.year, 10) - year) <= 1) score += 30;
+        var isSerial = !!(object.serial || object.movie && (object.movie.number_of_seasons || object.movie.first_air_date));
+        var url = String(item.link || '').toLowerCase();
+        if (isSerial && /(serial|serialy|sezon|season|сезон)/i.test(title + ' ' + url)) score += 22;
+        if (isSerial && /(фильм|films|film)/i.test(title + ' ' + url) && !/serial/i.test(url)) score -= 25;
+        var es = expectedSeasonNumber();
+        var ts = titleSeasonNumber(title);
+        if (isSerial && es && ts === es) score += 45;
+        else if (isSerial && !es && ts) score -= Math.min(40, ts * 4); // не вибирати одразу 4/5 сезон, коли потрібна загальна картка серіалу
+        if (isSerial && !ts && /(сериал|serial)/i.test(title + ' ' + url)) score += 40;
+        return score;
+      }
+      function selectBest(items, query) {
+        var best = null;
+        (items || []).forEach(function (item) {
+          var score = searchScore(item, query);
+          if (!best || score > best.score) best = { item: item, score: score };
+        });
+        stelsLog('kinogo-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0 });
+        return best && best.item || (items && items[0]);
       }
       function parseSearchItems(html) {
         html = maybeDecode(html || '');
@@ -11336,8 +11424,10 @@
           if (!title) title = cleanText(a.text());
           if (!title || !isRelevantTitle(title)) return;
           var poster = '';
+          var text = cleanText((box && box.length ? box.text() : a.parent().text()) || title || '');
+          var ym = (text + ' ' + title).match(/(19|20)\d{2}/);
           if (box && box.length) poster = box.find('img').first().attr('data-src') || box.find('img').first().attr('data-lazy') || box.find('img').first().attr('src') || '';
-          items.push({ title: title, link: href, poster: absolute(poster, href) });
+          items.push({ title: title, link: href, poster: absolute(poster, href), year: ym ? ym[0] : '' });
           seen[href] = true;
         });
         stelsLog('kinogo-search-results', { count: items.length, sample: items.slice(0, 10).map(function (i) { return i.title + '|' + i.link; }) });
@@ -11464,7 +11554,7 @@
           stelsLog('kinogo-page', { page: item.link, title: title, iframe: iframe, poster: !!poster });
           if (!iframe) { component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return; }
           mainReferer = item.link;
-          requestText(iframe, function (playerHtml) {
+          function handlePlayer(playerHtml) {
             if (destroyed) return;
             extract = parsePlayerHtml(playerHtml, iframe, poster, title);
             component.loading(false);
@@ -11472,7 +11562,16 @@
             buildFilter();
             render(currentItems());
             component.saveChoice(choice);
-          }, function (err) { component.loading(false); component.empty(err || 'Kinogo player error'); }, { referer: item.link, timeout: 12000 });
+          }
+          requestText(iframe, handlePlayer, function (err) {
+            stelsLog('kinogo-player-request-fail', { iframe: iframe, error: err || '', retry: 'root-referer' });
+            requestText(iframe, handlePlayer, function (err2) {
+              stelsLog('kinogo-player-request-fail', { iframe: iframe, error: err2 || '', retry: 'proxy' });
+              var purl = proxy('iframe') ? proxy('iframe') + iframe : '';
+              if (!purl) { component.loading(false); component.empty(err2 || err || 'Kinogo player error'); return; }
+              requestText(purl, handlePlayer, function (err3) { component.loading(false); component.empty(err3 || err2 || err || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
+            }, { referer: host() + '/', timeout: 14000 });
+          }, { referer: item.link, timeout: 12000 });
         }, function (err) { component.loading(false); component.empty(err || 'Kinogo page error'); }, { timeout: 12000 });
       }
       this.search = function (_object, kinopoisk_id, data) {
@@ -11481,23 +11580,29 @@
         destroyed = false;
         if (data && data[0] && data[0].link) return loadPage(data[0]);
         component.loading(true);
-        var post = 'titleonly=3&do=search&subaction=search&story=' + encodeURIComponent(select_title || '');
-        stelsLog('kinogo-search-start', { host: host(), title: select_title, post: post });
-        requestText(host() + '/', function (html) {
+        function runSearch(list, index) {
           if (destroyed) return;
-          var items = parseSearchItems(html);
-          if (!items.length) {
-            var url = host() + '/index.php?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(select_title || '');
-            return requestText(url, function (html2) {
-              var items2 = parseSearchItems(html2);
-              component.loading(false);
-              if (!items2.length) return component.emptyForQuery(select_title);
-              loadPage(items2[0]);
-            }, function (err) { component.loading(false); component.empty(err || 'Kinogo search error'); }, { timeout: 12000 });
-          }
-          component.loading(false);
-          loadPage(items[0]);
-        }, function (err) { component.loading(false); component.empty(err || 'Kinogo search error'); }, { postdata: post, timeout: 12000 });
+          if (index >= list.length) { component.loading(false); return component.emptyForQuery(select_title); }
+          var query = list[index] || select_title || '';
+          var post = 'titleonly=3&do=search&subaction=search&story=' + encodeURIComponent(query);
+          stelsLog('kinogo-search-start', { host: host(), title: query, post: post, variants: list });
+          requestText(host() + '/', function (html) {
+            if (destroyed) return;
+            var items = parseSearchItems(html);
+            if (!items.length) {
+              var url = host() + '/index.php?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(query);
+              return requestText(url, function (html2) {
+                var items2 = parseSearchItems(html2);
+                if (!items2.length) return runSearch(list, index + 1);
+                component.loading(false);
+                loadPage(selectBest(items2, query));
+              }, function (err) { stelsLog('kinogo-search-get-fail', { query: query, error: err || '' }); runSearch(list, index + 1); }, { timeout: 12000 });
+            }
+            component.loading(false);
+            loadPage(selectBest(items, query));
+          }, function (err) { stelsLog('kinogo-search-post-fail', { query: query, error: err || '' }); runSearch(list, index + 1); }, { postdata: post, timeout: 12000 });
+        }
+        runSearch(variants(), 0);
       };
       this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
       this.reset = function () { component.reset(); choice = { season: 0, voice: 0, voice_name: '' }; buildFilter(); render(currentItems()); component.saveChoice(choice); };
@@ -11567,15 +11672,103 @@
           t = cleanText(t || '');
           if (t && out.indexOf(t) === -1) out.push(t);
         });
+        var orig = normalizeForCompare(movie.original_title || movie.original_name || '');
+        var title = normalizeForCompare(movie.title || movie.name || select_title || '');
+        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') {
+          ['Пацаны', 'Пацани', 'Хлопаки', 'Хлопці', 'The Boys'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
+        }
+        if (orig === 'from' || title === 'ззовні' || title === 'извне') {
+          ['Извне', 'Ззовні', 'From', 'FROM'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
+        }
         return out;
+      }
+      function variants() {
+        var out = [];
+        movieTitles().forEach(function (t) {
+          var c = cleanText(t || '');
+          if (c && out.indexOf(c) === -1) out.push(c);
+        });
+        return out.slice(0, 8);
+      }
+      function stelsEscapeRegExp(value) {
+        return String(value == null ? '' : value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      function compareTokens(value) {
+        value = normalizeForCompare(value || '');
+        if (!value) return [];
+        return value.split(/\s+/).filter(function (t) { return t && t.length > 1; });
+      }
+      function overlapScore(title, needle) {
+        var a = compareTokens(title), b = compareTokens(needle);
+        if (!a.length || !b.length) return 0;
+        var map = {};
+        a.forEach(function (t) { map[t] = true; });
+        var m = 0;
+        b.forEach(function (t) { if (map[t]) m++; });
+        return m / b.length;
+      }
+      function titleHasWholeNeedle(title, needle) {
+        var t = normalizeForCompare(title || ''), n = normalizeForCompare(needle || '');
+        if (!t || !n) return false;
+        if (t === n) return true;
+        if (n.length < 4) return false;
+        return new RegExp('(^|\s)' + stelsEscapeRegExp(n) + '($|\s)').test(t);
+      }
+      function titleSeasonNumber(title) {
+        var m = normalizeForCompare(title || '').match(/(?:^|\s)(\d{1,2})\s*(?:сезон|season)(?:\s|$)/i);
+        return m ? parseInt(m[1], 10) || 0 : 0;
+      }
+      function expectedSeasonNumber() {
+        var movie = object.movie || {};
+        var s = parseInt(object.season || object.s || movie.season_number || 0, 10) || 0;
+        if (!s && object.search) s = titleSeasonNumber(object.search);
+        return s;
       }
       function isRelevantTitle(title) {
         var t = normalizeForCompare(title || '');
         if (!t) return false;
         return movieTitles().some(function (x) {
           var n = normalizeForCompare(x || '');
-          return n && (t === n || t.indexOf(n) !== -1 || n.indexOf(t) !== -1);
+          return n && (t === n || titleHasWholeNeedle(t, n) || overlapScore(t, n) >= 0.75);
         });
+      }
+      function searchScore(item, query) {
+        var title = (item && item.title) || '';
+        var t = normalizeForCompare(title);
+        var q = normalizeForCompare(query || '');
+        var score = 0;
+        if (q && t === q) score += 120;
+        else if (q && titleHasWholeNeedle(t, q)) score += 70;
+        else if (q) score += Math.round(overlapScore(t, q) * 60);
+        movieTitles().forEach(function (mt) {
+          var n = normalizeForCompare(mt || '');
+          if (!n) return;
+          if (t === n) score += 110;
+          else if (titleHasWholeNeedle(t, n)) score += 65;
+          else score += Math.round(overlapScore(t, n) * 45);
+        });
+        var movie = object.movie || {};
+        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || '').slice(0, 4), 10) || 0;
+        if (year && item.year && Math.abs(parseInt(item.year, 10) - year) <= 1) score += 30;
+        var isSerial = !!(object.serial || object.movie && (object.movie.number_of_seasons || object.movie.first_air_date));
+        var url = String(item.link || '').toLowerCase();
+        if (isSerial && /(serial|serialy|sezon|season|сезон)/i.test(title + ' ' + url)) score += 22;
+        if (isSerial && /(фильм|films|film)/i.test(title + ' ' + url) && !/serial/i.test(url)) score -= 25;
+        var es = expectedSeasonNumber();
+        var ts = titleSeasonNumber(title);
+        if (isSerial && es && ts === es) score += 45;
+        else if (isSerial && !es && ts) score -= Math.min(40, ts * 4); // не вибирати одразу 4/5 сезон, коли потрібна загальна картка серіалу
+        if (isSerial && !ts && /(сериал|serial)/i.test(title + ' ' + url)) score += 40;
+        return score;
+      }
+      function selectBest(items, query) {
+        var best = null;
+        (items || []).forEach(function (item) {
+          var score = searchScore(item, query);
+          if (!best || score > best.score) best = { item: item, score: score };
+        });
+        stelsLog('kinogo-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0 });
+        return best && best.item || (items && items[0]);
       }
       function parseSearchItems(html) {
         var root = $('<div>' + (html || '') + '</div>');
@@ -20836,11 +21029,17 @@
           if (!activity || !activity.render) return false;
           var render = activity.render();
           if (!render || !render.length || render.find('.view--stels_online').length) return false;
-          var torrent = render.find('.view--torrent').first();
-          if (!torrent.length) return false;
-          var movie = e && e.data && e.data.movie || active.movie || active.data && active.data.movie || active.object || null;
+          var movie = e && e.data && e.data.movie || active.movie || active.data && active.data.movie || active.object || active.data || null;
           if (!movie || !(movie.id || movie.tmdb_id || movie.title || movie.name || movie.original_title)) return false;
-          torrent.after(stelsCreateFullButton(movie));
+          var target = render.find('.view--torrent').first();
+          if (!target.length) target = render.find('.full-start__button.selector').not('.view--stels_online').first();
+          if (target.length) target.after(stelsCreateFullButton(movie));
+          else {
+            var container = render.find('.full-start__buttons, .full-start__body, .full-start, .full-start-new__buttons').first();
+            if (!container.length) container = render.find('.full-start__right, .full-start__left, .full-start__details').first();
+            if (!container.length) return false;
+            container.append(stelsCreateFullButton(movie));
+          }
           stelsLog('full-button-ensure', { ok: true, title: movie.title || movie.name || movie.original_title || '', id: movie.id || movie.tmdb_id || '' });
           return true;
         } catch (err) {
@@ -20850,9 +21049,11 @@
       }
 
       Lampa.Listener.follow('full', function (e) {
-        if (e.type == 'complite') stelsEnsureFullButton(e);
+        if (e.type == 'complite' || e.type == 'render' || e.type == 'build') stelsEnsureFullButton(e);
       });
+      Lampa.Listener.follow('activity', function () { setTimeout(function () { stelsEnsureFullButton(); }, 80); });
       // Якщо плагін підвантажився вже після події full:complite, кнопка має з'явитись без ручного оновлення сторінки.
+      setTimeout(function () { stelsEnsureFullButton(); }, 50);
       setTimeout(function () { stelsEnsureFullButton(); }, 250);
       setTimeout(function () { stelsEnsureFullButton(); }, 900);
       setTimeout(function () { stelsEnsureFullButton(); }, 1800);
@@ -20873,7 +21074,7 @@
           var fullButtonInterval = setInterval(function () {
             fullButtonTries++;
             var ok = stelsEnsureFullButton();
-            if (ok || fullButtonTries >= 20) clearInterval(fullButtonInterval);
+            if (ok || fullButtonTries >= 80) clearInterval(fullButtonInterval);
           }, 500);
         }
       } catch (e) {
@@ -21728,7 +21929,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.66: додано джерело Kinogo з налаштуванням адреси kinogo.my/kinogo.co/kinogo.io, парсинг stravers/fileList та потоків /bnsi/movies.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.67: виправлено стартову появу кнопки Stels_Online та пошук/парсинг Kinogo з ретраєм iframe stravers і вибором правильного серіалу.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
