@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.54';
+    var STELS_ONLINE_VERSION = '1.0.55';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -1960,7 +1960,8 @@
               getStream(element, function (element) {
                 call({
                   file: element.stream,
-                  quality: element.qualitys
+                  quality: element.qualitys,
+                  headers: element.headers || false
                 });
               }, function () {
                 Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
@@ -9999,7 +10000,26 @@
         url = url.split(' or ').filter(Boolean)[0] || url;
         url = absolute(url, referer || ref);
         url = component.fixLinkProtocol(url, prefer_http, true);
-        return component.proxyStream ? component.proxyStream(url, 'eneyida') : url;
+        // Eneyida/HDVBUA streams require the real hdvbua referer. Do not wrap them
+        // into the generic stream proxy here, because the proxy changes referer logic
+        // and breaks some Android built-in player launches.
+        return url;
+      }
+
+      function eneyidaStreamHeaders(url, referer) {
+        url = String(url || '');
+        referer = String(referer || '');
+        if (/hdvbua\.pro/i.test(url) || /hdvbua\.pro/i.test(referer)) {
+          return {
+            'User-Agent': user_agent,
+            'Referer': 'https://hdvbua.pro/',
+            'Origin': 'https://hdvbua.pro'
+          };
+        }
+        return {
+          'User-Agent': user_agent,
+          'Referer': referer || ref
+        };
       }
 
       function addDirectStream(list, url, title, info, referer, season, episode, poster) {
@@ -10016,7 +10036,8 @@
           episode: episode || 0,
           stream: url,
           poster: poster || '',
-          referer: referer || ref
+          referer: referer || ref,
+          headers: eneyidaStreamHeaders(url, referer || ref)
         }, url + '|' + title);
       }
 
@@ -10077,6 +10098,12 @@
 
       function parseFilesFromString(file, list, title, info, referer, poster, season, episode) {
         file = maybeDecodeBase64(unescapeJs(file || ''));
+        // HDVBUA serials store the full structure in Playerjs.file as:
+        // season -> voice -> episodes. Parse this before the generic URL scanner,
+        // otherwise every .m3u8 is flattened into S0E0 and episodes are duplicated.
+        if (parseEneyidaStructuredFile(file, list, { title: title, info: info, referer: referer, poster: poster, season: season, episode: episode })) {
+          return;
+        }
         var json = tryParseJsonLike(file);
         if (json) {
           walkPlayerNode(json, list, { title: title, info: info, referer: referer, poster: poster, season: season, episode: episode });
@@ -10164,6 +10191,15 @@
             walkPlayerNode(obj.file || obj.playlist || obj, list, { title: select_title, referer: referer, poster: poster });
           }
         }
+        // Fallback: some Playerjs configs are valid JS but not strict JSON because of
+        // comments/trailing fields. Extract file: '...' / file: "..." directly.
+        if (!list.length) {
+          var fm = /file\s*:\s*(['"])((?:\\.|(?!)[\s\S])*?)/ig;
+          var f;
+          while ((f = fm.exec(html || ''))) {
+            parseFilesFromString(f[2] || '', list, select_title, '', referer || ref, poster || '');
+          }
+        }
         return list;
       }
 
@@ -10199,7 +10235,8 @@
         while ((um = urlRe.exec(html || ''))) {
           var u = um[0];
           if (/youtube|youtu\.be|google|schema\.org|facebook|twitter|instagram/i.test(u)) continue;
-          if (!/(?:m3u8|mp4|player|iframe|embed|video|hdvb|collaps|voidboost|ashdi|plrjs|cdnmovies|tortuga|zetvideo|stream)/i.test(u)) continue;
+          if (/\/player\/playerjs|\.(?:js|css|jpg|jpeg|png|webp|gif|ico|woff2?)(?:$|\?)/i.test(u)) continue;
+          if (!/(?:m3u8|mp4|iframe|embed|video|hdvb|collaps|voidboost|ashdi|plrjs|cdnmovies|tortuga|zetvideo|stream)/i.test(u)) continue;
           if (/^\/\//.test(u)) u = 'https:' + u;
           if (/\.(?:m3u8|mp4)(?:$|\?)/i.test(u)) addDirectStream(list, u, select_title, '', pageUrl, 0, 0, poster);
           else addIframe(list, u, select_title, pageUrl, poster);
@@ -10262,6 +10299,7 @@
           stream: stream,
           poster: poster,
           referer: referer || ref,
+          headers: eneyidaStreamHeaders(stream, referer || ref),
           subtitles: parseEneyidaSubs(epNode.subtitle || epNode.subtitles || '', referer)
         }, stream + '|' + seasonNum + '|' + episodeNum + '|' + voiceName);
         return true;
@@ -10609,6 +10647,7 @@
                 url: component.getDefaultQuality(element.qualitys, element.stream),
                 quality: component.renameQualityMap(element.qualitys),
                 subtitles: element.subtitles || false,
+                headers: element.headers || false,
                 timeline: element.timeline,
                 poster: element.poster || '',
                 title: element.title || select_title
@@ -10628,6 +10667,7 @@
                           cell.url = component.getDefaultQuality(elem.qualitys, elem.stream);
                           cell.quality = component.renameQualityMap(elem.qualitys);
                           cell.subtitles = elem.subtitles || false;
+                          cell.headers = elem.headers || false;
                           call();
                         }, function () {
                           cell.url = '';
@@ -20747,7 +20787,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.54: Eneyida бере основний iframe hdvbua.pro/embed, парсить Playerjs file як структура сезон → озвучка → серії, додано розширений лог фільтрів.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.55: Eneyida бере основний iframe hdvbua.pro/embed, парсить Playerjs file як структура сезон → озвучка → серії, додано розширений лог фільтрів.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
