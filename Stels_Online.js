@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.71';
+    var STELS_ONLINE_VERSION = '1.0.73';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9794,6 +9794,13 @@
         return latin >= Math.max(2, letters.length * 0.7);
       }
 
+      function stelsIsLikelyRussianAlias(value) {
+        var n = normalizeForCompare(value || '');
+        if (!n) return false;
+        if (/[ыэёъ]/i.test(value || '')) return true;
+        return ['друзья', 'извне', 'пацаны'].indexOf(n) !== -1;
+      }
+
       function stelsKnownTitleAliases() {
         var movie = object.movie || {};
         var out = [];
@@ -9810,6 +9817,33 @@
         return out;
       }
 
+      function stelsSearchYear() {
+        var movie = object.movie || {};
+        var raw = object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '';
+        var m = String(raw || '').match(/\b(19|20)\d{2}\b/);
+        return m ? m[0] : '';
+      }
+
+      function stelsShouldTryTitleWithYear(title) {
+        title = cleanText(title || '');
+        if (!title) return false;
+        if (/\b(19|20)\d{2}\b/.test(title)) return false;
+        var n = normalizeForCompare(title);
+        if (!n) return false;
+        var tokens = n.split(/\s+/).filter(Boolean);
+        // Eneyida часто не повертає старі короткі назви по одному слову (приклад: "Друзі"),
+        // але знаходить їх по "назва + рік". Для довгих назв рік не додаємо, щоб не погіршувати пошук.
+        return tokens.length <= 2;
+      }
+
+      function stelsAddTitleYearVariants(source, target) {
+        var year = stelsSearchYear();
+        if (!year) return;
+        (source || []).forEach(function (t) {
+          if (stelsShouldTryTitleWithYear(t)) stelsPushUniqueClean(target, cleanText(t) + ' ' + year);
+        });
+      }
+
       function stelsEneyidaUkrainianTitles() {
         var movie = object.movie || {};
         var originalNorm = normalizeForCompare(movie.original_title || movie.original_name || '');
@@ -9824,15 +9858,25 @@
         });
         stelsKnownTitleAliases().forEach(function (t) {
           // Відомі українські відповідники залишаємо в першому етапі, російські — нижче у fallback.
-          if (!/[ыэё]/i.test(t)) stelsPushUniqueClean(out, t);
+          if (!stelsIsLikelyRussianAlias(t)) stelsPushUniqueClean(out, t);
         });
         return out;
+      }
+
+      function stelsPushTitleAndYear(list, title) {
+        var before = list.length;
+        stelsPushUniqueClean(list, title);
+        if (list.length > before || list.indexOf(cleanText(title || '')) !== -1) {
+          var year = stelsSearchYear();
+          if (year && stelsShouldTryTitleWithYear(title)) stelsPushUniqueClean(list, cleanText(title || '') + ' ' + year);
+        }
       }
 
       function movieTitles() {
         var movie = object.movie || {};
         var out = [];
-        stelsEneyidaUkrainianTitles().forEach(function (t) { stelsPushUniqueClean(out, t); });
+        var primaryBase = stelsEneyidaUkrainianTitles();
+        primaryBase.forEach(function (t) { stelsPushTitleAndYear(out, t); });
         [movie.original_title, movie.original_name].forEach(function (t) { stelsPushUniqueClean(out, t); });
         stelsKnownTitleAliases().forEach(function (t) { stelsPushUniqueClean(out, t); });
         return out;
@@ -9842,7 +9886,8 @@
         var movie = object.movie || {};
         var primary = [];
         var fallback = [];
-        stelsEneyidaUkrainianTitles().forEach(function (t) { stelsPushUniqueClean(primary, t); });
+        var primaryBase = stelsEneyidaUkrainianTitles();
+        primaryBase.forEach(function (t) { stelsPushTitleAndYear(primary, t); });
         [movie.original_title, movie.original_name].forEach(function (t) { stelsPushUniqueClean(fallback, t); });
         stelsKnownTitleAliases().forEach(function (t) {
           if (primary.indexOf(t) === -1) stelsPushUniqueClean(fallback, t);
@@ -9923,6 +9968,11 @@
         var needleN = stelsCleanAltTitlePart(needle || '');
         if (!titleN || !needleN) return false;
         if (titleN === needleN) return true;
+        var searchYear = stelsSearchYear();
+        if (searchYear && needleN.indexOf(searchYear) !== -1) {
+          var needleNoYear = needleN.replace(new RegExp('(?:^|\\s)' + searchYear + '(?=\\s|$)'), ' ').replace(/\s+/g, ' ').trim();
+          if (needleNoYear && titleN === needleNoYear) return true;
+        }
         // В Eneyida назви часто записані як "Хлопаки / Хлопці". Це має збігатися із запитом "Хлопаки",
         // але не має відкривати "Друзі та сусіди" для однословного запиту "Друзі".
         if (stelsIsAltTitleExactMatch(title || '', needle || '')) return true;
@@ -11592,7 +11642,7 @@
           if (!title || !isRelevantTitle(title)) return;
           var poster = '';
           var text = cleanText((box && box.length ? box.text() : a.parent().text()) || title || '');
-          var ym = (text + ' ' + title).match(/(19|20)\d{2}/);
+          var ym = (text + ' ' + title).match(/\b(19|20)\d{2}\b/);
           if (box && box.length) poster = box.find('img').first().attr('data-src') || box.find('img').first().attr('data-lazy') || box.find('img').first().attr('src') || '';
           items.push({ title: title, link: href, poster: absolute(poster, href), year: ym ? ym[0] : '' });
           seen[href] = true;
@@ -11920,7 +11970,7 @@
         var isSerial = !!(object.serial || object.movie && (object.movie.number_of_seasons || object.movie.first_air_date));
         var url = String(item.link || '').toLowerCase();
         if (isSerial && /(serial|serialy|sezon|season|сезон)/i.test(title + ' ' + url)) score += 22;
-        if (isSerial && /(фильм|films|film)/i.test(title + ' ' + url) && !/serial/i.test(url)) score -= 25;
+        if (isSerial && /\b(фильм|films|film)\b/i.test(title + ' ' + url) && !/serial/i.test(url)) score -= 25;
         var es = expectedSeasonNumber();
         var ts = titleSeasonNumber(title);
         if (isSerial && es && ts === es) score += 45;
@@ -16473,12 +16523,12 @@
       function uaflixMaybeDecodeBase64Html(text, context) {
         var s = (text || '') + '';
         if (!s) return s;
-        if (/<(?:html|body|iframe|script)|zetvideo\.net|Playerjs|new\s+Playerjs/i.test(s)) return s;
+        if (/<(?:html|body|iframe|script)\b|zetvideo\.net|Playerjs|new\s+Playerjs/i.test(s)) return s;
         var compact = s.replace(/\s+/g, '');
         if (compact.length < 200 || !/^[A-Za-z0-9+/=]+$/.test(compact)) return s;
         try {
           var decoded = atob(compact);
-          if (/<(?:html|body|iframe|script)|zetvideo\.net|Playerjs|new\s+Playerjs/i.test(decoded)) {
+          if (/<(?:html|body|iframe|script)\b|zetvideo\.net|Playerjs|new\s+Playerjs/i.test(decoded)) {
             stelsLog('uaflix-base64-html-decoded', {
               context: context || '',
               input_length: s.length,
@@ -21180,143 +21230,17 @@
         }
       };
       Lampa.Manifest.plugins = manifest;
-      var button = "<div class=\"full-start__button selector view--stels_online\" data-subtitle=\"" + STELS_ONLINE_VERSION + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
-
-      function stelsBindFullButton(btn, movie) {
-        try {
-          if (!btn || !btn.length || !movie) return;
-          btn.off('hover:enter.stelsOnline click.stelsOnline tap.stelsOnline').on('hover:enter.stelsOnline click.stelsOnline tap.stelsOnline', function () {
-            online_loading = false;
-            loadOnline(movie);
-          });
-        } catch (e) {}
-      }
-
-      function stelsCreateFullButton(movie) {
-        var btn = $(Lampa.Lang.translate(button));
-        stelsBindFullButton(btn, movie);
-        return btn;
-      }
-
-      function stelsRepairExistingFullButton(render, movie) {
-        var existing = render.find('.view--stels_online, [data-component="stels_online"]').filter(function () {
-          var el = $(this);
-          return el.hasClass('full-start__button') || el.closest('.full-start, .full-start__buttons, .full-start-new__buttons').length;
-        });
-        if (!existing.length) return false;
-        existing.each(function () {
-          var el = $(this);
-          el.addClass('full-start__button selector view--stels_online')
-            .attr('data-subtitle', STELS_ONLINE_VERSION)
-            .attr('data-component', 'stels_online')
-            .removeAttr('hidden')
-            .removeClass('hide hidden selector--hidden');
-          el.css({ display: '', visibility: '', opacity: '', pointerEvents: '' });
-          if (!el.find('.stels-online-plugin-icon').length) el.prepend(STELS_ICON_HTML);
-          if (!el.find('span').length) el.append('<span>' + stelsEscapeHtml(Lampa.Lang.translate('stels_online_title') || 'Stels_Online') + '</span>');
-          stelsBindFullButton(el, movie);
-        });
-        try {
-          if (Lampa.Controller && Lampa.Controller.enabled && Lampa.Controller.collectionSet) {
-            var enabled = Lampa.Controller.enabled();
-            if (enabled && enabled.name && /full|content|card/i.test(enabled.name)) Lampa.Controller.collectionSet(render, render.find('.selector'));
-          }
-        } catch (e) {}
-        stelsLog('full-button-repair-existing', { count: existing.length, title: movie && (movie.title || movie.name || movie.original_title) || '', id: movie && (movie.id || movie.tmdb_id) || '' });
-        return true;
-      }
-
-      function stelsEnsureFullButton(e) {
-        try {
-          var active = (e && e.object) ? e.object : (Lampa.Activity && Lampa.Activity.active ? Lampa.Activity.active() : null);
-          var activity = active && (active.activity || active);
-          if (!activity || !activity.render) return false;
-          var render = activity.render();
-          if (!render || !render.length) return false;
-          var movie = e && e.data && e.data.movie || active.movie || active.data && active.data.movie || active.object || active.data || null;
-          if (!movie || !(movie.id || movie.tmdb_id || movie.title || movie.name || movie.original_title)) return false;
-          if (render.find('.view--stels_online, [data-component="stels_online"]').length) return stelsRepairExistingFullButton(render, movie);
-          var target = render.find('.view--torrent').first();
-          if (!target.length) target = render.find('.full-start__button.selector').not('.view--stels_online').first();
-          if (target.length) target.after(stelsCreateFullButton(movie));
-          else {
-            var container = render.find('.full-start__buttons, .full-start__body, .full-start, .full-start-new__buttons').first();
-            if (!container.length) container = render.find('.full-start__right, .full-start__left, .full-start__details').first();
-            if (!container.length) return false;
-            container.append(stelsCreateFullButton(movie));
-          }
-          try {
-            if (Lampa.Controller && Lampa.Controller.enabled && Lampa.Controller.collectionSet) {
-              var enabled = Lampa.Controller.enabled();
-              if (enabled && enabled.name && /full|content|card/i.test(enabled.name)) Lampa.Controller.collectionSet(render, render.find('.selector'));
-            }
-          } catch (e2) {}
-          stelsLog('full-button-ensure', { ok: true, title: movie.title || movie.name || movie.original_title || '', id: movie.id || movie.tmdb_id || '' });
-          return true;
-        } catch (err) {
-          stelsLog('full-button-ensure-error', { error: err && (err.message || err.toString()) });
-          return false;
-        }
-      }
-
-      function stelsEnsureFullButtonLegacy58(e) {
-        try {
-          if (!e || e.type !== 'complite' || !e.object || !e.object.activity || !e.object.activity.render) return false;
-          var render = e.object.activity.render();
-          if (!render || !render.length) return false;
-          var movie = e.data && e.data.movie || e.object.movie || null;
-          if (!movie) return false;
-          if (render.find('.view--stels_online, [data-component="stels_online"]').length) return stelsRepairExistingFullButton(render, movie);
-          var target = render.find('.view--torrent').first();
-          if (!target.length) return false;
-          var btn = stelsCreateFullButton(movie);
-          target.after(btn);
-          stelsLog('full-button-ensure-legacy58', { ok: true, title: movie.title || movie.name || movie.original_title || '', id: movie.id || movie.tmdb_id || '' });
-          return true;
-        } catch (err) {
-          stelsLog('full-button-ensure-legacy58-error', { error: err && (err.message || err.toString()) });
-          return false;
-        }
-      }
-
+      var button = "<div class=\"full-start__button selector view--stels_online\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
       Lampa.Listener.follow('full', function (e) {
         if (e.type == 'complite') {
-          // Повернено базову логіку з 1.0.58: вставка саме після .view--torrent у момент full:complite.
-          stelsEnsureFullButtonLegacy58(e);
-          setTimeout(function () { stelsEnsureFullButtonLegacy58(e) || stelsEnsureFullButton(e); }, 40);
-          setTimeout(function () { stelsEnsureFullButton(e); }, 250);
-        }
-        else if (e.type == 'render' || e.type == 'build') stelsEnsureFullButton(e);
-      });
-      Lampa.Listener.follow('activity', function () { setTimeout(function () { stelsEnsureFullButton(); }, 80); setTimeout(function () { stelsEnsureFullButton(); }, 350); });
-      // Якщо плагін підвантажився вже після події full:complite, кнопка має з'явитись без ручного оновлення сторінки.
-      setTimeout(function () { stelsEnsureFullButton(); }, 50);
-      setTimeout(function () { stelsEnsureFullButton(); }, 250);
-      setTimeout(function () { stelsEnsureFullButton(); }, 900);
-      setTimeout(function () { stelsEnsureFullButton(); }, 1800);
-      setTimeout(function () { stelsEnsureFullButton(); }, 3200);
-
-      // Lampa іноді домальовує ряд джерел/плагінів асинхронно після full:complite.
-      // Через це кнопка Stels_Online з'являлась тільки після відкриття/закриття списку джерел.
-      try {
-        if (!window.stels_online_full_button_observer_installed) {
-          window.stels_online_full_button_observer_installed = true;
-          var fullButtonTimer = null;
-          var fullButtonObserver = new MutationObserver(function () {
-            clearTimeout(fullButtonTimer);
-            fullButtonTimer = setTimeout(function () { stelsEnsureFullButton(); }, 120);
+          var btn = $(Lampa.Lang.translate(button));
+          online_loading = false;
+          btn.on('hover:enter', function () {
+            loadOnline(e.data.movie);
           });
-          fullButtonObserver.observe(document.body, { childList: true, subtree: true });
-          var fullButtonTries = 0;
-          var fullButtonInterval = setInterval(function () {
-            fullButtonTries++;
-            var ok = stelsEnsureFullButton();
-            if (ok || fullButtonTries >= 80) clearInterval(fullButtonInterval);
-          }, 500);
+          e.object.activity.render().find('.view--torrent').after(btn);
         }
-      } catch (e) {
-        stelsLog('full-button-observer-error', { error: e && (e.message || e.toString()) });
-      }
+      });
 
       if (Lampa.Storage.get('stels_online_use_stream_proxy', '') === '') {
         $.ajax({
@@ -22166,7 +22090,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.71: виправлено Eneyida пошук назв через слеш (Хлопаки / Хлопці) і примусове відображення/активацію кнопки Stels_Online на головній картці.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.72: повернено логіку кнопки головної картки зі стабільної версії та додано Eneyida fallback пошук коротких назв з роком.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
