@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.57';
+    var STELS_ONLINE_VERSION = '1.0.58';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9796,15 +9796,46 @@
                /\/(?:serialy|filmy|multfilmy|anime|dobirky|novyny)(?:\/|$)/i.test(url);
       }
 
+      function stelsEscapeRegExp(value) {
+        return String(value == null ? '' : value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+
+      function stelsCompareTokens(value) {
+        value = normalizeForCompare(value || '');
+        if (!value) return [];
+        return value.split(/\s+/).filter(function (token) { return token && token.length > 1; });
+      }
+
+      function stelsHasTitleTokenMatch(title, needle) {
+        var titleN = normalizeForCompare(title || '');
+        var needleN = normalizeForCompare(needle || '');
+        if (!titleN || !needleN) return false;
+        if (titleN === needleN) return true;
+        if (needleN.length < 4) return false;
+        var re = new RegExp('(^|\\s)' + stelsEscapeRegExp(needleN) + '($|\\s)');
+        return re.test(titleN);
+      }
+
+      function stelsTitleOverlapScore(title, needle) {
+        var titleTokens = stelsCompareTokens(title);
+        var needleTokens = stelsCompareTokens(needle);
+        if (!titleTokens.length || !needleTokens.length) return 0;
+        var titleMap = {};
+        titleTokens.forEach(function (token) { titleMap[token] = true; });
+        var matched = 0;
+        needleTokens.forEach(function (token) { if (titleMap[token]) matched++; });
+        return matched / needleTokens.length;
+      }
+
       function isRelevantTitle(title, query) {
         var titleN = normalizeForCompare(title);
         var qN = normalizeForCompare(query);
         if (!titleN) return false;
-        if (qN && (titleN === qN || titleN.indexOf(qN) !== -1 || qN.indexOf(titleN) !== -1)) return true;
+        if (qN && (titleN === qN || stelsHasTitleTokenMatch(titleN, qN) || stelsTitleOverlapScore(titleN, qN) >= 0.75)) return true;
         var titles = movieTitles();
         for (var i = 0; i < titles.length; i++) {
           var t = normalizeForCompare(titles[i]);
-          if (t && (titleN === t || titleN.indexOf(t) !== -1 || t.indexOf(titleN) !== -1)) return true;
+          if (t && (titleN === t || stelsHasTitleTokenMatch(titleN, t) || stelsTitleOverlapScore(titleN, t) >= 0.75)) return true;
         }
         return false;
       }
@@ -9823,9 +9854,16 @@
           if (looksCategory(href)) return;
 
           var box = a.closest('.short, .shortstory, .story, .news, .th-item, .th, .movie-item, .poster, .sect-item, .searchresult, .search_result, li, article, .item');
-          var title = cleanText(a.attr('title') || a.text() || '');
-          if (box && box.length) {
-            title = cleanText(box.find('.short-title, .th-title, .story-title, .title, h1, h2, h3, h4').first().text()) || title;
+          var title = cleanText(a.attr('title') || '');
+          var heading = cleanText(a.find('.searchheading, .search-heading, .short-title, .th-title, .story-title, .title, h1, h2, h3, h4').first().text());
+          if (!title && heading) title = heading;
+          if (!title && box && box.length) {
+            title = cleanText(box.find('.searchheading, .search-heading, .short-title, .th-title, .story-title, .title, h1, h2, h3, h4').first().text());
+          }
+          if (!title) {
+            var direct = a.clone();
+            direct.find('span:not(.searchheading):not(.search-heading), .descr, .description, .short-text, .story-text, p').remove();
+            title = cleanText(direct.text() || '');
           }
           if (!title) return;
 
@@ -9861,16 +9899,19 @@
       }
 
       function searchScore(item, query) {
-        var title = normalizeForCompare(item && item.title || '');
+        var titleRaw = item && item.title || '';
+        var title = normalizeForCompare(titleRaw);
         var q = normalizeForCompare(query || '');
         var score = 0;
-        if (q && title === q) score += 100;
-        if (q && title.indexOf(q) !== -1) score += 45;
+        if (q && title === q) score += 120;
+        else if (q && stelsHasTitleTokenMatch(title, q)) score += 55;
+        else if (q) score += Math.round(stelsTitleOverlapScore(title, q) * 45);
         var titles = movieTitles();
         titles.forEach(function (t) {
-          t = normalizeForCompare(t);
-          if (t && title === t) score += 90;
-          else if (t && title.indexOf(t) !== -1) score += 45;
+          var tn = normalizeForCompare(t);
+          if (tn && title === tn) score += 105;
+          else if (tn && stelsHasTitleTokenMatch(title, tn)) score += 50;
+          else if (tn) score += Math.round(stelsTitleOverlapScore(title, tn) * 40);
         });
         var movie = object.movie || {};
         var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '').slice(0, 4), 10);
@@ -9890,15 +9931,17 @@
       function showSearchItems(items, query) {
         if (!(items && items.length)) return safeEmpty('no-search-results', { query: query });
         var best = selectBest(items, query);
+        var titleMatch = best && best.item ? isRelevantTitle(best.item.title, query) : false;
         stelsLog('eneyida-search-best', {
           query: query,
           count: items.length,
           best_title: best && best.item && best.item.title || '',
           best_link: best && best.item && best.item.link || '',
           best_score: best && best.score || 0,
+          title_match: titleMatch,
           clarification: !!object.clarification
         });
-        if (!object.clarification && best && best.score >= 35) {
+        if (!object.clarification && best && titleMatch && best.score >= 75) {
           loadTitle(best.item.link, best.item.poster);
           return;
         }
@@ -9942,7 +9985,21 @@
         var query = list[index];
         stelsLog('eneyida-search-try', { index: index, query: query, variants: list });
         searchByPost(query, hash, function (items) {
-          if (items && items.length) showSearchItems(items, query);
+          if (items && items.length) {
+            var best = selectBest(items, query);
+            if (best && isRelevantTitle(best.item && best.item.title || '', query) && best.score >= 75) showSearchItems(items, query);
+            else {
+              stelsLog('eneyida-search-weak-skip', {
+                query: query,
+                count: items.length,
+                best_title: best && best.item && best.item.title || '',
+                best_score: best && best.score || 0,
+                next_index: index + 1
+              });
+              if (index + 1 < list.length) runSearches(list, index + 1, hash);
+              else showSearchItems(items, query);
+            }
+          }
           else runSearches(list, index + 1, hash);
         });
       }
