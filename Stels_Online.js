@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.53';
+    var STELS_ONLINE_VERSION = '1.0.54';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -10153,8 +10153,14 @@
               referer: referer,
               keys: Object.keys(obj).slice(0, 20),
               has_file: !!obj.file,
-              has_playlist: !!obj.playlist
+              has_playlist: !!obj.playlist,
+              file_type: obj.file ? typeof obj.file : '',
+              file_len: obj.file ? String(obj.file).length : 0,
+              file_sample: obj.file ? preview(obj.file, 320) : ''
             });
+            if (obj.file && parseEneyidaStructuredFile(obj.file, list, { title: select_title, referer: referer, poster: poster })) {
+              continue;
+            }
             walkPlayerNode(obj.file || obj.playlist || obj, list, { title: select_title, referer: referer, poster: poster });
           }
         }
@@ -10202,6 +10208,138 @@
         return list;
       }
 
+      function parseEneyidaSubs(str, referer) {
+        str = String(str || '').trim();
+        if (!str || str === '[' || str === '[]') return false;
+        try {
+          var out = [];
+          var parsed = component.parsePlaylist ? component.parsePlaylist(str) : [];
+          (parsed || []).forEach(function (item) {
+            var link = item.links && item.links[0] || item.url || item.src || '';
+            if (link) out.push({
+              label: item.label || item.title || item.name || 'Субтитри',
+              url: component.processSubs ? component.processSubs(normalizeStreamUrl(link, referer)) : normalizeStreamUrl(link, referer)
+            });
+          });
+          return out.length ? out : false;
+        } catch (e) {
+          stelsLog('eneyida-subtitle-parse-error', { sample: preview(str, 160), error: e && (e.message || e.toString()) });
+          return false;
+        }
+      }
+
+      function eneyidaNodeTitle(node) {
+        return cleanText(node && (node.title || node.comment || node.name || node.label) || '');
+      }
+
+      function eneyidaNodeFile(node) {
+        return node && (node.file || node.hls || node.src || node.url || '') || '';
+      }
+
+      function eneyidaIsFolder(node) {
+        return node && node.folder && Array.isArray(node.folder);
+      }
+
+      function eneyidaAddEpisode(list, epNode, seasonNum, episodeNum, voiceName, referer, fallbackPoster) {
+        var file = eneyidaNodeFile(epNode);
+        if (!file) return false;
+        var epTitle = eneyidaNodeTitle(epNode);
+        episodeNum = episodeNum || parseEpisodeOnly(epTitle) || parseInt(epNode.episode || epNode.episode_id || epNode.id || 0, 10) || 0;
+        if (!episodeNum) episodeNum = 1;
+        seasonNum = seasonNum || parseSeasonOnly(epTitle) || 1;
+        voiceName = cleanText(voiceName || epNode.voice || epNode.translation || 'Eneyida');
+        var stream = normalizeStreamUrl(file, referer);
+        if (!stream) return false;
+        var title = component.formatEpisodeTitle ? component.formatEpisodeTitle(seasonNum, episodeNum) : ('Сезон ' + seasonNum + ' Серія ' + episodeNum);
+        var poster = absolute(epNode.poster || fallbackPoster || '', referer);
+        uniquePush(list, {
+          title: title,
+          quality: /\.m3u8/i.test(stream) ? 'HLS' : 'Eneyida',
+          info: voiceName ? ' / ' + voiceName : '',
+          voice: voiceName,
+          season: seasonNum,
+          episode: episodeNum,
+          stream: stream,
+          poster: poster,
+          referer: referer || ref,
+          subtitles: parseEneyidaSubs(epNode.subtitle || epNode.subtitles || '', referer)
+        }, stream + '|' + seasonNum + '|' + episodeNum + '|' + voiceName);
+        return true;
+      }
+
+      function parseEneyidaStructuredFile(playerFile, list, ctx) {
+        var json = tryParseJsonLike(playerFile);
+        if (!(json && Array.isArray(json))) return false;
+
+        var before = list.length;
+        var structure = [];
+        var referer = ctx && ctx.referer || ref;
+        var poster = ctx && ctx.poster || '';
+
+        json.forEach(function (seasonNode, seasonIndex) {
+          var seasonTitle = eneyidaNodeTitle(seasonNode);
+          var seasonNum = parseSeasonOnly(seasonTitle) || parseInt(seasonNode.season || seasonNode.season_id || seasonNode.id || 0, 10) || (seasonIndex + 1);
+          var seasonFolder = eneyidaIsFolder(seasonNode) ? seasonNode.folder : [];
+          var stat = { season: seasonNum, title: seasonTitle, voices: [] };
+
+          seasonFolder.forEach(function (child, childIndex) {
+            var childTitle = eneyidaNodeTitle(child);
+            var childEpisode = parseEpisodeOnly(childTitle);
+
+            // Варіант A: сезон -> озвучка -> серії
+            if (eneyidaIsFolder(child) && !childEpisode) {
+              var voiceName = childTitle || 'Eneyida';
+              var count = 0;
+              child.folder.forEach(function (epNode, epIndex) {
+                if (eneyidaAddEpisode(list, epNode, seasonNum, parseEpisodeOnly(eneyidaNodeTitle(epNode)) || (epIndex + 1), voiceName, referer, poster)) count++;
+              });
+              stat.voices.push({ voice: voiceName, episodes: count, mode: 'voice-folder' });
+              return;
+            }
+
+            // Варіант B: сезон -> серія -> озвучки
+            if (eneyidaIsFolder(child) && childEpisode) {
+              var voices = [];
+              child.folder.forEach(function (voiceNode) {
+                var voice = eneyidaNodeTitle(voiceNode) || cleanText(voiceNode.voice || voiceNode.translation || '') || 'Eneyida';
+                if (eneyidaAddEpisode(list, voiceNode, seasonNum, childEpisode, voice, referer, poster)) voices.push(voice);
+              });
+              stat.voices.push({ voice: voices.join(', ') || 'Eneyida', episodes: voices.length, mode: 'episode-folder' });
+              return;
+            }
+
+            // Варіант C: сезон -> серія з direct file
+            if (eneyidaNodeFile(child)) {
+              var voiceDirect = cleanText(child.voice || child.translation || child.translation_name || 'Eneyida');
+              var ok = eneyidaAddEpisode(list, child, seasonNum, childEpisode || (childIndex + 1), voiceDirect, referer, poster);
+              stat.voices.push({ voice: voiceDirect, episodes: ok ? 1 : 0, mode: 'direct-episode' });
+            }
+          });
+
+          structure.push(stat);
+        });
+
+        var added = list.length - before;
+        if (added) {
+          stelsLog('eneyida-structured-playerjs', {
+            added: added,
+            seasons_count: structure.length,
+            structure: structure,
+            sample: list.slice(before, before + 20).map(function (i) {
+              return 'S' + i.season + 'E' + i.episode + '|' + (i.voice || '') + '|' + (i.stream || '').slice(0, 120);
+            })
+          });
+        } else {
+          stelsLog('eneyida-structured-playerjs-empty', {
+            seasons_count: structure.length,
+            structure: structure,
+            file_sample: preview(playerFile, 500)
+          });
+        }
+
+        return added > 0;
+      }
+
       function pagePoster(root, pageUrl, fallback) {
         return absolute(
           fallback ||
@@ -10219,53 +10357,99 @@
           var root = $('<div>' + (html || '') + '</div>');
           var h1 = cleanText(root.find('h1').first().text() || root.find('.full-title,.title').first().text() || select_title);
           var poster = pagePoster(root, link, fallbackPoster);
-          var items = parseEmbeddedPlayers(html, link, poster);
-
-          items.forEach(function (item) {
-            if (!item.title || item.title === select_title) item.title = h1 || select_title;
-            if (!item.poster) item.poster = poster;
+          var pageItems = parseEmbeddedPlayers(html, link, poster);
+          var iframeList = root.find('iframe[src],iframe[data-src]').map(function () { return $(this).attr('src') || $(this).attr('data-src') || ''; }).get();
+          var mainIframe = '';
+          iframeList.forEach(function (src) {
+            src = absolute(src, link);
+            if (!mainIframe && /hdvbua\.pro\/embed\//i.test(src)) mainIframe = src;
           });
+          if (!mainIframe) {
+            iframeList.forEach(function (src) {
+              src = absolute(src, link);
+              if (!mainIframe && /hdvbua\.pro/i.test(src) && !/\/vid\//i.test(src)) mainIframe = src;
+            });
+          }
 
-          extract = items;
           stelsLog('eneyida-page', {
             page: link,
             title: h1,
             poster: poster,
-            items_count: extract.length,
-            direct_count: extract.filter(function (i) { return !!i.stream; }).length,
-            iframe_count: extract.filter(function (i) { return !!i.iframe; }).length,
-            sample: extract.slice(0, 12).map(function (i) { return (i.title || '') + '|' + (i.stream || i.iframe || ''); }),
+            page_items_count: pageItems.length,
+            page_direct_count: pageItems.filter(function (i) { return !!i.stream; }).length,
+            page_iframe_count: pageItems.filter(function (i) { return !!i.iframe; }).length,
+            page_sample: pageItems.slice(0, 12).map(function (i) { return (i.title || '') + '|' + (i.stream || i.iframe || ''); }),
             iframe_html_count: root.find('iframe').length,
-            iframe_src_sample: root.find('iframe').map(function () { return $(this).attr('src') || $(this).attr('data-src') || ''; }).get().slice(0, 8),
+            iframe_src_sample: iframeList.slice(0, 8),
+            selected_main_iframe: mainIframe,
             playerjs_count: ((html || '').match(/Playerjs\s*\(/ig) || []).length,
-            data_file_count: ((html || '').match(/(?:data-file|file|hls)\s*[:=]/ig) || []).length,
+            data_file_count: ((html || '').match(/\b(?:data-file|file|hls)\s*[:=]/ig) || []).length,
             season_word_count: ((html || '').match(/сезон|season/ig) || []).length,
             episode_word_count: ((html || '').match(/сер(?:і|и)я|episode/ig) || []).length
           });
 
-          if (extract.length) {
-            buildFilter();
-            render(currentItems());
-            clearSearchTimer();
-            doneLoading();
+          function finishWithItems(items, source) {
+            (items || []).forEach(function (item) {
+              if (!item.title || item.title === select_title) item.title = h1 || select_title;
+              if (!item.poster) item.poster = poster;
+            });
+            extract = items || [];
+            stelsLog('eneyida-extract-ready', {
+              source: source || '',
+              count: extract.length,
+              seasons: (function(){ var s=[]; extract.forEach(function(i){ if(i.season && s.indexOf(i.season)===-1) s.push(i.season); }); return s.sort(function(a,b){return a-b;}); })(),
+              voices: (function(){ var v=[]; extract.forEach(function(i){ var n=cleanText(i.voice || String(i.info||'').replace(/^\s*\/\s*/, '') || ''); if(n && v.indexOf(n)===-1) v.push(n); }); return v.slice(0,20); })(),
+              sample: extract.slice(0, 20).map(function (i) { return 'S' + (i.season||0) + 'E' + (i.episode||0) + '|' + (i.voice || i.info || '') + '|' + (i.title || '') + '|' + (i.stream || i.iframe || '').slice(0,120); })
+            });
+            if (extract.length) {
+              buildFilter();
+              render(currentItems());
+              clearSearchTimer();
+              doneLoading();
+            } else {
+              safeEmpty('no-player-on-page', { page: link, title: h1, html_sample: preview(html, 500) });
+            }
+          }
+
+          if (mainIframe) {
+            requestText(mainIframe, function (playerHtml) {
+              var playerItems = parseEmbeddedPlayers(playerHtml, mainIframe, poster);
+              stelsLog('eneyida-main-iframe-parsed', {
+                iframe: mainIframe,
+                count: playerItems.length,
+                direct_count: playerItems.filter(function (i) { return !!i.stream; }).length,
+                iframe_count: playerItems.filter(function (i) { return !!i.iframe; }).length,
+                sample: playerItems.slice(0, 20).map(function (i) { return 'S' + (i.season||0) + 'E' + (i.episode||0) + '|' + (i.voice || i.info || '') + '|' + (i.stream || i.iframe || '').slice(0,120); })
+              });
+              if (playerItems.length) finishWithItems(playerItems, 'main-iframe');
+              else finishWithItems(pageItems, 'page-fallback');
+            }, function (err) {
+              stelsLog('eneyida-main-iframe-fail', { iframe: mainIframe, error: err || '' });
+              finishWithItems(pageItems, 'page-fallback-after-iframe-error');
+            }, { kind: 'main-iframe', timeout: 10000, referer: link });
           } else {
-            safeEmpty('no-player-on-page', { page: link, title: h1, html_sample: preview(html, 500) });
+            finishWithItems(pageItems, 'page');
           }
         }, function (err) {
           safeEmpty(err || 'page-load-error', { page: link });
         }, { kind: 'title-page', timeout: 10000, referer: ref });
       }
 
+      function itemVoiceName(item) {
+        return cleanText(item && (item.voice || String(item.info || '').replace(/^\s*\/\s*/, '') || 'Eneyida') || 'Eneyida');
+      }
+
       function buildFilter() {
         var seasons = [];
         var seasonNums = [];
         var voices = [];
+        var matrix = {};
         (extract || []).forEach(function (item) {
           if (item.season) {
-            if (seasonNums.indexOf(item.season) === -1) {
-              seasonNums.push(item.season);
-              seasons.push(Lampa.Lang.translate('torrent_serial_season') + ' ' + item.season);
-            }
+            if (seasonNums.indexOf(item.season) === -1) seasonNums.push(item.season);
+            var voice = itemVoiceName(item);
+            matrix[item.season] = matrix[item.season] || {};
+            matrix[item.season][voice] = (matrix[item.season][voice] || 0) + 1;
           }
         });
         seasonNums.sort(function (a, b) { return a - b; });
@@ -10273,7 +10457,7 @@
           seasons = seasonNums.map(function (s) { return Lampa.Lang.translate('torrent_serial_season') + ' ' + s; });
           var selectedSeason = seasonNums[choice.season] || seasonNums[0];
           (extract || []).forEach(function (item) {
-            var voice = cleanText(item.info || item.voice || 'Eneyida');
+            var voice = itemVoiceName(item);
             if (item.season === selectedSeason && voices.indexOf(voice) === -1) voices.push(voice);
           });
         }
@@ -10288,19 +10472,35 @@
           var vi = filter_items.voice.indexOf(choice.voice_name);
           if (vi >= 0) choice.voice = vi;
         }
+        stelsLog('eneyida-filter-build', {
+          extract_count: (extract || []).length,
+          seasons: seasonNums,
+          selected_season: seasonNums[choice.season] || 0,
+          voices: voices,
+          selected_voice: voices[choice.voice] || '',
+          matrix: matrix
+        });
         component.filter(filter_items, choice);
       }
 
       function currentItems() {
         var items = (extract || []).slice(0);
+        var selectedSeason = 0;
+        var selectedVoice = '';
         if (filter_items.season_num && filter_items.season_num.length) {
-          var season = filter_items.season_num[choice.season] || filter_items.season_num[0];
-          var voice = filter_items.voice[choice.voice] || '';
+          selectedSeason = filter_items.season_num[choice.season] || filter_items.season_num[0];
+          selectedVoice = filter_items.voice[choice.voice] || '';
           items = items.filter(function (item) {
-            var itemVoice = cleanText(item.info || item.voice || 'Eneyida');
-            return item.season === season && (!voice || itemVoice === voice);
+            var itemVoice = itemVoiceName(item);
+            return item.season === selectedSeason && (!selectedVoice || itemVoice === selectedVoice);
           });
         }
+        stelsLog('eneyida-current-items', {
+          selected_season: selectedSeason,
+          selected_voice: selectedVoice,
+          count: items.length,
+          sample: items.slice(0, 20).map(function (i) { return 'S' + (i.season||0) + 'E' + (i.episode||0) + '|' + itemVoiceName(i) + '|' + (i.title || '') + '|' + (i.stream || i.iframe || '').slice(0, 100); })
+        });
         return items;
       }
 
@@ -10533,8 +10733,17 @@
       };
 
       this.filter = function (type, a, b) {
+        var prev = { season: choice.season, voice: choice.voice, voice_name: choice.voice_name };
         choice[a.stype] = b.index;
         if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index] || '';
+        stelsLog('eneyida-filter-change', {
+          type: type || '',
+          stype: a && a.stype || '',
+          index: b && b.index,
+          prev: prev,
+          next_raw: { season: choice.season, voice: choice.voice, voice_name: choice.voice_name },
+          current_filter: filter_items
+        });
         component.reset();
         buildFilter();
         render(currentItems());
@@ -20538,7 +20747,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.52: Eneyida переведено на прямий парсер eneyida.tv + hdvbua.pro без LampUA, історія перегляду збережена.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.54: Eneyida бере основний iframe hdvbua.pro/embed, парсить Playerjs file як структура сезон → озвучка → серії, додано розширений лог фільтрів.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
