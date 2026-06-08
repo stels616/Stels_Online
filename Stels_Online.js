@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.61';
+    var STELS_ONLINE_VERSION = '1.0.62';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -10106,14 +10106,14 @@
       function parseSeasonOnly(text) {
         text = cleanText(text || '');
         var m = text.match(/(?:сезон|season|s)\s*0*(\d+)/i) ||
-                text.match(/0*(\d+)\s*(?:сезон|season)/i);
+                text.match(/0*(\d+)\s*(?:сезон|season)\b/i);
         return m ? (parseInt(m[1], 10) || 0) : 0;
       }
 
       function parseEpisodeOnly(text) {
         text = cleanText(text || '');
         var m = text.match(/(?:сер(?:і|и)я|episode|e)\s*0*(\d+)/i) ||
-                text.match(/0*(\d+)\s*(?:сер(?:і|и)я|episode|епізод|эпизод)/i);
+                text.match(/0*(\d+)\s*(?:сер(?:і|и)я|episode|епізод|эпизод)\b/i);
         return m ? (parseInt(m[1], 10) || 0) : 0;
       }
 
@@ -10480,83 +10480,122 @@
         var referer = ctx && ctx.referer || ref;
         var poster = ctx && ctx.poster || '';
 
-        json.forEach(function (seasonNode, seasonIndex) {
-          var seasonTitle = eneyidaNodeTitle(seasonNode);
-          var seasonFolder = eneyidaIsFolder(seasonNode) ? seasonNode.folder : [];
+        function folderOf(node) {
+          return eneyidaIsFolder(node) ? node.folder : [];
+        }
 
-          // Варіант D: озвучка -> сезон -> серії. У деяких серіалах Eneyida
-          // верхній рівень є назвою перекладу, а сезони лежать всередині.
-          // Старий парсер сприймав вкладені "7 сезон" як озвучку і показував сезони у фільтрі перекладів.
-          var topLooksVoice = seasonFolder.some(function (child) { return eneyidaIsFolder(child) && parseSeasonOnly(eneyidaNodeTitle(child)); }) && !parseSeasonOnly(seasonTitle);
-          if (topLooksVoice) {
-            var topVoiceName = seasonTitle || 'Eneyida';
-            var voiceStat = { season: 0, title: seasonTitle, voices: [] };
-            seasonFolder.forEach(function (seasonChild, seasonChildIndex) {
-              var childSeasonTitle = eneyidaNodeTitle(seasonChild);
-              var childSeasonNum = parseSeasonOnly(childSeasonTitle) || parseInt(seasonChild.season || seasonChild.season_id || seasonChild.id || 0, 10) || (seasonChildIndex + 1);
-              var childFolder = eneyidaIsFolder(seasonChild) ? seasonChild.folder : [];
-              var count = 0;
-              childFolder.forEach(function (epNode, epIndex) {
-                if (eneyidaAddEpisode(list, epNode, childSeasonNum, parseEpisodeOnly(eneyidaNodeTitle(epNode)) || (epIndex + 1), topVoiceName, referer, poster)) count++;
-              });
-              voiceStat.voices.push({ voice: topVoiceName, season: childSeasonNum, episodes: count, mode: 'voice-season-folder' });
-            });
-            structure.push(voiceStat);
-            return;
-          }
+        function titleOf(node) {
+          return eneyidaNodeTitle(node);
+        }
 
+        function isSeasonNode(node) {
+          return !!parseSeasonOnly(titleOf(node));
+        }
+
+        function isEpisodeNode(node) {
+          return !!parseEpisodeOnly(titleOf(node)) || !!eneyidaNodeFile(node);
+        }
+
+        function rootShape(nodes) {
+          var seasonTop = 0;
+          var voiceTop = 0;
+          (nodes || []).forEach(function (top) {
+            var topTitle = titleOf(top);
+            var topFolder = folderOf(top);
+            if (parseSeasonOnly(topTitle)) seasonTop++;
+            if (!parseSeasonOnly(topTitle) && topFolder.some(function (child) { return folderOf(child).length && parseSeasonOnly(titleOf(child)); })) voiceTop++;
+          });
+          if (voiceTop > seasonTop) return 'voice-season-episode';
+          if (seasonTop > 0) return 'season-voice-episode';
+          return 'auto';
+        }
+
+        function addSeasonVoiceEpisodes(seasonNode, seasonIndex) {
+          var seasonTitle = titleOf(seasonNode);
           var seasonNum = parseSeasonOnly(seasonTitle) || parseInt(seasonNode.season || seasonNode.season_id || seasonNode.id || 0, 10) || (seasonIndex + 1);
           var stat = { season: seasonNum, title: seasonTitle, voices: [] };
+          var seasonFolder = folderOf(seasonNode);
 
           seasonFolder.forEach(function (child, childIndex) {
-            var childTitle = eneyidaNodeTitle(child);
+            var childTitle = titleOf(child);
             var childEpisode = parseEpisodeOnly(childTitle);
 
-            // Варіант A: сезон -> озвучка -> серії
-            if (eneyidaIsFolder(child) && !childEpisode) {
+            // season -> voice -> episodes
+            if (folderOf(child).length && !childEpisode) {
               var voiceName = childTitle || 'Eneyida';
               var count = 0;
-              child.folder.forEach(function (epNode, epIndex) {
-                if (eneyidaAddEpisode(list, epNode, seasonNum, parseEpisodeOnly(eneyidaNodeTitle(epNode)) || (epIndex + 1), voiceName, referer, poster)) count++;
+              folderOf(child).forEach(function (epNode, epIndex) {
+                if (eneyidaAddEpisode(list, epNode, seasonNum, parseEpisodeOnly(titleOf(epNode)) || (epIndex + 1), voiceName, referer, poster)) count++;
               });
-              stat.voices.push({ voice: voiceName, episodes: count, mode: 'voice-folder' });
+              stat.voices.push({ voice: voiceName, episodes: count, mode: 'season-voice-episode' });
               return;
             }
 
-            // Варіант B: сезон -> серія -> озвучки
-            if (eneyidaIsFolder(child) && childEpisode) {
+            // season -> episode -> voices
+            if (folderOf(child).length && childEpisode) {
               var voices = [];
-              child.folder.forEach(function (voiceNode) {
-                var voice = eneyidaNodeTitle(voiceNode) || cleanText(voiceNode.voice || voiceNode.translation || '') || 'Eneyida';
+              folderOf(child).forEach(function (voiceNode) {
+                var voice = titleOf(voiceNode) || cleanText(voiceNode.voice || voiceNode.translation || '') || 'Eneyida';
                 if (eneyidaAddEpisode(list, voiceNode, seasonNum, childEpisode, voice, referer, poster)) voices.push(voice);
               });
-              stat.voices.push({ voice: voices.join(', ') || 'Eneyida', episodes: voices.length, mode: 'episode-folder' });
+              stat.voices.push({ voice: voices.join(', ') || 'Eneyida', episodes: voices.length, mode: 'season-episode-voice' });
               return;
             }
 
-            // Варіант C: сезон -> серія з direct file
+            // season -> direct episode
             if (eneyidaNodeFile(child)) {
               var voiceDirect = cleanText(child.voice || child.translation || child.translation_name || 'Eneyida');
               var ok = eneyidaAddEpisode(list, child, seasonNum, childEpisode || (childIndex + 1), voiceDirect, referer, poster);
-              stat.voices.push({ voice: voiceDirect, episodes: ok ? 1 : 0, mode: 'direct-episode' });
+              stat.voices.push({ voice: voiceDirect, episodes: ok ? 1 : 0, mode: 'season-direct-episode' });
             }
           });
 
           structure.push(stat);
-        });
+        }
+
+        function addVoiceSeasonEpisodes(voiceNode, voiceIndex) {
+          var voiceName = titleOf(voiceNode) || 'Eneyida';
+          var stat = { voice: voiceName, index: voiceIndex + 1, seasons: [] };
+          folderOf(voiceNode).forEach(function (seasonChild, seasonChildIndex) {
+            var childSeasonTitle = titleOf(seasonChild);
+            var childSeasonNum = parseSeasonOnly(childSeasonTitle) || parseInt(seasonChild.season || seasonChild.season_id || seasonChild.id || 0, 10) || (seasonChildIndex + 1);
+            var count = 0;
+            folderOf(seasonChild).forEach(function (epNode, epIndex) {
+              // voice -> season -> episode, e.g. Fallout: BaibaKoTV -> 1 сезон -> Серія 1
+              if (eneyidaAddEpisode(list, epNode, childSeasonNum, parseEpisodeOnly(titleOf(epNode)) || (epIndex + 1), voiceName, referer, poster)) count++;
+            });
+            stat.seasons.push({ season: childSeasonNum, episodes: count, mode: 'voice-season-episode' });
+          });
+          structure.push(stat);
+        }
+
+        var shape = rootShape(json);
+        if (shape === 'voice-season-episode') {
+          json.forEach(function (voiceNode, voiceIndex) { addVoiceSeasonEpisodes(voiceNode, voiceIndex); });
+        } else if (shape === 'season-voice-episode') {
+          json.forEach(function (seasonNode, seasonIndex) { addSeasonVoiceEpisodes(seasonNode, seasonIndex); });
+        } else {
+          // Mixed/unknown fallback: choose branch per top node.
+          json.forEach(function (node, index) {
+            if (!parseSeasonOnly(titleOf(node)) && folderOf(node).some(function (child) { return folderOf(child).length && parseSeasonOnly(titleOf(child)); })) addVoiceSeasonEpisodes(node, index);
+            else addSeasonVoiceEpisodes(node, index);
+          });
+        }
 
         var added = list.length - before;
         if (added) {
           stelsLog('eneyida-structured-playerjs', {
             added: added,
+            shape: shape,
             seasons_count: structure.length,
             structure: structure,
-            sample: list.slice(before, before + 20).map(function (i) {
-              return 'S' + i.season + 'E' + i.episode + '|' + (i.voice || '') + '|' + (i.stream || '').slice(0, 120);
+            sample: list.slice(before, before + 24).map(function (i) {
+              return 'S' + i.season + 'E' + i.episode + '|' + (i.voice || '') + '|' + (i.title || '') + '|' + (i.stream || '').slice(0, 120);
             })
           });
         } else {
           stelsLog('eneyida-structured-playerjs-empty', {
+            shape: shape,
             seasons_count: structure.length,
             structure: structure,
             file_sample: preview(playerFile, 500)
@@ -21283,7 +21322,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.61: Eneyida: сувора перевірка частин/сіквелів, серіал не відкривається як фільм, PlayerJS voice->season виправлено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.62: Eneyida: сувора перевірка частин/сіквелів, серіал не відкривається як фільм, PlayerJS дерево визначається глобально: season->voice->episode або voice->season->episode.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
