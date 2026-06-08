@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.68';
+    var STELS_ONLINE_VERSION = '1.0.69';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -11398,42 +11398,106 @@
           return n && (t === n || titleHasWholeNeedle(t, n) || overlapScore(t, n) >= 0.75);
         });
       }
+      function stripTitleMetaForKinogo(title) {
+        var x = normalizeForCompare(title || '');
+        // прибрати рік, дужки, номери сезонів і службові слова, щоб "Пацаны (2019)" стало "пацаны"
+        x = x.replace(/\((?:19|20)\d{2}\)/g, ' ');
+        x = x.replace(/(?:^|\s)(?:19|20)\d{2}(?:\s|$)/g, ' ');
+        x = x.replace(/(?:^|\s)\d{1,2}\s*(?:сезон|season)(?:\s|$)/gi, ' ');
+        x = x.replace(/\s+/g, ' ').trim();
+        return x;
+      }
+      function kinogoExtraTokenCount(title, needle) {
+        var t = stripTitleMetaForKinogo(title).split(' ').filter(Boolean);
+        var n = stripTitleMetaForKinogo(needle).split(' ').filter(Boolean);
+        var used = {};
+        n.forEach(function (w) { used[w] = true; });
+        var extra = 0;
+        t.forEach(function (w) { if (!used[w]) extra++; });
+        return extra;
+      }
+      function hasExactCoreTitle(title) {
+        var core = stripTitleMetaForKinogo(title);
+        if (!core) return false;
+        return movieTitles().some(function (mt) {
+          var n = stripTitleMetaForKinogo(mt || '');
+          return n && core === n;
+        });
+      }
       function searchScore(item, query) {
         var title = (item && item.title) || '';
         var t = normalizeForCompare(title);
         var q = normalizeForCompare(query || '');
+        var core = stripTitleMetaForKinogo(title);
+        var qcore = stripTitleMetaForKinogo(query || '');
         var score = 0;
-        if (q && t === q) score += 120;
-        else if (q && titleHasWholeNeedle(t, q)) score += 70;
-        else if (q) score += Math.round(overlapScore(t, q) * 60);
+        var exactCore = !!(qcore && core === qcore);
+        var exactAnyCore = hasExactCoreTitle(title);
+
+        // Найважливіше: точна база назви має перемагати розширені назви.
+        // "Пацаны (2019)" > "Реальные пацаны", "Пацаны 4 сезон".
+        if (q && t === q) score += 170;
+        if (exactCore) score += 180;
+        else if (q && titleHasWholeNeedle(t, q)) score += 55;
+        else if (q) score += Math.round(overlapScore(t, q) * 45);
+
         movieTitles().forEach(function (mt) {
           var n = normalizeForCompare(mt || '');
+          var ncore = stripTitleMetaForKinogo(mt || '');
           if (!n) return;
-          if (t === n) score += 110;
-          else if (titleHasWholeNeedle(t, n)) score += 65;
-          else score += Math.round(overlapScore(t, n) * 45);
+          if (t === n) score += 150;
+          if (ncore && core === ncore) score += 150;
+          else if (titleHasWholeNeedle(t, n)) score += 45;
+          else score += Math.round(overlapScore(t, n) * 35);
         });
+
         var movie = object.movie || {};
         var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || '').slice(0, 4), 10) || 0;
-        if (year && item.year && Math.abs(parseInt(item.year, 10) - year) <= 1) score += 30;
+        var itemYear = parseInt(item.year || '', 10) || 0;
+        if (year && itemYear) {
+          if (Math.abs(itemYear - year) <= 1) score += 80;
+          else score -= Math.min(70, Math.abs(itemYear - year) * 4);
+        }
+
         var isSerial = !!(object.serial || object.movie && (object.movie.number_of_seasons || object.movie.first_air_date));
         var url = String(item.link || '').toLowerCase();
-        if (isSerial && /(serial|serialy|sezon|season|сезон)/i.test(title + ' ' + url)) score += 22;
-        if (isSerial && /(фильм|films|film)/i.test(title + ' ' + url) && !/serial/i.test(url)) score -= 25;
+        var combo = title + ' ' + url;
         var es = expectedSeasonNumber();
         var ts = titleSeasonNumber(title);
-        if (isSerial && es && ts === es) score += 45;
-        else if (isSerial && !es && ts) score -= Math.min(40, ts * 4); // не вибирати одразу 4/5 сезон, коли потрібна загальна картка серіалу
-        if (isSerial && !ts && /(сериал|serial)/i.test(title + ' ' + url)) score += 40;
+
+        if (isSerial) {
+          if (ts) {
+            if (es && ts === es) score += 45;
+            else if (!es) score -= Math.min(90, 35 + ts * 6); // загальна картка серіалу краще за окремий сезон
+          }
+          if (!ts && /(сериал|serial)/i.test(combo)) score += 30;
+          if (/films|\/films\//i.test(url) && !/serial/i.test(url)) score -= 45;
+        }
+
+        // Розширені назви типу "Реальные пацаны" не повинні перемагати точну "Пацаны".
+        if (!exactCore && !exactAnyCore) {
+          var refs = movieTitles().concat([query || '']);
+          var minExtra = 99;
+          refs.forEach(function (r) {
+            if (!r) return;
+            if (titleHasWholeNeedle(core, stripTitleMetaForKinogo(r))) minExtra = Math.min(minExtra, kinogoExtraTokenCount(title, r));
+          });
+          if (minExtra !== 99 && minExtra > 0) score -= Math.min(120, minExtra * 55);
+        }
+
+        // Сторінка без iframe уже кілька разів траплялась у /films/...; не забороняємо, але сильно знижуємо.
+        if (isSerial && /\/films\//i.test(url) && !/serial|sezon|season/i.test(url)) score -= 70;
         return score;
       }
       function selectBest(items, query) {
         var best = null;
+        var scores = [];
         (items || []).forEach(function (item) {
           var score = searchScore(item, query);
+          scores.push((item.title || '') + '|' + score + '|' + (item.link || ''));
           if (!best || score > best.score) best = { item: item, score: score };
         });
-        stelsLog('kinogo-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0 });
+        stelsLog('kinogo-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0, scores: scores.slice(0, 12) });
         return best && best.item || (items && items[0]);
       }
       function parseSearchItems(html) {
@@ -21075,10 +21139,35 @@
         }
       }
 
+      function stelsEnsureFullButtonLegacy58(e) {
+        try {
+          if (!e || e.type !== 'complite' || !e.object || !e.object.activity || !e.object.activity.render) return false;
+          var render = e.object.activity.render();
+          if (!render || !render.length || render.find('.view--stels_online').length) return false;
+          var target = render.find('.view--torrent').first();
+          if (!target.length) return false;
+          var movie = e.data && e.data.movie || e.object.movie || null;
+          if (!movie) return false;
+          var btn = stelsCreateFullButton(movie);
+          target.after(btn);
+          stelsLog('full-button-ensure-legacy58', { ok: true, title: movie.title || movie.name || movie.original_title || '', id: movie.id || movie.tmdb_id || '' });
+          return true;
+        } catch (err) {
+          stelsLog('full-button-ensure-legacy58-error', { error: err && (err.message || err.toString()) });
+          return false;
+        }
+      }
+
       Lampa.Listener.follow('full', function (e) {
-        if (e.type == 'complite' || e.type == 'render' || e.type == 'build') stelsEnsureFullButton(e);
+        if (e.type == 'complite') {
+          // Повернено базову логіку з 1.0.58: вставка саме після .view--torrent у момент full:complite.
+          stelsEnsureFullButtonLegacy58(e);
+          setTimeout(function () { stelsEnsureFullButtonLegacy58(e) || stelsEnsureFullButton(e); }, 40);
+          setTimeout(function () { stelsEnsureFullButton(e); }, 250);
+        }
+        else if (e.type == 'render' || e.type == 'build') stelsEnsureFullButton(e);
       });
-      Lampa.Listener.follow('activity', function () { setTimeout(function () { stelsEnsureFullButton(); }, 80); });
+      Lampa.Listener.follow('activity', function () { setTimeout(function () { stelsEnsureFullButton(); }, 80); setTimeout(function () { stelsEnsureFullButton(); }, 350); });
       // Якщо плагін підвантажився вже після події full:complite, кнопка має з'явитись без ручного оновлення сторінки.
       setTimeout(function () { stelsEnsureFullButton(); }, 50);
       setTimeout(function () { stelsEnsureFullButton(); }, 250);
@@ -21956,7 +22045,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.68: Eneyida більше не приймає розширену назву як точний збіг (Друзі ≠ Друзі та сусіди); Kinogo будує пошук з RU alternative_titles першими.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.69: Kinogo виправлено вибір точного результату (Пацаны 2019 замість Реальные пацаны); кнопка Stels_Online повернена до надійної логіки 1.0.58 з додатковими повторними вставками.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
