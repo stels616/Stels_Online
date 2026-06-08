@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.67';
+    var STELS_ONLINE_VERSION = '1.0.68';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -9845,6 +9845,25 @@
         return matched / needleTokens.length;
       }
 
+      function stelsIsStrictFullTitleMatch(title, needle) {
+        var titleN = normalizeForCompare(title || '');
+        var needleN = normalizeForCompare(needle || '');
+        if (!titleN || !needleN) return false;
+        if (titleN === needleN) return true;
+        var titleTokens = stelsCompareTokens(titleN);
+        var needleTokens = stelsCompareTokens(needleN);
+        if (!titleTokens.length || !needleTokens.length) return false;
+        // Для коротких однословних назв не дозволяємо збіг по входженню.
+        // Приклад: "Друзі" не має відкривати "Друзі та сусіди".
+        if (needleTokens.length === 1 || titleTokens.length === 1) {
+          if (needleTokens.length === 1 && titleTokens.length === 1 && needleTokens[0].length >= 6 && titleTokens[0].length >= 6) {
+            return stelsEditDistanceLimited(needleTokens[0], titleTokens[0], 1) <= 1;
+          }
+          return false;
+        }
+        return stelsHasFuzzyTitleTokenMatch(titleN, needleN) || stelsTitleOverlapScore(titleN, needleN) >= 0.86;
+      }
+
       function stelsTrailingNumberInfo(value) {
         var n = normalizeForCompare(value || '');
         var m = n.match(/^(.*?)(?:\s+|^)(\d{1,2})$/);
@@ -9917,11 +9936,11 @@
         var qN = normalizeForCompare(query);
         if (!titleN) return false;
         if (stelsIsWrongSequelTitle(title, query)) return false;
-        if (qN && (titleN === qN || stelsHasTitleTokenMatch(titleN, qN) || stelsHasFuzzyTitleTokenMatch(titleN, qN) || stelsTitleOverlapScore(titleN, qN) >= 0.75)) return true;
+        if (qN && stelsIsStrictFullTitleMatch(titleN, qN)) return true;
         var titles = movieTitles();
         for (var i = 0; i < titles.length; i++) {
           var t = normalizeForCompare(titles[i]);
-          if (t && (titleN === t || stelsHasTitleTokenMatch(titleN, t) || stelsHasFuzzyTitleTokenMatch(titleN, t) || stelsTitleOverlapScore(titleN, t) >= 0.75)) return true;
+          if (t && stelsIsStrictFullTitleMatch(titleN, t)) return true;
         }
         return false;
       }
@@ -9991,16 +10010,14 @@
         var score = 0;
         if (stelsIsWrongSequelTitle(titleRaw, query)) return -999;
         if (q && title === q) score += 120;
-        else if (q && stelsHasTitleTokenMatch(title, q)) score += 55;
-        else if (q && stelsHasFuzzyTitleTokenMatch(title, q)) score += 95;
-        else if (q) score += Math.round(stelsTitleOverlapScore(title, q) * 45);
+        else if (q && stelsIsStrictFullTitleMatch(title, q)) score += 95;
+        else if (q) score += Math.round(stelsTitleOverlapScore(title, q) * 25);
         var titles = movieTitles();
         titles.forEach(function (t) {
           var tn = normalizeForCompare(t);
           if (tn && title === tn) score += 105;
-          else if (tn && stelsHasTitleTokenMatch(title, tn)) score += 50;
-          else if (tn && stelsHasFuzzyTitleTokenMatch(title, tn)) score += 85;
-          else if (tn) score += Math.round(stelsTitleOverlapScore(title, tn) * 40);
+          else if (tn && stelsIsStrictFullTitleMatch(title, tn)) score += 85;
+          else if (tn) score += Math.round(stelsTitleOverlapScore(title, tn) * 20);
         });
         var movie = object.movie || {};
         var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '').slice(0, 4), 10);
@@ -11307,17 +11324,27 @@
       function movieTitles() {
         var movie = object.movie || {};
         var out = [];
-        [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(function (t) {
+        function push(t) {
           t = cleanText(t || '');
           if (t && out.indexOf(t) === -1) out.push(t);
-        });
+        }
+        function isRuAlt(a) {
+          var iso = String((a && (a.iso_3166_1 || a.country || a.iso || a.locale)) || '').toUpperCase();
+          return iso === 'RU' || iso === 'RUS' || /рус|рос/i.test(String((a && (a.type || a.note || a.language)) || ''));
+        }
+        var alts = movie.alternative_titles && movie.alternative_titles.results || movie.titles && movie.titles.results || [];
+        if (Array.isArray(alts)) {
+          alts.forEach(function (a) { if (isRuAlt(a)) push(a.title || a.name); });
+        }
         var orig = normalizeForCompare(movie.original_title || movie.original_name || '');
         var title = normalizeForCompare(movie.title || movie.name || select_title || '');
-        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') {
-          ['Пацаны', 'Пацани', 'Хлопаки', 'Хлопці', 'The Boys'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
-        }
-        if (orig === 'from' || title === 'ззовні' || title === 'извне') {
-          ['Извне', 'Ззовні', 'From', 'FROM'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
+        // Мінімальні відомі відповідники як fallback, якщо Lampa не передала RU alternative_titles.
+        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') ['Пацаны', 'Пацани', 'Хлопаки', 'Хлопці', 'The Boys'].forEach(push);
+        if (orig === 'from' || title === 'ззовні' || title === 'извне') ['Извне', 'Ззовні', 'From', 'FROM'].forEach(push);
+        if (orig === 'friends' || title === 'друзі' || title === 'друзья') ['Друзья', 'Друзі', 'Friends'].forEach(push);
+        [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(push);
+        if (Array.isArray(alts)) {
+          alts.forEach(function (a) { if (!isRuAlt(a)) push(a.title || a.name); });
         }
         return out;
       }
@@ -21929,7 +21956,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.67: виправлено стартову появу кнопки Stels_Online та пошук/парсинг Kinogo з ретраєм iframe stravers і вибором правильного серіалу.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.68: Eneyida більше не приймає розширену назву як точний збіг (Друзі ≠ Друзі та сусіди); Kinogo будує пошук з RU alternative_titles першими.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
