@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.95';
+    var STELS_ONLINE_VERSION = '1.0.96';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -12783,6 +12783,17 @@
         });
       }
 
+      function zetflixnetPickAndroidUrl(element) {
+        var q = element && element.qualitys || {};
+        var order = ['1080p', '720p', '480p', '360p', '240p', '144p', 'HLS'];
+        for (var i = 0; i < order.length; i++) {
+          var u = q[order[i]];
+          if (u && typeof u == 'string') return { label: order[i], url: component.fixLinkProtocol(u, false, 'full') };
+        }
+        var stream = element && element.stream || '';
+        return { label: stream && /\.m3u8(?:$|\?)/i.test(stream) ? 'HLS' : 'stream', url: component.fixLinkProtocol(stream, false, 'full') };
+      }
+
       function zetflixnetBuildPlayable(element, base, ctx) {
         base = base || {};
         var default_url = component.getDefaultQuality(element.qualitys, element.stream);
@@ -12791,35 +12802,39 @@
         base.quality = default_quality;
 
         if (stelsAndroidPlayerFixEnabled()) {
-          var hls = element && element.stream || '';
-          if (typeof hls == 'string' && /\.m3u8(?:$|\?)/i.test(hls)) {
-            base.url = component.fixLinkProtocol(hls, false, 'full');
-            base.file = base.url;
-            base.stream = base.url;
+          // На Android-вбудованому плеєрі Lampa signed HLS okcdn часто визначається як
+          // "пошкоджений". Тому для ZetflixNet в Android-режимі передаємо один прямий
+          // MP4/progressive потік без quality-map, playlist, reserve-url і службових headers.
+          var picked = zetflixnetPickAndroidUrl(element);
+          if (picked && picked.url) {
+            base.url = picked.url;
+            base.file = picked.url;
+            base.stream = picked.url;
             base.url_reserve = '';
             base.quality = false;
-            base.hls_manifest_timeout = 60000;
-            base._stels_zetflix_android_hls = true;
-            base._stels_android_direct_hls = true;
-            // Для okcdn signed HLS не передаємо custom headers у вбудований Android-плеєр:
-            // частина реалізацій Lampa/ExoPlayer через них відхиляє URL як пошкоджений.
+            base.method = 'play';
+            base._stels_zetflix_android_mode = picked.label;
             try { delete base.headers; } catch (e) { base.headers = false; }
+            try { delete base.qualitys; } catch (e2) {}
+            if (/\.m3u8(?:$|\?)/i.test(picked.url)) base.hls_manifest_timeout = 60000;
             stelsLog('zetflixnet-android-playable', {
               ctx: ctx || '',
               data_id: element && element.data_id || '',
               title: base.title || element && element.title || '',
               voice: base.voice_name || element && element.translate_voice || '',
+              selected_label: picked.label,
               selected_url: zlogUrlInfo(base.url),
-              reserve_url: zlogUrlInfo(base.url_reserve || ''),
+              stream_url: zlogUrlInfo(element && element.stream || ''),
+              quality_keys_source: element && element.qualitys ? Object.keys(element.qualitys) : [],
               quality_disabled: true,
               playlist_disabled: true,
-              reason: 'android_hls_only'
+              reason: 'android_single_mp4_preferred'
             });
           } else {
-            stelsLog('zetflixnet-android-playable-no-hls', {
+            stelsLog('zetflixnet-android-playable-no-url', {
               ctx: ctx || '',
               data_id: element && element.data_id || '',
-              stream: zlogUrlInfo(hls),
+              stream: zlogUrlInfo(element && element.stream || ''),
               default_url: zlogUrlInfo(default_url),
               quality_keys: default_quality ? Object.keys(default_quality) : []
             });
@@ -22459,8 +22474,10 @@
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_plugin_cache\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити кеш Stels_Online</div>\n            <div class=\"settings-param__descr\">Скинути збережені сезони, вибір озвучки, останні джерела та позначки перегляду. Налаштування джерел, проксі та cookie не очищаються.</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
 
-      template += "\n        <div class=\"settings-param stels-online-section-title\" data-name=\"stels_online_zetflixnet_settings_title\">\n            <div class=\"settings-param__name\" style=\"font-weight:700;opacity:.95\">Налаштування ZetflixNet</div>\n            <div class=\"settings-param__descr\">Окремі параметри для джерела ZetflixNet</div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Правка плеєра Андроїд</div>\n            <div class=\"settings-param__descr\">Для Android вмикає окремий режим ZetflixNet: прямий HTTPS HLS без карти якостей, без lazy-playlist, без reserve-url і без custom headers.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_zetflixnet_settings_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Налаштування ZetflixNet</div>\n            <div class=\"settings-param__descr\">Окремі параметри для джерела ZetflixNet</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
+      template += "\n        <div class=\"stels-online-zetflixnet-settings\" style=\"display:none\">";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Правка плеєра Андроїд</div>\n            <div class=\"settings-param__descr\">Для Android вмикає окремий режим ZetflixNet: один прямий MP4/OKCDN потік без карти якостей, без playlist, без reserve-url і без custom headers.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
+      template += "\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
@@ -22502,6 +22519,26 @@
                 setTimeout(function () {
                   try {
                     var first = stels_advanced_block.find('.selector:visible')[0];
+                    if (first) Lampa.Controller.collectionFocus(first, e.body);
+                  } catch (err) {}
+                }, 50);
+              }
+            });
+          }
+          var stels_zetflixnet_toggle = e.body.find('[data-name="stels_online_zetflixnet_settings_toggle"]');
+          var stels_zetflixnet_block = e.body.find('.stels-online-zetflixnet-settings');
+          if (stels_zetflixnet_toggle.length && stels_zetflixnet_block.length) {
+            stels_zetflixnet_block.detach().insertAfter(stels_zetflixnet_toggle).hide();
+            stels_zetflixnet_toggle.unbind('hover:enter').on('hover:enter', function () {
+              var opened = !stels_zetflixnet_block.is(':visible');
+              stels_zetflixnet_block.toggle(opened);
+              stels_zetflixnet_toggle.find('.settings-param__name').text(opened ? 'Сховати налаштування ZetflixNet' : 'Налаштування ZetflixNet');
+              stels_zetflixnet_toggle.find('.settings-param__status').removeClass('active error wait').toggleClass('active', opened);
+              stelsLog('zetflixnet-settings-toggle', { opened: opened });
+              if (opened) {
+                setTimeout(function () {
+                  try {
+                    var first = stels_zetflixnet_block.find('.selector:visible')[0];
                     if (first) Lampa.Controller.collectionFocus(first, e.body);
                   } catch (err) {}
                 }, 50);
@@ -22569,7 +22606,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.95: ZetflixNet Android: HLS лишається HTTPS, без reserve-url/custom headers/quality-map/playlist; Kinogo прибрано зі списків і налаштувань; перемикач Android перенесено в розділ «Налаштування ZetflixNet».' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.96: ZetflixNet Android: замість HLS передається один прямий MP4/OKCDN stream без quality/playlist/reserve; Налаштування ZetflixNet зроблено як окрему кнопку-розділ.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
