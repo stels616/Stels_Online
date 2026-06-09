@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.85';
+    var STELS_ONLINE_VERSION = '1.0.86';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13061,9 +13061,17 @@
 
         component.loading(true);
 
-        // ZetflixNet з HAR: спочатку пробуємо знайти сторінку на zetflix.net,
-        // витягнути з неї iframe blink.stloadi.live / COLLAPS_CONF і тільки після цього
-        // беремо playlist/video API, який сам iframe викликає з pub=338.
+        // У HAR для ZetflixNet головний робочий ланцюжок такий:
+        // сторінка zetflix.net -> iframe blink.stloadi.live?kp=... ->
+        // https://plapi.cdnvideohub.com/api/v1/player/sv/playlist?pub=338&aggr=kp&id=...
+        // У Lampa зазвичай Kinopoisk ID вже є, тому не стартуємо з DLE-пошуку:
+        // DLE-пошук на zetflix.net часто повертає 404/порожню відповідь у Electron.
+        if (!isNaN(kinopoisk_id)) {
+          stelsLog('zetflixnet-direct-kp-start', { title: select_title, kp: kinopoisk_id });
+          loadPlaylist(kinopoisk_id, false);
+          return;
+        }
+
         searchSite(function (items) {
           if (items && items.length) {
             var best = selectBest(items);
@@ -13261,16 +13269,33 @@
         return out;
       }
 
-      function loadPlaylist(kp_id) {
+      function loadPlaylist(kp_id, force_direct) {
         var url = api + 'playlist?pub=' + encodeURIComponent(pub_id) + '&aggr=kp&id=' + encodeURIComponent(kp_id);
+        var use_prox = force_direct ? '' : prox_api;
+        var use_enc = force_direct ? '' : prox_enc_api;
         network.clear();
         network.timeout(12000);
-        network['native'](component.proxyLink(url, prox_api, prox_enc_api), function (json) {
+        network['native'](component.proxyLink(url, use_prox, use_enc), function (json) {
+          stelsLog('zetflixnet-playlist-response', { kp: kp_id, direct: !!force_direct, ok: true });
           parsePlaylist(json, kp_id);
         }, function (a, c) {
-          if (a.status == 500 && !a.responseText || a.status == 0 && a.statusText !== 'timeout') {
+          var status = a && a.status;
+          var message = network.errorDecode(a, c);
+          stelsLog('zetflixnet-playlist-error', { kp: kp_id, direct: !!force_direct, status: status || 0, message: message || '' });
+
+          // Якщо увімкнений proxy для CDNVideoHub, він може віддати 404 саме на pub=338.
+          // Повторюємо прямим URL, як у HAR, і тільки після цього показуємо помилку.
+          if (!force_direct && use_prox) {
+            loadPlaylist(kp_id, true);
+            return;
+          }
+
+          if (status == 404 || status == 500 && !a.responseText || status == 0 && a.statusText !== 'timeout') {
             parsePlaylist(null, kp_id);
-          } else component.empty(network.errorDecode(a, c));
+          } else {
+            component.loading(false);
+            component.empty(message || Lampa.Lang.translate('stels_online_nolink'));
+          }
         }, false, {
           headers: api_headers
         });
@@ -13381,13 +13406,15 @@
         return items;
       }
 
-      function getStream(element, call, error) {
+      function getStream(element, call, error, force_direct) {
         if (element.stream) return call(element);
         if (!element.data_id) return error();
         var url = api + 'video/' + encodeURIComponent(element.data_id);
+        var use_prox = force_direct ? '' : prox_api;
+        var use_enc = force_direct ? '' : prox_enc_api;
         network.clear();
         network.timeout(12000);
-        network['native'](component.proxyLink(url, prox_api, prox_enc_api), function (json) {
+        network['native'](component.proxyLink(url, use_prox, use_enc), function (json) {
           if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, null);
           if (json && json.sources) {
             var file = '', quality = false;
@@ -13403,7 +13430,10 @@
               call(element);
             } else error();
           } else error();
-        }, function () { error(); }, false, {
+        }, function (a, c) {
+          stelsLog('zetflixnet-video-error', { data_id: element.data_id, direct: !!force_direct, status: a && a.status || 0, message: network.errorDecode(a, c) || '' });
+          if (!force_direct && use_prox) getStream(element, call, error, true);else error();
+        }, false, {
           headers: api_headers
         });
       }
@@ -23103,7 +23133,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.85: ZetflixNet перероблено окремим parser-ом за HAR: пошук/сторінка zetflix.net -> iframe blink.stloadi.live -> playlist/video API pub=338; Kinogo-зміни 1.0.83 збережені.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.86: ZetflixNet виправлено: при наявному Kinopoisk ID одразу використовується HAR-ланцюжок blink/plapi pub=338 без DLE-пошуку, додано fallback direct/no-proxy для playlist/video.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
