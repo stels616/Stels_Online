@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.91';
+    var STELS_ONLINE_VERSION = '1.0.92';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13472,6 +13472,90 @@
         return items;
       }
 
+      function zetflixnetItemToElement(data, baseElement) {
+        if (!data) return null;
+        var voice = data.voiceStudio || data.voiceType || '';
+        var season = data.season || baseElement && baseElement.season || 0;
+        var episode = data.episode || baseElement && baseElement.episode || 0;
+        return {
+          title: season ? component.formatEpisodeTitle(season, episode) : extract.title_name || select_title,
+          quality: '360p ~ 1080p',
+          info: voice ? ' / ' + Lampa.Utils.shortText(voice, 50) : '',
+          data_id: data.vkId,
+          season: season ? '' + season : '',
+          episode: episode || '',
+          translate_voice: voice,
+          voice_name: voice,
+          media: data,
+          timeline: baseElement && baseElement.timeline || null
+        };
+      }
+
+      function zetflixnetFindAlt(element, voiceName) {
+        voiceName = String(voiceName || '');
+        if (!voiceName || !(extract && extract.items && extract.items.length)) return null;
+        var season = parseInt(element && element.season || 0, 10) || 0;
+        var episode = parseInt(element && element.episode || 0, 10) || 0;
+        var found = null;
+        extract.items.forEach(function (data) {
+          if (found) return;
+          var voice = data.voiceStudio || data.voiceType || '';
+          if (voice !== voiceName) return;
+          if (season || episode) {
+            if ((parseInt(data.season || 0, 10) || 0) === season && (parseInt(data.episode || 0, 10) || 0) === episode) found = data;
+          } else if (!(parseInt(data.season || 0, 10) || 0) && !(parseInt(data.episode || 0, 10) || 0)) found = data;
+        });
+        return zetflixnetItemToElement(found, element);
+      }
+
+      function zetflixnetVoiceovers(element, selectedVoice) {
+        if (!(filter_items.voice && filter_items.voice.length > 1)) return false;
+        selectedVoice = selectedVoice || element && (element.translate_voice || element.voice_name || (element.media && (element.media.voiceStudio || element.media.voiceType))) || filter_items.voice[choice.voice] || '';
+        return filter_items.voice.map(function (voiceName, index) {
+          return {
+            index: index,
+            language: voiceName,
+            name: voiceName,
+            label: 'ZetflixNet',
+            selected: voiceName === selectedVoice,
+            enabled: true,
+            onSelect: function () {
+              if (voiceName === selectedVoice) return;
+              var target = zetflixnetFindAlt(element, voiceName);
+              if (!target || !target.data_id) {
+                stelsLog('zetflixnet-voice-switch-missing', { voice: voiceName, season: element && element.season || '', episode: element && element.episode || '', current: element && element.data_id || '' });
+                Lampa.Noty.show('Не вдалося знайти переклад: ' + voiceName);
+                return;
+              }
+              try { Lampa.Player.loading(true); } catch (e) {}
+              stelsLog('zetflixnet-voice-switch-start', { voice: voiceName, data_id: target.data_id, season: target.season || '', episode: target.episode || '', title: target.title || '' });
+              getStream(target, function (item) {
+                try { Lampa.Player.loading(false); } catch (e2) {}
+                var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+                var play = stelsSanitizeAndroidPlayable({
+                  url: component.getDefaultQuality(item.qualitys, item.stream),
+                  quality: component.renameQualityMap(item.qualitys),
+                  timeline: current.timeline || item.timeline || element.timeline,
+                  poster: current.poster || item.poster || element.poster || '',
+                  title: current.title || (item.season ? item.title : select_title + (item.title == select_title ? '' : ' / ' + item.title)),
+                  season: item.season || current.season || '',
+                  episode: item.episode || current.episode || '',
+                  voice_name: voiceName,
+                  translate: { tracks: zetflixnetVoiceovers(item, voiceName) || [] },
+                  voiceovers: zetflixnetVoiceovers(item, voiceName)
+                }, 'zetflixnet-voice-switch');
+                stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality) : [] });
+                Lampa.Player.play(play);
+              }, function (err) {
+                try { Lampa.Player.loading(false); } catch (e3) {}
+                stelsLog('zetflixnet-voice-switch-fail', { voice: voiceName, error: err || '', season: element && element.season || '', episode: element && element.episode || '' });
+                Lampa.Noty.show('Не вдалося завантажити переклад: ' + voiceName);
+              });
+            }
+          };
+        });
+      }
+
       function getStream(element, call, error, force_direct) {
         if (element.stream) {
           stelsLog('zetflixnet-getstream-cache-hit', { data_id: element.data_id || '', stream: zlogUrlInfo(element.stream), quality_keys: element.qualitys ? Object.keys(element.qualitys) : [] });
@@ -13548,13 +13632,20 @@
             element.loading = true;
             getStream(element, function (element) {
               element.loading = false;
+              var selected_voice = element.translate_voice || element.voice_name || (element.media && (element.media.voiceStudio || element.media.voiceType)) || filter_items.voice[choice.voice] || '';
+              var voice_tracks = zetflixnetVoiceovers(element, selected_voice);
               var first = {
                 url: component.getDefaultQuality(element.qualitys, element.stream),
                 quality: component.renameQualityMap(element.qualitys),
                 timeline: element.timeline,
-                title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title)
+                title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title),
+                season: element.season || '',
+                episode: element.episode || '',
+                voice_name: selected_voice || '',
+                translate: voice_tracks ? { tracks: voice_tracks } : undefined,
+                voiceovers: voice_tracks
               };
-              stelsLog('zetflixnet-player-first', { data_id: element.data_id || '', title: first.title || '', selected_url: zlogUrlInfo(first.url), raw_stream: zlogUrlInfo(element.stream), quality_keys: first.quality ? Object.keys(first.quality) : [], quality_map: first.quality ? Object.keys(first.quality).map(function (k) { return { key: k, url: zlogUrlInfo(first.quality[k]) }; }) : [] });
+              stelsLog('zetflixnet-player-first', { data_id: element.data_id || '', title: first.title || '', voice: selected_voice || '', voice_count: voice_tracks ? voice_tracks.length : 0, selected_url: zlogUrlInfo(first.url), raw_stream: zlogUrlInfo(element.stream), quality_keys: first.quality ? Object.keys(first.quality) : [], quality_map: first.quality ? Object.keys(first.quality).map(function (k) { return { key: k, url: zlogUrlInfo(first.quality[k]) }; }) : [] });
               Lampa.Player.play(first);
               if (element.season && Lampa.Platform.version) {
                 var playlist = [];
@@ -13570,7 +13661,12 @@
                         }, function () { cell.url = ''; call(); });
                       },
                       timeline: elem.timeline,
-                      title: elem.title
+                      title: elem.title,
+                      season: elem.season || '',
+                      episode: elem.episode || '',
+                      voice_name: elem.translate_voice || filter_items.voice[choice.voice] || '',
+                      translate: zetflixnetVoiceovers(elem, elem.translate_voice || filter_items.voice[choice.voice] || '') ? { tracks: zetflixnetVoiceovers(elem, elem.translate_voice || filter_items.voice[choice.voice] || '') } : undefined,
+                      voiceovers: zetflixnetVoiceovers(elem, elem.translate_voice || filter_items.voice[choice.voice] || '')
                     };
                     playlist.push(cell);
                   }
@@ -23224,7 +23320,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.90: ZetflixNet fix: video API спочатку прямий без proxy; OKCDN/HLS stream URL у плеєр напряму без apn-proxy; debug-лог залишено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.92: ZetflixNet: додано перемикання перекладу прямо в плеєрі через voiceovers/translate tracks; фільми лишаються однією карточкою з перекладами у фільтрі.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
