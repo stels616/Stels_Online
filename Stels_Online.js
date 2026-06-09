@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.82';
+    var STELS_ONLINE_VERSION = '1.0.83';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -11679,6 +11679,11 @@
                 h['X-Requested-With'] = 'XMLHttpRequest';
                 h['Origin'] = host();
                 h['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+              } else {
+                h['Upgrade-Insecure-Requests'] = '1';
+                h['Sec-Fetch-Site'] = options.secFetchSite || 'same-origin';
+                h['Sec-Fetch-Mode'] = options.secFetchMode || 'navigate';
+                h['Sec-Fetch-Dest'] = options.secFetchDest || 'document';
               }
               var kc = kinogoCookie();
               if (kc) h['Cookie'] = kc;
@@ -11879,6 +11884,32 @@
         if (isSerial && /\/films\//i.test(url) && !/serial|sezon|season/i.test(url)) score -= 70;
         return score;
       }
+      function cloneKinogoItem(item) {
+        var c = {};
+        Object.keys(item || {}).forEach(function (k) { c[k] = item[k]; });
+        return c;
+      }
+      function isSameKinogoItem(a, b) {
+        return String(a && a.link || '') === String(b && b.link || '');
+      }
+      function prepareAlternativeItems(items, query, bestItem) {
+        var ranked = [];
+        (items || []).forEach(function (item) {
+          var score = searchScore(item, query);
+          if (!bestItem || !isSameKinogoItem(item, bestItem)) ranked.push({ item: item, score: score });
+        });
+        ranked.sort(function (a, b) { return b.score - a.score; });
+        return ranked.filter(function (r) {
+          if (!r || !r.item || !r.item.link) return false;
+          // Для серіалів залишаємо і сторінки сезонів: вони часто відкриваються, коли загальна сторінка блокується Cloudflare,
+          // а stravers-player всередині все одно містить повний fileList сезонів/серій.
+          return r.score >= 90 || /(?:sezon|season|сезон|serial|serialy)/i.test((r.item.title || '') + ' ' + (r.item.link || ''));
+        }).map(function (r) {
+          var c = cloneKinogoItem(r.item);
+          c._score = r.score;
+          return c;
+        });
+      }
       function selectBest(items, query) {
         var best = null;
         var scores = [];
@@ -11893,7 +11924,11 @@
           stelsLog('kinogo-search-best-reject', { query: query, best_title: best && best.item && best.item.title || '', best_score: best && best.score || 0, reason: 'low-score' });
           return null;
         }
-        return best.item;
+        var out = cloneKinogoItem(best.item);
+        out._score = best.score;
+        out._kinogo_alternatives = prepareAlternativeItems(items, query, best.item);
+        stelsLog('kinogo-alternatives-prepared', { query: query, best: (out.title || '') + '|' + (out.link || ''), count: out._kinogo_alternatives.length, sample: out._kinogo_alternatives.slice(0, 10).map(function (i) { return (i.title || '') + '|' + (i._score || 0) + '|' + (i.link || ''); }) });
+        return out;
       }
       function parseSearchItems(html) {
         html = maybeDecode(html || '');
@@ -12108,6 +12143,21 @@
       }
       function loadPage(item) {
         component.loading(true);
+        function tryAlternativePage(reason) {
+          var alts = (item && item._kinogo_alternatives) || [];
+          while (alts.length) {
+            var next = alts.shift();
+            if (!next || !next.link || next.link === item.link || next._tried_as_alt) continue;
+            next._tried_as_alt = true;
+            next._kinogo_alternatives = alts;
+            stelsLog('kinogo-page-alternative-retry', { from: item && item.link || '', to: next.link, title: next.title || '', score: next._score || 0, reason: reason || '' });
+            component.loading(false);
+            loadPage(next);
+            return true;
+          }
+          stelsLog('kinogo-page-alternative-empty', { page: item && item.link || '', reason: reason || '' });
+          return false;
+        }
         function startPageRequest() {
         requestText(item.link, function (html) {
           if (destroyed) return;
@@ -12128,14 +12178,14 @@
               component.loading(false);
               return loadPage(seasonLinks[0]);
             }
-            component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return;
+            if (tryAlternativePage('no-iframe')) return; component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return;
           }
           mainReferer = item.link;
           function handlePlayer(playerHtml) {
             if (destroyed) return;
             extract = parsePlayerHtml(playerHtml, iframe, poster, title);
             component.loading(false);
-            if (!extract.length) { component.empty('Kinogo: не вдалося розібрати список сезонів/перекладів'); return; }
+            if (!extract.length) { if (tryAlternativePage('empty-filelist')) return; component.empty('Kinogo: не вдалося розібрати список сезонів/перекладів'); return; }
             buildFilter();
             render(currentItems());
             component.saveChoice(choice);
@@ -12145,11 +12195,12 @@
             requestText(iframe, handlePlayer, function (err2) {
               stelsLog('kinogo-player-request-fail', { iframe: iframe, error: err2 || '', retry: 'proxy' });
               var purl = proxy('iframe') ? proxy('iframe') + iframe : '';
-              if (!purl) { component.loading(false); component.empty(err2 || err || 'Kinogo player error'); return; }
-              requestText(purl, handlePlayer, function (err3) { component.loading(false); component.empty(err3 || err2 || err || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
+              if (!purl) { if (tryAlternativePage('player-direct-fail')) return; component.loading(false); component.empty(err2 || err || 'Kinogo player error'); return; }
+              requestText(purl, handlePlayer, function (err3) { if (tryAlternativePage('player-proxy-fail')) return; component.loading(false); component.empty(err3 || err2 || err || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
             }, { referer: host() + '/', timeout: 14000 });
           }, { referer: item.link, timeout: 12000 });
         }, function (err) {
+          if (/Cloudflare|403/i.test(String(err || '')) && tryAlternativePage('cloudflare-direct-page')) return;
           if (!item._proxy_retry) {
             item._proxy_retry = true;
             stelsLog('kinogo-page-proxy-retry', { page: item.link, error: err || '' });
@@ -12164,18 +12215,18 @@
               var decodedPage = kinogoDecodeText(htmlProxy).replace(/\\//g, '/');
               var si = decodedPage.indexOf('stravers.live');
               stelsLog('kinogo-page-proxy', { page: item.link, title: title, iframe: iframe, poster: !!poster, html_length: decodedPage.length, stravers_index: si, html_sample: si >= 0 ? decodedPage.slice(Math.max(0, si - 220), si + 320) : decodedPage.slice(0, 360) });
-              if (!iframe) { component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return; }
+              if (!iframe) { if (tryAlternativePage('proxy-no-iframe')) return; component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return; }
               mainReferer = item.link;
               function handlePlayer(playerHtml) {
                 if (destroyed) return;
                 extract = parsePlayerHtml(playerHtml, iframe, poster, title);
                 component.loading(false);
-                if (!extract.length) { component.empty('Kinogo: не вдалося розібрати список сезонів/перекладів'); return; }
+                if (!extract.length) { if (tryAlternativePage('proxy-empty-filelist')) return; component.empty('Kinogo: не вдалося розібрати список сезонів/перекладів'); return; }
                 buildFilter(); render(currentItems()); component.saveChoice(choice);
               }
               requestText(iframe, handlePlayer, function (errP) {
                 stelsLog('kinogo-player-proxy-after-page-proxy', { iframe: iframe, player_error: errP || '' });
-                requestKinogoProxyCandidates(iframe, handlePlayer, function (errP2) { component.loading(false); component.empty(errP2 || errP || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
+                requestKinogoProxyCandidates(iframe, handlePlayer, function (errP2) { if (tryAlternativePage('proxy-player-fail')) return; component.loading(false); component.empty(errP2 || errP || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
               }, { referer: item.link, timeout: 14000 });
             }, function (errProxy) {
               stelsLog('kinogo-page-proxy-fail', { page: item.link, error: errProxy || '' });
@@ -12187,7 +12238,7 @@
                 hs.some(function (h) {
                   if (h === current) return false;
                   var u = kinogoSamePathOnHost(item.link, h);
-                  if (u && u !== item.link) { nextItem = { title: item.title, link: u, poster: item.poster || '', year: item.year || '', _mirror_retry: true }; return true; }
+                  if (u && u !== item.link) { nextItem = { title: item.title, link: u, poster: item.poster || '', year: item.year || '', _mirror_retry: true, _kinogo_alternatives: item._kinogo_alternatives || [] }; return true; }
                   return false;
                 });
                 if (nextItem) {
@@ -12201,7 +12252,7 @@
                 stelsLog('kinogo-page-retry-after-warm', { page: item.link, error: errProxy || err || '' });
                 return warmKinogoNews(item, startPageRequest);
               }
-              component.loading(false); component.empty(errProxy || err || 'Kinogo page error');
+              if (tryAlternativePage(errProxy || err || 'page-proxy-fail')) return; component.loading(false); component.empty(errProxy || err || 'Kinogo page error');
             }, { timeout: 16000, referer: host() + '/' });
           }
           if (!item._warmed_retry && kinogoDleHash) {
@@ -12209,7 +12260,7 @@
             stelsLog('kinogo-page-retry-after-warm', { page: item.link, error: err || '' });
             return warmKinogoNews(item, startPageRequest);
           }
-          component.loading(false); component.empty(err || 'Kinogo page error');
+          if (tryAlternativePage(err || 'page-fail')) return; component.loading(false); component.empty(err || 'Kinogo page error');
         }, { timeout: 12000, referer: host() + '/' });
         }
         warmKinogoNews(item, startPageRequest);
@@ -22558,7 +22609,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.82: Kinogo: виправлено зависання після відкриття сторінки, додано safe parser/log помилок сторінки, покращено вибір загальної сторінки серіалу.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.83: Kinogo: додано fallback на альтернативні сторінки сезону, якщо загальна сторінка серіалу блокується Cloudflare; покращено headers і логування альтернатив.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
