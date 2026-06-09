@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.94';
+    var STELS_ONLINE_VERSION = '1.0.95';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -17,7 +17,7 @@
     var STELS_WATCH_HISTORY_MAX = 300;
 
     var STELS_REQUESTED_SOURCE_NAMES = [
-      'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'uaserials', 'kinogo', 'rezka720',
+      'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'uaserials', 'rezka720',
       'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
       'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'zetflixnet', 'collaps',
       'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'uafilm', 'kinotochka', 'iremux', 'remux',
@@ -41,7 +41,7 @@
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
       videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', kinoflix: 'KinoFlix',
-      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinogo: 'Kinogo', kinobase: 'Kinobase', asiage: 'AsiaGe',
+      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobase', asiage: 'AsiaGe',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
@@ -57,7 +57,7 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'rezka2',
-      eneyida: 'eneyida', uaserials: 'uaserials', kinogo: 'kinogo', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
+      eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
@@ -73,11 +73,6 @@
     function stelsGetHiddenSources() {
       try {
         var hidden = Lampa.Storage.get(STELS_SOURCES_HIDE_KEY, []);
-        if (Array.isArray(hidden) && hidden.indexOf('kinogo') !== -1 && Lampa.Storage.get('stels_online_kinogo_unhide_1066', '') !== '1') {
-          hidden = hidden.filter(function (x) { return stelsNormalizeSourceKey(x) !== 'kinogo'; });
-          Lampa.Storage.set(STELS_SOURCES_HIDE_KEY, hidden);
-          Lampa.Storage.set('stels_online_kinogo_unhide_1066', '1');
-        }
         return Array.isArray(hidden) ? hidden.map(stelsNormalizeSourceKey).filter(Boolean) : [];
       } catch (e) { return []; }
     }
@@ -346,6 +341,7 @@
           episode: out.episode || 0,
           has_url: !!(out.url || out.file),
           has_reserve: !!out.url_reserve,
+          has_file: !!out.file,
           quality_disabled: !!out._stels_original_quality,
           url_preview: stelsPreviewUrl(out.url || out.file || '')
         });
@@ -11507,814 +11503,7 @@
 
 
 
-    function kinogo(component, _object) {
-      var network = new Lampa.Reguest();
-      var object = _object || {};
-      var select_title = '';
-      var destroyed = false;
-      var extract = [];
-      var filter_items = { season: {}, voice: {}, source: { kinogo: 'Kinogo' } };
-      var choice = { season: 0, voice: 0, voice_name: '' };
-      var playerToken = '';
-      var playerHost = '';
-      var mainReferer = '';
-      var kinogoDleHash = '';
-
-      function cleanText(value) {
-        return component.decodeHtml(String(value == null ? '' : value)
-          .replace(/<script[\s\S]*?<\/script>/ig, ' ')
-          .replace(/<style[\s\S]*?<\/style>/ig, ' ')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim());
-      }
-      function host() {
-        var h = (Lampa.Storage.field('stels_online_kinogo_host') || 'kinogo.my') + '';
-        h = h.trim().replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
-        if (!h) h = 'kinogo.my';
-        return 'https://' + h;
-      }
-      function kinogoCookie() {
-        try { return String(Lampa.Storage.field('stels_online_kinogo_cookie') || '').trim(); }
-        catch (e) { return ''; }
-      }
-      function kinogoHostVariants() {
-        var first = host();
-        var out = [];
-        function add(h) {
-          h = String(h || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/g, '');
-          if (!h) return;
-          h = 'https://' + h;
-          if (out.indexOf(h) === -1) out.push(h);
-        }
-        add(first);
-        ['kinogo.my', 'kinogo.co', 'kinogo.io'].forEach(add);
-        return out;
-      }
-      function kinogoSamePathOnHost(url, newHost) {
-        url = String(url || ''); newHost = String(newHost || '').replace(/\/+$/g, '');
-        var m = url.match(/^https?:\/\/[^\/]+(\/.*)$/i);
-        return m ? (newHost + m[1]) : '';
-      }
-      function absolute(link, base) {
-        link = String(link || '').replace(/\\\//g, '/').replace(/&amp;/g, '&').trim();
-        if (!link) return '';
-        if (/^\/\//.test(link)) link = 'https:' + link;
-        if (!/^https?:\/\//i.test(link)) link = component.fixLink(link, base || host() + '/');
-        return link;
-      }
-      function maybeDecode(value) {
-        value = String(value || '').trim();
-        if (value.length > 80 && /^[A-Za-z0-9+\/=]+$/.test(value) && value.indexOf('<') === -1) {
-          try {
-            var decoded = atob(value);
-            if (/<html|<div|iframe|kinogo|stravers|token_movie/i.test(decoded)) return decoded;
-          } catch (e) {}
-        }
-        return value;
-      }
-      function kinogoDecodeText(html) {
-        html = maybeDecode(html || '');
-        try {
-          if (component && component.decodeHtml) return component.decodeHtml(String(html || ''));
-        } catch (e) {
-          stelsLog('kinogo-decode-html-error', { error: e && (e.message || e.toString()) || '' });
-        }
-        return String(html || '')
-          .replace(/&amp;/g, '&')
-          .replace(/&quot;/g, '"')
-          .replace(/&#039;|&apos;/g, "'")
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>');
-      }
-      function kinogoBrowserUserAgent() {
-        return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
-      }
-      function extractDleHash(html) {
-        html = String(html || '');
-        var m = html.match(/\bdle_login_hash\s*=\s*['"]([^'"]+)/i) ||
-                html.match(/\bdle_hash\s*[:=]\s*['"]?([a-f0-9]{20,40})/i) ||
-                html.match(/name\s*=\s*['"](?:dle_hash|user_hash)['"][^>]*value\s*=\s*['"]([^'"]+)/i) ||
-                html.match(/value\s*=\s*['"]([a-f0-9]{20,40})['"][^>]*name\s*=\s*['"](?:dle_hash|user_hash)['"]/i);
-        return m ? (m[1] || '') : '';
-      }
-      function kinogoLooksLikeValidSearchPage(text) {
-        text = String(text || '');
-        return /<title>\s*Поиск[\s\S]{0,80}найдено:/i.test(text) || /class=["'](?:short|shortstory|th-item|movie-item)/i.test(text) || /href=["'][^"']+\.html/i.test(text);
-      }
-      function kinogoIsCloudflare(text) {
-        text = String(text || '');
-        if (kinogoLooksLikeValidSearchPage(text)) return false;
-        return /Just a moment|challenges\.cloudflare\.com|cf-browser-verification|cf_clearance|Attention Required|Checking your browser|cf_chl_/i.test(text);
-      }
-      function kinogoReadableError(message) {
-        message = String(message || '');
-        if (kinogoIsCloudflare(message) || /<!DOCTYPE html>|<html/i.test(message)) return 'Kinogo: сайт повернув Cloudflare-захист. Зміни адресу Kinogo у налаштуваннях або перевір домен у браузері.';
-        return message;
-      }
-
-      function kinogoProxyUrl(url) {
-        var list = kinogoProxyCandidates(url);
-        return list.length ? list[0].url : '';
-      }
-      function kinogoProxyCandidates(url) {
-        var out = [], seen = {};
-        function add(u, mode) {
-          u = String(u || '');
-          if (!u || seen[u]) return;
-          seen[u] = true;
-          out.push({ url: u, mode: mode || 'proxy' });
-        }
-        function addBase(base, mode) {
-          base = String(base || '');
-          if (!base) return;
-          add(base + url, mode + ':raw');
-          try { if (component.proxyLink) add(component.proxyLink(url, base, '', 'enc2t'), mode + ':enc2t'); } catch (e) {}
-          try { if (component.proxyLink) add(component.proxyLink(url, base, '', 'enc2'), mode + ':enc2'); } catch (e) {}
-        }
-        try { addBase(proxy('cookie2'), 'cookie2'); } catch (e) {}
-        try { addBase(proxy('cookie'), 'cookie'); } catch (e) {}
-        try { addBase(proxy('cookie3'), 'cookie3'); } catch (e) {}
-        try { addBase(proxy('iframe'), 'iframe'); } catch (e) {}
-        addBase('https://cors.fx666.workers.dev/', 'fx666');
-        addBase('https://cors.nb557.workers.dev/', 'nb557');
-        addBase('https://cors557.deno.dev/', 'deno');
-        addBase('https://apn-latest.onrender.com/ip/', 'apn');
-        return out;
-      }
-      function requestText(url, success, fail, options) {
-        options = options || {};
-        try {
-          network.clear();
-          network.timeout(options.timeout || 10000);
-          network["native"](url, function (html) {
-            html = maybeDecode(html || '');
-            var dh = extractDleHash(html); if (dh) kinogoDleHash = dh;
-            stelsLog('kinogo-request-done', { url: url, length: String(html || '').length, valid_search: kinogoLooksLikeValidSearchPage(html), hash: !!dh, sample: String(html || '').slice(0, 260) });
-            if (kinogoIsCloudflare(html)) {
-              stelsLog('kinogo-cloudflare-detected', { url: url, has_valid_search: kinogoLooksLikeValidSearchPage(html), sample: String(html || '').slice(0, 520) });
-              if (fail) fail(kinogoReadableError(html));
-              return;
-            }
-            try { success(html); }
-            catch (e) {
-              var em = e && (e.stack || e.message || e.toString()) || 'success callback error';
-              stelsLog('kinogo-success-callback-error', { url: url, error: em });
-              if (fail) fail(em);
-            }
-          }, function (a, c) {
-            var message = '';
-            try { message = network.errorDecode(a, c); } catch (e) {}
-            message = kinogoReadableError(message || (a && (a.statusText || a.status) || c || 'request error') + '');
-            stelsLog('kinogo-request-fail', { url: url, status: a && a.status, statusText: a && a.statusText, message: message });
-            if (fail) fail(message);
-          }, options.postdata || false, {
-            dataType: 'text',
-            withCredentials: true,
-            headers: (function () {
-              var h = {
-                'User-Agent': kinogoBrowserUserAgent(),
-                'Accept': options.accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5',
-                'Referer': options.referer || host() + '/'
-              };
-              if (options.ajax || options.postdata) {
-                h['X-Requested-With'] = 'XMLHttpRequest';
-                h['Origin'] = host();
-                h['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
-              } else {
-                h['Upgrade-Insecure-Requests'] = '1';
-                h['Sec-Fetch-Site'] = options.secFetchSite || 'same-origin';
-                h['Sec-Fetch-Mode'] = options.secFetchMode || 'navigate';
-                h['Sec-Fetch-Dest'] = options.secFetchDest || 'document';
-              }
-              var kc = kinogoCookie();
-              if (kc) h['Cookie'] = kc;
-              return h;
-            })()
-          });
-        } catch (e) { if (fail) fail(e && (e.message || e.toString()) || 'request error'); }
-      }
-      function requestJson(url, post, success, fail, referer) {
-        requestText(url, function (text) {
-          try { success(JSON.parse(text || '{}')); }
-          catch (e) { if (fail) fail('JSON parse error'); }
-        }, fail, { postdata: post, timeout: 12000, referer: referer || mainReferer || host() + '/', accept: 'application/json,text/plain,*/*' });
-      }
-      function normalizeForCompare(value) {
-        return component.cleanTitle(String(value || '').toLowerCase().replace(/[’'`\"«»]/g, '').replace(/[\-\u2010-\u2015:]+/g, ' '));
-      }
-      function movieTitles() {
-        var movie = object.movie || {};
-        var out = [];
-        function push(t) {
-          t = cleanText(t || '');
-          if (t && out.indexOf(t) === -1) out.push(t);
-        }
-        function isRuAlt(a) {
-          var iso = String((a && (a.iso_3166_1 || a.country || a.iso || a.locale)) || '').toUpperCase();
-          return iso === 'RU' || iso === 'RUS' || /рус|рос/i.test(String((a && (a.type || a.note || a.language)) || ''));
-        }
-        var alts = movie.alternative_titles && movie.alternative_titles.results || movie.titles && movie.titles.results || [];
-        var orig = normalizeForCompare(movie.original_title || movie.original_name || '');
-        var title = normalizeForCompare(movie.title || movie.name || select_title || '');
-
-        // Для Kinogo російська назва має бути першою, але не кожна RU alternative title якісна.
-        // Спочатку ставимо найнадійніший відповідник за original_title/назвою Lampa, потім інші RU альтернативи.
-        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') ['Пацаны', 'The Boys', 'Хлопаки', 'Хлопці'].forEach(push);
-        if (orig === 'from' || title === 'ззовні' || title === 'извне') ['Извне', 'From', 'Ззовні'].forEach(push);
-        if (orig === 'friends' || title === 'друзі' || title === 'друзья') ['Друзья', 'Friends', 'Друзі'].forEach(push);
-        if (orig === 'rick and morty' || title === 'рік та морті' || title === 'рик и морти') ['Рик и Морти', 'Rick and Morty', 'Рік та Морті'].forEach(push);
-        if (orig === 'your friends neighbors' || orig === 'your friends and neighbors' || title === 'друзі та сусіди' || title === 'друзья и соседи') ['Друзья и соседи', 'Your Friends & Neighbors', 'Друзі та сусіди'].forEach(push);
-        if (orig === 'the flash' || title === 'флеш') ['Флэш', 'The Flash', 'Флеш'].forEach(push);
-
-        if (Array.isArray(alts)) {
-          alts.forEach(function (a) { if (isRuAlt(a)) push(a.title || a.name); });
-        }
-        [select_title, object.search, movie.title, movie.name, movie.original_title, movie.original_name].forEach(push);
-        if (Array.isArray(alts)) {
-          alts.forEach(function (a) { if (!isRuAlt(a)) push(a.title || a.name); });
-        }
-        return out;
-      }
-      function variants() {
-        var out = [];
-        var movie = object.movie || {};
-        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '').slice(0, 4), 10) || 0;
-        function push(c) { c = cleanText(c || ''); if (c && out.indexOf(c) === -1) out.push(c); }
-        movieTitles().forEach(function (t) {
-          var c = cleanText(t || '');
-          if (!c) return;
-          if (year && !/(?:^|\D)(19|20)\d{2}(?:\D|$)/.test(c)) push(c + ' ' + year);
-          push(c);
-        });
-        stelsLog('kinogo-variant-order', { year: year, result: out.slice(0, 8) });
-        return out.slice(0, 8);
-      }
-      function stelsEscapeRegExp(value) {
-        return String(value == null ? '' : value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      }
-      function compareTokens(value) {
-        value = normalizeForCompare(value || '');
-        if (!value) return [];
-        return value.split(/\s+/).filter(function (t) { return t && t.length > 1; });
-      }
-      function overlapScore(title, needle) {
-        var a = compareTokens(title), b = compareTokens(needle);
-        if (!a.length || !b.length) return 0;
-        var map = {};
-        a.forEach(function (t) { map[t] = true; });
-        var m = 0;
-        b.forEach(function (t) { if (map[t]) m++; });
-        return m / b.length;
-      }
-      function titleHasWholeNeedle(title, needle) {
-        var t = normalizeForCompare(title || ''), n = normalizeForCompare(needle || '');
-        if (!t || !n) return false;
-        if (t === n) return true;
-        if (n.length < 4) return false;
-        return new RegExp('(^|\\s)' + stelsEscapeRegExp(n) + '($|\\s)').test(t);
-      }
-      function titleSeasonNumber(title) {
-        var m = normalizeForCompare(title || '').match(/(?:^|\s)(\d{1,2})\s*(?:сезон|season)(?:\s|$)/i);
-        return m ? parseInt(m[1], 10) || 0 : 0;
-      }
-      function expectedSeasonNumber() {
-        var movie = object.movie || {};
-        var s = parseInt(object.season || object.s || movie.season_number || 0, 10) || 0;
-        if (!s && object.search) s = titleSeasonNumber(object.search);
-        return s;
-      }
-      function isRelevantTitle(title) {
-        var t = normalizeForCompare(title || '');
-        if (!t) return false;
-        return movieTitles().some(function (x) {
-          var n = normalizeForCompare(x || '');
-          return n && (t === n || titleHasWholeNeedle(t, n) || overlapScore(t, n) >= 0.75);
-        });
-      }
-      function stripTitleMetaForKinogo(title) {
-        var x = normalizeForCompare(title || '');
-        // прибрати рік, дужки, номери сезонів і службові слова, щоб "Пацаны (2019)" стало "пацаны"
-        x = x.replace(/\((?:19|20)\d{2}\)/g, ' ');
-        x = x.replace(/(?:^|\s)(?:19|20)\d{2}(?:\s|$)/g, ' ');
-        x = x.replace(/(?:^|\s)\d{1,2}\s*(?:сезон|season|sezon)(?:\s|$)/gi, ' ');
-        x = x.replace(/(?:^|\s)(?:сериал|serial|онлайн|online|смотреть|бесплатно)(?:\s|$)/gi, ' ');
-        x = x.replace(/\s+/g, ' ').trim();
-        return x;
-      }
-      function kinogoExtraTokenCount(title, needle) {
-        var t = stripTitleMetaForKinogo(title).split(' ').filter(Boolean);
-        var n = stripTitleMetaForKinogo(needle).split(' ').filter(Boolean);
-        var used = {};
-        n.forEach(function (w) { used[w] = true; });
-        var extra = 0;
-        t.forEach(function (w) { if (!used[w]) extra++; });
-        return extra;
-      }
-      function hasExactCoreTitle(title) {
-        var core = stripTitleMetaForKinogo(title);
-        if (!core) return false;
-        return movieTitles().some(function (mt) {
-          var n = stripTitleMetaForKinogo(mt || '');
-          return n && core === n;
-        });
-      }
-      function searchScore(item, query) {
-        var title = (item && item.title) || '';
-        var t = normalizeForCompare(title);
-        var q = normalizeForCompare(query || '');
-        var core = stripTitleMetaForKinogo(title);
-        var qcore = stripTitleMetaForKinogo(query || '');
-        var score = 0;
-        var exactCore = !!(qcore && core === qcore);
-        var exactAnyCore = hasExactCoreTitle(title);
-
-        // Найважливіше: точна база назви має перемагати розширені назви.
-        // "Пацаны (2019)" > "Реальные пацаны", "Пацаны 4 сезон".
-        if (q && t === q) score += 170;
-        if (exactCore) score += 180;
-        else if (q && titleHasWholeNeedle(t, q)) score += 55;
-        else if (q) score += Math.round(overlapScore(t, q) * 45);
-
-        movieTitles().forEach(function (mt) {
-          var n = normalizeForCompare(mt || '');
-          var ncore = stripTitleMetaForKinogo(mt || '');
-          if (!n) return;
-          if (t === n) score += 150;
-          if (ncore && core === ncore) score += 150;
-          else if (titleHasWholeNeedle(t, n)) score += 45;
-          else score += Math.round(overlapScore(t, n) * 35);
-        });
-
-        var movie = object.movie || {};
-        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || '').slice(0, 4), 10) || 0;
-        var itemYear = parseInt(item.year || '', 10) || 0;
-        if (year && itemYear) {
-          if (itemYear === year) score += 120;
-          else if (Math.abs(itemYear - year) <= 1) score += 50;
-          else score -= Math.min(120, Math.abs(itemYear - year) * 8);
-        }
-
-        var isSerial = !!(object.serial || object.movie && (object.movie.number_of_seasons || object.movie.first_air_date));
-        var url = String(item.link || '').toLowerCase();
-        var combo = title + ' ' + url;
-        var es = expectedSeasonNumber();
-        var ts = titleSeasonNumber(title);
-
-        if (isSerial) {
-          if (ts) {
-            if (es && ts === es) score += 45;
-            else if (!es) score -= Math.min(140, 55 + ts * 12); // загальна картка серіалу краще за окремий сезон
-          }
-          if (!ts && /(сериал|serial)/i.test(combo)) score += 85;
-          if (!ts && year && itemYear === year) score += 45;
-          if (/films|\/films\//i.test(url) && !/serial/i.test(url)) score -= 45;
-        }
-
-        // Розширені назви типу "Реальные пацаны" не повинні перемагати точну "Пацаны".
-        if (!exactCore && !exactAnyCore) {
-          var refs = movieTitles().concat([query || '']);
-          var minExtra = 99;
-          refs.forEach(function (r) {
-            if (!r) return;
-            if (titleHasWholeNeedle(core, stripTitleMetaForKinogo(r))) minExtra = Math.min(minExtra, kinogoExtraTokenCount(title, r));
-          });
-          if (minExtra !== 99 && minExtra > 0) score -= Math.min(120, minExtra * 55);
-        }
-
-        // Сторінка без iframe уже кілька разів траплялась у /films/...; не забороняємо, але сильно знижуємо.
-        if (isSerial && /\/films\//i.test(url) && !/serial|sezon|season/i.test(url)) score -= 70;
-        return score;
-      }
-      function cloneKinogoItem(item) {
-        var c = {};
-        Object.keys(item || {}).forEach(function (k) { c[k] = item[k]; });
-        return c;
-      }
-      function isSameKinogoItem(a, b) {
-        return String(a && a.link || '') === String(b && b.link || '');
-      }
-      function prepareAlternativeItems(items, query, bestItem) {
-        var ranked = [];
-        (items || []).forEach(function (item) {
-          var score = searchScore(item, query);
-          if (!bestItem || !isSameKinogoItem(item, bestItem)) ranked.push({ item: item, score: score });
-        });
-        ranked.sort(function (a, b) { return b.score - a.score; });
-        return ranked.filter(function (r) {
-          if (!r || !r.item || !r.item.link) return false;
-          // Для серіалів залишаємо і сторінки сезонів: вони часто відкриваються, коли загальна сторінка блокується Cloudflare,
-          // а stravers-player всередині все одно містить повний fileList сезонів/серій.
-          return r.score >= 90 || /(?:sezon|season|сезон|serial|serialy)/i.test((r.item.title || '') + ' ' + (r.item.link || ''));
-        }).map(function (r) {
-          var c = cloneKinogoItem(r.item);
-          c._score = r.score;
-          return c;
-        });
-      }
-      function selectBest(items, query) {
-        var best = null;
-        var scores = [];
-        (items || []).forEach(function (item) {
-          var score = searchScore(item, query);
-          scores.push((item.title || '') + '|' + score + '|' + (item.link || ''));
-          if (!best || score > best.score) best = { item: item, score: score };
-        });
-        stelsLog('kinogo-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0, scores: scores.slice(0, 12) });
-        // Якщо збіг слабкий, не відкриваємо випадковий фільм/серіал, а пробуємо наступну назву.
-        if (!best || best.score < 130) {
-          stelsLog('kinogo-search-best-reject', { query: query, best_title: best && best.item && best.item.title || '', best_score: best && best.score || 0, reason: 'low-score' });
-          return null;
-        }
-        var out = cloneKinogoItem(best.item);
-        out._score = best.score;
-        out._kinogo_alternatives = prepareAlternativeItems(items, query, best.item);
-        stelsLog('kinogo-alternatives-prepared', { query: query, best: (out.title || '') + '|' + (out.link || ''), count: out._kinogo_alternatives.length, sample: out._kinogo_alternatives.slice(0, 10).map(function (i) { return (i.title || '') + '|' + (i._score || 0) + '|' + (i.link || ''); }) });
-        return out;
-      }
-      function parseSearchItems(html) {
-        html = maybeDecode(html || '');
-        var root = $('<div>' + html + '</div>');
-        var items = [];
-        var seen = {};
-        var rawLinks = 0;
-        var skipped = [];
-        root.find('a[href]').each(function () {
-          var a = $(this);
-          var href = absolute(a.attr('href') || '', host() + '/');
-          rawLinks++;
-          if (!href || seen[href] || href.indexOf(host()) !== 0 || !/\.html(?:$|\?)/i.test(href)) return;
-          var box = a.closest('.short,article,.th-item,.movie-item,.item,.story,.shortstory,li');
-          var title = cleanText(a.attr('title') || a.find('.short-title,.th-title,.title,h1,h2,h3').first().text() || '');
-          if (!title && box && box.length) title = cleanText(box.find('.short-title,.th-title,.title,h1,h2,h3').first().text());
-          if (!title) title = cleanText(a.text());
-          if (!title || !isRelevantTitle(title)) { if (skipped.length < 12) skipped.push((title || '[no-title]') + '|' + href); return; }
-          var poster = '';
-          var text = cleanText((box && box.length ? box.text() : a.parent().text()) || title || '');
-          var ym = (text + ' ' + title).match(/\b(19|20)\d{2}\b/);
-          if (box && box.length) poster = box.find('img').first().attr('data-src') || box.find('img').first().attr('data-lazy') || box.find('img').first().attr('src') || '';
-          items.push({ title: title, link: href, poster: absolute(poster, href), year: ym ? ym[0] : '' });
-          seen[href] = true;
-        });
-        stelsLog('kinogo-search-results', { count: items.length, raw_links: rawLinks, skipped_sample: skipped, sample: items.slice(0, 10).map(function (i) { return i.title + '|' + i.link + '|' + (i.year || '') ; }) });
-        return items;
-      }
-      function parseIframe(html, pageUrl) {
-        html = maybeDecode(html || '');
-        var decoded = kinogoDecodeText(html).replace(/\\//g, '/');
-        var src = '';
-        try {
-          var re = /https?:\/\/[^"'<>\s]+stravers\.live\/\?[^"'<>\s]+/ig, m;
-          while ((m = re.exec(decoded))) { src = m[0]; break; }
-          if (!src) {
-            var attr = decoded.match(/(?:src|data-src|href)\s*=\s*["']([^"']*stravers\.live[^"']+)["']/i);
-            if (attr) src = attr[1];
-          }
-          if (!src && decoded.indexOf('stravers.live') >= 0) {
-            var any = decoded.match(/https?:\/\/[^\s"'<>]+stravers\.live[^\s"'<>]*/i);
-            if (any) src = any[0];
-          }
-          if (!src) {
-            var root = $('<div>' + decoded + '</div>');
-            src = root.find('iframe[src*="stravers.live"],li[data-src*="stravers.live"],div[data-src*="stravers.live"],a[href*="stravers.live"]').first().attr('src') ||
-                  root.find('li[data-src*="stravers.live"],div[data-src*="stravers.live"]').first().attr('data-src') ||
-                  root.find('a[href*="stravers.live"]').first().attr('href') || '';
-          }
-        } catch (e) {
-          stelsLog('kinogo-iframe-parse-error', { page: pageUrl, error: e && (e.stack || e.message || e.toString()) || '' });
-        }
-        src = String(src || '').replace(/&amp;/g, '&');
-        stelsLog('kinogo-iframe-detect', { page: pageUrl, found: !!src, src: src.slice(0, 260), stravers_index: decoded.indexOf('stravers.live'), sample: decoded.indexOf('stravers.live') >= 0 ? decoded.slice(Math.max(0, decoded.indexOf('stravers.live') - 180), decoded.indexOf('stravers.live') + 320) : decoded.slice(0, 320) });
-        return absolute(src, pageUrl);
-      }
-      function parseSeasonPageLinks(html, pageUrl) {
-        html = maybeDecode(html || '');
-        var decoded = kinogoDecodeText(html).replace(/\\//g, '/');
-        var root = $('<div>' + decoded + '</div>');
-        var links = [];
-        var seen = {};
-        root.find('a[href]').each(function () {
-          var a = $(this);
-          var href = absolute(a.attr('href') || '', pageUrl);
-          if (!href || seen[href] || href === pageUrl || href.indexOf(host()) !== 0 || !/\.html(?:$|\?)/i.test(href)) return;
-          var text = cleanText(a.attr('title') || a.text() || '');
-          var combo = normalizeForCompare(text + ' ' + href);
-          if (!/(сезон|season|sezon|s\d{1,2})/i.test(combo)) return;
-          var score = searchScore({ title: text || select_title, link: href, year: '' }, select_title);
-          var sm = combo.match(/(?:^|\s)(\d{1,2})\s*(?:сезон|season|sezon)(?:\s|$)/i);
-          var sn = sm ? parseInt(sm[1], 10) || 0 : 0;
-          if (sn && !expectedSeasonNumber() && sn > 1) score -= sn * 8;
-          links.push({ title: text || ('Сезон ' + (sn || 1)), link: href, poster: '', year: '', score: score });
-          seen[href] = true;
-        });
-        links.sort(function (a, b) { return (b.score || 0) - (a.score || 0); });
-        stelsLog('kinogo-season-links', { page: pageUrl, count: links.length, sample: links.slice(0, 10).map(function (i) { return i.title + '|' + i.score + '|' + i.link; }) });
-        return links;
-      }
-      function getParam(url, key) {
-        var m = String(url || '').match(new RegExp('[?&]' + key + '=([^&]+)'));
-        return m ? decodeURIComponent(m[1]) : '';
-      }
-      function parsePlayerHtml(html, iframeUrl, poster, title) {
-        html = maybeDecode(html || '');
-        playerHost = (iframeUrl.match(/^https?:\/\/[^\/]+/i) || [''])[0];
-        playerToken = getParam(iframeUrl, 'token') || playerToken;
-        var fileMatch = html.match(/const\s+fileList\s*=\s*JSON\.parse\('([\s\S]*?)'\)\s*;/) || html.match(/fileList\s*=\s*JSON\.parse\('([\s\S]*?)'\)/);
-        if (!fileMatch) {
-          stelsLog('kinogo-player-no-filelist', { iframe: iframeUrl, sample: html.slice(0, 600) });
-          return [];
-        }
-        var jsonText = fileMatch[1].replace(/\\'/g, "'");
-        var data;
-        try { data = JSON.parse(jsonText); }
-        catch (e) { stelsLog('kinogo-filelist-json-error', { error: e && (e.message || e.toString()) }); return []; }
-        var list = [];
-        function addEntry(obj) {
-          if (!obj || !obj.id) return;
-          var season = parseInt(obj.seasons || obj.season || 0, 10) || 0;
-          var episode = parseInt(obj.episode || 0, 10) || 0;
-          var voice = cleanText(obj.translation || obj.voice || obj.translation_name || 'Kinogo');
-          var q = cleanText(obj.quality || '');
-          var key = obj.id + ':' + season + ':' + episode + ':' + voice;
-          for (var i = 0; i < list.length; i++) if (list[i]._key === key) return;
-          list.push({ _key: key, id: obj.id, id_file: obj.id_file || '', title: season && episode ? ('Сезон ' + season + ' / Серія ' + episode) : (title || select_title), quality: q || 'Kinogo', season: season, episode: episode, voice: voice, info: voice, translate_voice: voice, poster: poster || '', iframe: iframeUrl });
-        }
-        if (data.type === 'serial' && data.all) {
-          Object.keys(data.all).forEach(function (s) {
-            var eps = data.all[s] || {};
-            Object.keys(eps).forEach(function (e) {
-              var voices = eps[e] || {};
-              Object.keys(voices).forEach(function (v) { addEntry(voices[v]); });
-            });
-          });
-        } else if (data.active) addEntry(data.active);
-        stelsLog('kinogo-filelist-parsed', { count: list.length, type: data.type || '', sample: list.slice(0, 16).map(function (i) { return 'S' + i.season + 'E' + i.episode + '|' + i.voice + '|' + i.id; }) });
-        return list;
-      }
-      function buildFilter() {
-        filter_items = { season: {}, voice: {}, source: { kinogo: 'Kinogo' } };
-        var seasons = [];
-        extract.forEach(function (i) { if (i.season && seasons.indexOf(i.season) === -1) seasons.push(i.season); });
-        seasons.sort(function (a,b){return a-b;});
-        seasons.forEach(function (s) { filter_items.season[s] = 'Сезон ' + s; });
-        if (!choice.season || !filter_items.season[choice.season]) choice.season = seasons[0] || 0;
-        var voices = [];
-        extract.forEach(function (i) { if ((!choice.season || i.season === choice.season) && i.voice && voices.indexOf(i.voice) === -1) voices.push(i.voice); });
-        voices.forEach(function (v, idx) { filter_items.voice[idx] = v; });
-        if (!choice.voice_name || voices.indexOf(choice.voice_name) === -1) { choice.voice = 0; choice.voice_name = voices[0] || ''; }
-        else choice.voice = voices.indexOf(choice.voice_name);
-        stelsLog('kinogo-filter-build', { seasons: seasons, selected_season: choice.season, voices: voices, selected_voice: choice.voice_name });
-      }
-      function currentItems() {
-        return extract.filter(function (i) { return (!choice.season || i.season === choice.season) && (!choice.voice_name || i.voice === choice.voice_name); });
-      }
-      function bestQuality(qmap) {
-        qmap = qmap || {};
-        var order = ['2160','1440','1080','720','480','360','240'];
-        for (var i = 0; i < order.length; i++) if (qmap[order[i]]) return { label: order[i], url: qmap[order[i]] };
-        for (var k in qmap) if (qmap[k]) return { label: k, url: qmap[k] };
-        return null;
-      }
-      function fetchStream(item, done, fail) {
-        var url = (playerHost || (item.iframe.match(/^https?:\/\/[^\/]+/i) || [''])[0]) + '/bnsi/movies/' + encodeURIComponent(item.id);
-        var post = 'token=' + encodeURIComponent(playerToken || getParam(item.iframe, 'token') || '') + '&av1=true&autoplay=0&audio=&subtitle=';
-        requestJson(url, post, function (data) {
-          var srcs = data.hlsSource || [];
-          var primary = srcs[0] || {};
-          var b = bestQuality(primary.quality || {});
-          if (!b || !b.url) return fail('Kinogo: потік не знайдено');
-          var quality = {};
-          srcs.forEach(function (s) {
-            var label = cleanText(s.label || item.voice || 'Kinogo');
-            var qbest = bestQuality(s.quality || {});
-            if (qbest && qbest.url) quality[label] = qbest.url;
-          });
-          done({ url: b.url, quality: Object.keys(quality).length > 1 ? quality : false, subtitles: data.tracks || false });
-        }, fail, item.iframe);
-      }
-      function render(items) {
-        component.reset();
-        if (!items.length) { component.emptyForQuery(select_title); return; }
-        items.forEach(function (element) {
-          var view = Lampa.Timeline.view(Lampa.Utils.hash('kinogo:' + element.id));
-          element.timeline = view;
-          var row = Lampa.Template.get('stels_online', element);
-          row.append(Lampa.Timeline.render(view));
-          row.on('hover:enter', function () {
-            component.loading(true);
-            fetchStream(element, function (stream) {
-              component.loading(false);
-              Lampa.Player.play(stelsSanitizeAndroidPlayable({ url: stream.url, title: element.title || select_title, poster: element.poster || '', timeline: element.timeline, quality: stream.quality, subtitles: stream.subtitles, headers: { Referer: element.iframe, 'User-Agent': Utils.baseUserAgent() }, hls_manifest_timeout: 30000 }, 'kinogo'));
-              try { stelsSaveWatchHistory(object.movie, 'kinogo', 'Kinogo', element, { title: element.title, voice: element.voice }); } catch (e) {}
-            }, function (err) { component.loading(false); component.empty(err || 'Kinogo stream error'); });
-          });
-          component.append(row);
-        });
-        component.start(true);
-      }
-      function requestKinogoProxyCandidates(url, success, fail, options) {
-        options = options || {};
-        var list = kinogoProxyCandidates(url);
-        stelsLog('kinogo-proxy-candidates', { url: url, count: list.length, modes: list.map(function (i) { return i.mode; }).slice(0, 20) });
-        function next(i, lastErr) {
-          if (i >= list.length) { if (fail) fail(lastErr || 'Kinogo proxy error'); return; }
-          var c = list[i];
-          stelsLog('kinogo-proxy-try', { original: url, proxy_url: c.url.slice(0, 220), mode: c.mode, index: i });
-          requestText(c.url, function (html) {
-            stelsLog('kinogo-proxy-ok', { original: url, mode: c.mode, length: String(html || '').length, sample: String(html || '').slice(0, 220) });
-            success(html, c);
-          }, function (err) {
-            stelsLog('kinogo-proxy-fail', { original: url, mode: c.mode, error: err || '' });
-            next(i + 1, err);
-          }, { timeout: options.timeout || 16000, referer: options.referer || host() + '/' });
-        }
-        next(0, '');
-      }
-      function warmKinogoNews(item, done) {
-        if (!item || !item.link || !kinogoDleHash) { if (done) done(); return; }
-        var post = 'news=' + encodeURIComponent(item.link) + '&dle_hash=' + encodeURIComponent(kinogoDleHash);
-        stelsLog('kinogo-news-warm-start', { page: item.link, hash: !!kinogoDleHash, post: post });
-        var itemHost = (String(item.link || '').match(/^https?:\/\/[^\/]+/i) || [host()])[0];
-        requestText(itemHost + '/engine/lazydev/dle_search/ajax.php', function (html) {
-          stelsLog('kinogo-news-warm-done', { page: item.link, host: itemHost, length: String(html || '').length });
-          if (done) done();
-        }, function (err) {
-          stelsLog('kinogo-news-warm-fail', { page: item.link, host: itemHost, error: err || '' });
-          if (done) done();
-        }, { postdata: post, referer: itemHost + '/', timeout: 8000, ajax: true, accept: 'text/html,*/*;q=0.8' });
-      }
-      function loadPage(item) {
-        component.loading(true);
-        function tryAlternativePage(reason) {
-          var alts = (item && item._kinogo_alternatives) || [];
-          while (alts.length) {
-            var next = alts.shift();
-            if (!next || !next.link || next.link === item.link || next._tried_as_alt) continue;
-            next._tried_as_alt = true;
-            next._kinogo_alternatives = alts;
-            stelsLog('kinogo-page-alternative-retry', { from: item && item.link || '', to: next.link, title: next.title || '', score: next._score || 0, reason: reason || '' });
-            component.loading(false);
-            loadPage(next);
-            return true;
-          }
-          stelsLog('kinogo-page-alternative-empty', { page: item && item.link || '', reason: reason || '' });
-          return false;
-        }
-        function startPageRequest() {
-        requestText(item.link, function (html) {
-          if (destroyed) return;
-          stelsLog('kinogo-page-parse-start', { page: item.link, html_length: String(html || '').length, has_stravers: /stravers\.live/i.test(String(html || '')), has_filelist: /fileList|token_movie/i.test(String(html || '')) });
-          var mt = html.match(/<meta\s+property=["']og:title["'][^>]*content=["']([^"']+)/i) || html.match(/<title>([^<]+)/i);
-          var mi = html.match(/<meta\s+property=["']og:image["'][^>]*content=["']([^"']+)/i);
-          var title = cleanText((mt && mt[1]) || item.title || select_title);
-          var poster = absolute((mi && mi[1]) || item.poster || '', item.link);
-          var iframe = parseIframe(html, item.link);
-          var decodedPage = kinogoDecodeText(html).replace(/\\//g, '/');
-          var si = decodedPage.indexOf('stravers.live');
-          stelsLog('kinogo-page', { page: item.link, title: title, iframe: iframe, poster: !!poster, html_length: decodedPage.length, stravers_index: si, html_sample: si >= 0 ? decodedPage.slice(Math.max(0, si - 220), si + 320) : decodedPage.slice(0, 360) });
-          if (!iframe) {
-            var seasonLinks = item._followedSeason ? [] : parseSeasonPageLinks(html, item.link);
-            if (seasonLinks.length) {
-              stelsLog('kinogo-page-follow-season', { from: item.link, to: seasonLinks[0].link, title: seasonLinks[0].title });
-              seasonLinks[0]._followedSeason = true;
-              component.loading(false);
-              return loadPage(seasonLinks[0]);
-            }
-            if (tryAlternativePage('no-iframe')) return; component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return;
-          }
-          mainReferer = item.link;
-          function handlePlayer(playerHtml) {
-            if (destroyed) return;
-            extract = parsePlayerHtml(playerHtml, iframe, poster, title);
-            component.loading(false);
-            if (!extract.length) { if (tryAlternativePage('empty-filelist')) return; component.empty('Kinogo: не вдалося розібрати список сезонів/перекладів'); return; }
-            buildFilter();
-            render(currentItems());
-            component.saveChoice(choice);
-          }
-          requestText(iframe, handlePlayer, function (err) {
-            stelsLog('kinogo-player-request-fail', { iframe: iframe, error: err || '', retry: 'root-referer' });
-            requestText(iframe, handlePlayer, function (err2) {
-              stelsLog('kinogo-player-request-fail', { iframe: iframe, error: err2 || '', retry: 'proxy' });
-              var purl = proxy('iframe') ? proxy('iframe') + iframe : '';
-              if (!purl) { if (tryAlternativePage('player-direct-fail')) return; component.loading(false); component.empty(err2 || err || 'Kinogo player error'); return; }
-              requestText(purl, handlePlayer, function (err3) { if (tryAlternativePage('player-proxy-fail')) return; component.loading(false); component.empty(err3 || err2 || err || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
-            }, { referer: host() + '/', timeout: 14000 });
-          }, { referer: item.link, timeout: 12000 });
-        }, function (err) {
-          if (/Cloudflare|403/i.test(String(err || '')) && tryAlternativePage('cloudflare-direct-page')) return;
-          if (!item._proxy_retry) {
-            item._proxy_retry = true;
-            stelsLog('kinogo-page-proxy-retry', { page: item.link, error: err || '' });
-            return requestKinogoProxyCandidates(item.link, function (htmlProxy) {
-              if (destroyed) return;
-              stelsLog('kinogo-page-proxy-parse-start', { page: item.link, html_length: String(htmlProxy || '').length, has_stravers: /stravers\.live/i.test(String(htmlProxy || '')), has_filelist: /fileList|token_movie/i.test(String(htmlProxy || '')) });
-              var mt = htmlProxy.match(/<meta\s+property=["']og:title["'][^>]*content=["']([^"']+)/i) || htmlProxy.match(/<title>([^<]+)/i);
-              var mi = htmlProxy.match(/<meta\s+property=["']og:image["'][^>]*content=["']([^"']+)/i);
-              var title = cleanText((mt && mt[1]) || item.title || select_title);
-              var poster = absolute((mi && mi[1]) || item.poster || '', item.link);
-              var iframe = parseIframe(htmlProxy, item.link);
-              var decodedPage = kinogoDecodeText(htmlProxy).replace(/\\//g, '/');
-              var si = decodedPage.indexOf('stravers.live');
-              stelsLog('kinogo-page-proxy', { page: item.link, title: title, iframe: iframe, poster: !!poster, html_length: decodedPage.length, stravers_index: si, html_sample: si >= 0 ? decodedPage.slice(Math.max(0, si - 220), si + 320) : decodedPage.slice(0, 360) });
-              if (!iframe) { if (tryAlternativePage('proxy-no-iframe')) return; component.loading(false); component.empty('Kinogo: iframe плеєра не знайдено'); return; }
-              mainReferer = item.link;
-              function handlePlayer(playerHtml) {
-                if (destroyed) return;
-                extract = parsePlayerHtml(playerHtml, iframe, poster, title);
-                component.loading(false);
-                if (!extract.length) { if (tryAlternativePage('proxy-empty-filelist')) return; component.empty('Kinogo: не вдалося розібрати список сезонів/перекладів'); return; }
-                buildFilter(); render(currentItems()); component.saveChoice(choice);
-              }
-              requestText(iframe, handlePlayer, function (errP) {
-                stelsLog('kinogo-player-proxy-after-page-proxy', { iframe: iframe, player_error: errP || '' });
-                requestKinogoProxyCandidates(iframe, handlePlayer, function (errP2) { if (tryAlternativePage('proxy-player-fail')) return; component.loading(false); component.empty(errP2 || errP || 'Kinogo player error'); }, { referer: item.link, timeout: 16000 });
-              }, { referer: item.link, timeout: 14000 });
-            }, function (errProxy) {
-              stelsLog('kinogo-page-proxy-fail', { page: item.link, error: errProxy || '' });
-              if (!item._mirror_retry) {
-                item._mirror_retry = true;
-                var hs = kinogoHostVariants();
-                var current = (item.link.match(/^https?:\/\/[^\/]+/i) || [''])[0];
-                var nextItem = null;
-                hs.some(function (h) {
-                  if (h === current) return false;
-                  var u = kinogoSamePathOnHost(item.link, h);
-                  if (u && u !== item.link) { nextItem = { title: item.title, link: u, poster: item.poster || '', year: item.year || '', _mirror_retry: true, _kinogo_alternatives: item._kinogo_alternatives || [] }; return true; }
-                  return false;
-                });
-                if (nextItem) {
-                  stelsLog('kinogo-page-mirror-retry', { from: item.link, to: nextItem.link, error: errProxy || err || '' });
-                  component.loading(false);
-                  return loadPage(nextItem);
-                }
-              }
-              if (!item._warmed_retry && kinogoDleHash) {
-                item._warmed_retry = true;
-                stelsLog('kinogo-page-retry-after-warm', { page: item.link, error: errProxy || err || '' });
-                return warmKinogoNews(item, startPageRequest);
-              }
-              if (tryAlternativePage(errProxy || err || 'page-proxy-fail')) return; component.loading(false); component.empty(errProxy || err || 'Kinogo page error');
-            }, { timeout: 16000, referer: host() + '/' });
-          }
-          if (!item._warmed_retry && kinogoDleHash) {
-            item._warmed_retry = true;
-            stelsLog('kinogo-page-retry-after-warm', { page: item.link, error: err || '' });
-            return warmKinogoNews(item, startPageRequest);
-          }
-          if (tryAlternativePage(err || 'page-fail')) return; component.loading(false); component.empty(err || 'Kinogo page error');
-        }, { timeout: 12000, referer: host() + '/' });
-        }
-        warmKinogoNews(item, startPageRequest);
-      }
-      this.search = function (_object, kinopoisk_id, data) {
-        object = _object || object || {};
-        select_title = object.search || (object.movie && (object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name)) || '';
-        destroyed = false;
-        try { stelsLog('kinogo-search-object', { title: select_title, movie_title: object.movie && (object.movie.title || object.movie.name) || '', original: object.movie && (object.movie.original_title || object.movie.original_name) || '', year: object.search_date || object.movie && (object.movie.release_date || object.movie.first_air_date) || '', alt_count: object.movie && object.movie.alternative_titles && object.movie.alternative_titles.results ? object.movie.alternative_titles.results.length : 0 }); } catch (e) {}
-        if (data && data[0] && data[0].link) return loadPage(data[0]);
-        component.loading(true);
-        function runSearch(list, index) {
-          if (destroyed) return;
-          if (index >= list.length) { component.loading(false); return component.emptyForQuery(select_title); }
-          var query = list[index] || select_title || '';
-          var post = 'titleonly=3&do=search&subaction=search&story=' + encodeURIComponent(query);
-          stelsLog('kinogo-search-start', { host: host(), title: query, post: post, variants: list });
-          requestText(host() + '/', function (html) {
-            if (destroyed) return;
-            var items = parseSearchItems(html);
-            if (!items.length) {
-              var url = host() + '/index.php?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(query);
-              return requestText(url, function (html2) {
-                var items2 = parseSearchItems(html2);
-                if (!items2.length) return runSearch(list, index + 1);
-                var best2 = selectBest(items2, query);
-                if (!best2) return runSearch(list, index + 1);
-                component.loading(false);
-                loadPage(best2);
-              }, function (err) { stelsLog('kinogo-search-get-fail', { query: query, error: err || '' }); runSearch(list, index + 1); }, { timeout: 12000 });
-            }
-            var best = selectBest(items, query);
-            if (!best) return runSearch(list, index + 1);
-            component.loading(false);
-            loadPage(best);
-          }, function (err) { stelsLog('kinogo-search-post-fail', { query: query, error: err || '' }); runSearch(list, index + 1); }, { postdata: post, timeout: 12000 });
-        }
-        runSearch(variants(), 0);
-      };
-      this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
-      this.reset = function () { component.reset(); choice = { season: 0, voice: 0, voice_name: '' }; buildFilter(); render(currentItems()); component.saveChoice(choice); };
-      this.filter = function (type, a, b) {
-        choice[a.stype] = b.index;
-        if (a.stype === 'voice') choice.voice_name = filter_items.voice[b.index] || '';
-        component.reset(); buildFilter(); render(currentItems()); component.saveChoice(choice); setTimeout(component.closeFilter, 10);
-      };
-      this.destroy = function () { destroyed = true; try { network.clear(); } catch (e) {} extract = []; };
-    }
-
-
+    // Source removed in 1.0.95.
 
 
     function uaserials(component, _object) {
@@ -12393,7 +11582,7 @@
           if (year && !/(?:^|\D)(19|20)\d{2}(?:\D|$)/.test(c)) push(c + ' ' + year);
           push(c);
         });
-        stelsLog('kinogo-variant-order', { year: year, result: out.slice(0, 8) });
+        stelsLog('uaserials-variant-order', { year: year, result: out.slice(0, 8) });
         return out.slice(0, 8);
       }
       function stelsEscapeRegExp(value) {
@@ -12473,7 +11662,7 @@
           var score = searchScore(item, query);
           if (!best || score > best.score) best = { item: item, score: score };
         });
-        stelsLog('kinogo-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0 });
+        stelsLog('uaserials-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0 });
         return best && best.item || (items && items[0]);
       }
       function parseSearchItems(html) {
@@ -13008,7 +12197,7 @@
       var extract = { items: [], seasons: [] };
       var object = _object;
       var select_title = '';
-      var prefer_http = Lampa.Storage.field('stels_online_prefer_http') === true;
+      var prefer_http = Lampa.Storage.field('stels_online_prefer_http') === true && !stelsAndroidPlayerFixEnabled();
       var host = 'https://zetflix.net';
       var ref = host + '/';
       var iframe_host = 'https://blink.stloadi.live';
@@ -13464,9 +12653,10 @@
         items.forEach(function (item) {
           item.original_file = item.file;
           // Важливо: сам video API можна читати через proxy/fallback, але реальні потоки ZetflixNet
-          // приходять з okcdn/vd*.okcdn.ru. Їх не можна проганяти через apn/onrender proxy:
-          // Lampa/Electron після цього часто показує «файл не знайдений або пошкоджений».
-          item.file = component.fixLinkProtocol(item.file, prefer_http, true);
+          // приходять з okcdn/vd*.okcdn.ru. Їх не можна проганяти через apn/onrender proxy.
+          // На Android не переводимо okcdn у http: WebView/ExoPlayer часто блокує cleartext.
+          if (stelsAndroidPlayerFixEnabled()) item.file = component.fixLinkProtocol(item.file, false, 'full');
+          else item.file = component.fixLinkProtocol(item.file, prefer_http, true);
         });
         stelsLog('zetflixnet-extractitems-after-proxy', { data_id: ctx && ctx.data_id || '', prox_api: false, stream_proxy_disabled: true, prefer_http: prefer_http, count: items.length, items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, original: zlogUrlInfo(item.original_file), final: zlogUrlInfo(item.file) }; }) });
         return items;
@@ -13579,7 +12769,9 @@
                 zetflixnetStopCurrentPlayback('voice-switch:' + voiceName);
                 setTimeout(function () {
                   Lampa.Player.play(play);
-                  try { Lampa.Player.playlist([play]); } catch (e4) {}
+                  if (!stelsAndroidPlayerFixEnabled()) {
+                    try { Lampa.Player.playlist([play]); } catch (e4) {}
+                  }
                 }, 120);
               }, function (err) {
                 try { Lampa.Player.loading(false); } catch (e3) {}
@@ -13601,12 +12793,17 @@
         if (stelsAndroidPlayerFixEnabled()) {
           var hls = element && element.stream || '';
           if (typeof hls == 'string' && /\.m3u8(?:$|\?)/i.test(hls)) {
-            base.url = hls;
-            base.url_reserve = default_url && default_url !== hls ? default_url : '';
+            base.url = component.fixLinkProtocol(hls, false, 'full');
+            base.file = base.url;
+            base.stream = base.url;
+            base.url_reserve = '';
             base.quality = false;
-            base.hls_manifest_timeout = 45000;
+            base.hls_manifest_timeout = 60000;
             base._stels_zetflix_android_hls = true;
-            base.headers = base.headers || { Referer: ref, 'User-Agent': user_agent };
+            base._stels_android_direct_hls = true;
+            // Для okcdn signed HLS не передаємо custom headers у вбудований Android-плеєр:
+            // частина реалізацій Lampa/ExoPlayer через них відхиляє URL як пошкоджений.
+            try { delete base.headers; } catch (e) { base.headers = false; }
             stelsLog('zetflixnet-android-playable', {
               ctx: ctx || '',
               data_id: element && element.data_id || '',
@@ -13747,7 +12944,7 @@
                   }
                 });
                 Lampa.Player.playlist(playlist);
-              } else Lampa.Player.playlist([first]);
+              } else if (!stelsAndroidPlayerFixEnabled()) Lampa.Player.playlist([first]);
               if (viewed.indexOf(hash_file) == -1) {
                 viewed.push(hash_file);
                 item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
@@ -19902,13 +19099,6 @@
         kp: true,
         imdb: true
       }, {
-        name: 'kinogo',
-        title: 'Kinogo',
-        source: new kinogo(this, object),
-        search: true,
-        kp: false,
-        imdb: false
-      }, {
         name: 'uaserials',
         title: 'UASerials',
         source: new uaserials(this, object),
@@ -21843,8 +21033,6 @@
       Lampa.Params.trigger('stels_online_log_enabled', true);
       Lampa.Params.trigger('stels_online_android_player_fix', false);
       Lampa.Params.trigger('stels_online_rezka2_fix_stream', false);
-      Lampa.Params.select('stels_online_kinogo_host', '', 'kinogo.my');
-      Lampa.Params.select('stels_online_kinogo_cookie', '', '');
       Lampa.Params.select('stels_online_kinobase_mirror', '', '');
       Lampa.Params.select('stels_online_kinobase_cookie', '', '');
       Lampa.Params.select('stels_online_rezka2_mirror', '', '');
@@ -22121,20 +21309,6 @@
           be: 'Ачысціць гісторыю балансараў',
           en: 'Clear history of balancers',
           zh: '清除平衡器的历史记录'
-        },
-        stels_online_kinogo_host: {
-          ru: 'Адрес Kinogo',
-          uk: 'Адреса Kinogo',
-          be: 'Адрас Kinogo',
-          en: 'Kinogo address',
-          zh: 'Kinogo 地址'
-        },
-        stels_online_kinogo_cookie: {
-          ru: 'Cookie Kinogo',
-          uk: 'Cookie Kinogo',
-          be: 'Cookie Kinogo',
-          en: 'Kinogo cookie',
-          zh: 'Kinogo Cookie'
         },
         stels_online_kinobase_mirror: {
           ru: 'Зеркало для Kinobase',
@@ -23271,8 +22445,6 @@
       }
 
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_uaflix_mobile_ua\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_uaflix_mobile_ua}</div>\n            <div class=\"settings-param__descr\">Вмикає Android User-Agent для запитів до ZetVideo. У HAR сайту /vod/9043 відкривається саме з мобільним UA.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_kinogo_host\" data-type=\"input\" data-string=\"true\" placeholder=\"kinogo.my\">\n            <div class=\"settings-param__name\">#{stels_online_kinogo_host}</div>\n            <div class=\"settings-param__descr\">Наприклад: kinogo.my, kinogo.co, kinogo.io. Можна вказувати без https://</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_kinogo_cookie\" data-type=\"input\" data-string=\"true\" placeholder=\"cf_clearance=...; PHPSESSID=...\">\n            <div class=\"settings-param__name\">#{stels_online_kinogo_cookie}</div>\n            <div class=\"settings-param__descr\">Необов’язково. Якщо Kinogo блокує сторінку Cloudflare, можна вставити cookie з браузера для поточного домену.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_uaflix_forced_year\" data-type=\"input\" data-string=\"true\" placeholder=\"наприклад 2022\">\n            <div class=\"settings-param__name\">#{stels_online_uaflix_forced_year}</div>\n            <div class=\"settings-param__descr\">Необов\'язково. Використовується тільки для побудови UAflix/ZetVideo HLS, якщо плагін не зміг витягнути рік зі сторінки.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_use_stream_proxy\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_use_stream_proxy}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_rezka2_prx_ukr\" data-type=\"select\">\n            <div class=\"settings-param__name\">#{stels_online_rezka2_prx_ukr}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
@@ -23286,8 +22458,10 @@
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_sources\" data-static=\"true\">\n            <div class=\"settings-param__name\">Джерела</div>\n            <div class=\"settings-param__descr\">Увімкнення або вимкнення джерел у меню Сортувати</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_plugin_cache\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити кеш Stels_Online</div>\n            <div class=\"settings-param__descr\">Скинути збережені сезони, вибір озвучки, останні джерела та позначки перегляду. Налаштування джерел, проксі та cookie не очищаються.</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
+
+      template += "\n        <div class=\"settings-param stels-online-section-title\" data-name=\"stels_online_zetflixnet_settings_title\">\n            <div class=\"settings-param__name\" style=\"font-weight:700;opacity:.95\">Налаштування ZetflixNet</div>\n            <div class=\"settings-param__descr\">Окремі параметри для джерела ZetflixNet</div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Правка плеєра Андроїд</div>\n            <div class=\"settings-param__descr\">Для Android вмикає окремий режим ZetflixNet: прямий HTTPS HLS без карти якостей, без lazy-playlist, без reserve-url і без custom headers.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Правка плеєра Андроїд</div>\n            <div class=\"settings-param__descr\">Вмикає окрему логіку для Android: ZetflixNet запускається через HLS-потік без карти якостей і без lazy-playlist, щоб вбудований плеєр Lampa не показував «Відео не знайдене або пошкоджене».</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
@@ -23395,7 +22569,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.94: ZetflixNet: додано режим «Правка плеєра Андроїд» — для Android вбудований плеєр отримує HLS-потік без quality-map/lazy-playlist, щоб не було «Відео не знайдене або пошкоджене».' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.95: ZetflixNet Android: HLS лишається HTTPS, без reserve-url/custom headers/quality-map/playlist; Kinogo прибрано зі списків і налаштувань; перемикач Android перенесено в розділ «Налаштування ZetflixNet».' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
