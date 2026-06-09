@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.88';
+    var STELS_ONLINE_VERSION = '1.0.89';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13053,6 +13053,32 @@
         'User-Agent': user_agent
       };
 
+      function zlogUrlInfo(url) {
+        url = String(url || '');
+        var m = url.match(/^(https?:\/\/[^\/?#]+)([^?#]*)?(\?[^#]*)?/i);
+        return {
+          empty: !url,
+          length: url.length,
+          protocol: (url.match(/^([a-z]+):/i) || [])[1] || '',
+          host: m ? m[1] : '',
+          path: m ? (m[2] || '') : '',
+          query_len: m && m[3] ? m[3].length : 0,
+          preview: url.slice(0, 260)
+        };
+      }
+
+      function zlogSourceSummary(sources) {
+        var keys = [];
+        var list = [];
+        if (sources) {
+          Object.keys(sources).forEach(function (k) {
+            keys.push(k);
+            if (/Url$/i.test(k) && sources[k]) list.push({ key: k, url: zlogUrlInfo(sources[k]) });
+          });
+        }
+        return { keys: keys, urls: list };
+      }
+
       this.search = function (_object, kinopoisk_id, data) {
         object = _object;
         select_title = object.search || object.movie.title;
@@ -13339,6 +13365,7 @@
             seasons: seasons
           };
           stelsLog('zetflixnet-playlist', { kp: kp_id, title: extract.title_name, count: items.length, seasons: seasons.length, pub: pub_id });
+          stelsLog('zetflixnet-playlist-items-sample', { kp: kp_id, sample: items.slice(0, 12).map(function (it) { return { cvhId: it.cvhId || '', vkId: it.vkId || '', id: it.id || '', voiceStudio: it.voiceStudio || '', voiceType: it.voiceType || '', season: it.season || 0, episode: it.episode || 0, name: it.name || '' }; }) });
           filter();
           append(filtred());
         } else component.emptyForQuery(select_title);
@@ -13392,40 +13419,56 @@
         return out;
       }
 
-      function extractItems(sources) {
+      function extractItems(sources, ctx) {
         if (!sources) return [];
         var items = [];
-        if (sources.mpeg2kUrl) items.push({ label: '4K', quality: 2160, file: sources.mpeg2kUrl });
-        if (sources.mpeg4kUrl) items.push({ label: '2K', quality: 1440, file: sources.mpeg4kUrl });
-        if (sources.mpegQhdUrl) items.push({ label: '1440p', quality: 1440, file: sources.mpegQhdUrl });
-        if (sources.mpegFullHdUrl) items.push({ label: '1080p', quality: 1080, file: sources.mpegFullHdUrl });
-        if (sources.mpegHighUrl) items.push({ label: '720p', quality: 720, file: sources.mpegHighUrl });
-        if (sources.mpegMediumUrl) items.push({ label: '480p', quality: 480, file: sources.mpegMediumUrl });
-        if (sources.mpegLowUrl) items.push({ label: '360p', quality: 360, file: sources.mpegLowUrl });
-        if (sources.mpegLowestUrl) items.push({ label: '240p', quality: 240, file: sources.mpegLowestUrl });
-        if (sources.mpegTinyUrl) items.push({ label: '144p', quality: 144, file: sources.mpegTinyUrl });
-        if (!items.length && sources.hlsUrl) items.push({ label: 'HLS', quality: NaN, file: sources.hlsUrl });
+        // Для ZetflixNet першою ставимо HLS, бо саме HLS використовує реальний web-player у HAR.
+        // MP4/OK CDN посилання залишаємо як альтернативні якості.
+        if (sources.hlsUrl) items.push({ label: 'HLS', quality: NaN, file: sources.hlsUrl, source_key: 'hlsUrl' });
+        if (sources.mpeg2kUrl) items.push({ label: '4K', quality: 2160, file: sources.mpeg2kUrl, source_key: 'mpeg2kUrl' });
+        if (sources.mpeg4kUrl) items.push({ label: '2K', quality: 1440, file: sources.mpeg4kUrl, source_key: 'mpeg4kUrl' });
+        if (sources.mpegQhdUrl) items.push({ label: '1440p', quality: 1440, file: sources.mpegQhdUrl, source_key: 'mpegQhdUrl' });
+        if (sources.mpegFullHdUrl) items.push({ label: '1080p', quality: 1080, file: sources.mpegFullHdUrl, source_key: 'mpegFullHdUrl' });
+        if (sources.mpegHighUrl) items.push({ label: '720p', quality: 720, file: sources.mpegHighUrl, source_key: 'mpegHighUrl' });
+        if (sources.mpegMediumUrl) items.push({ label: '480p', quality: 480, file: sources.mpegMediumUrl, source_key: 'mpegMediumUrl' });
+        if (sources.mpegLowUrl) items.push({ label: '360p', quality: 360, file: sources.mpegLowUrl, source_key: 'mpegLowUrl' });
+        if (sources.mpegLowestUrl) items.push({ label: '240p', quality: 240, file: sources.mpegLowestUrl, source_key: 'mpegLowestUrl' });
+        if (sources.mpegTinyUrl) items.push({ label: '144p', quality: 144, file: sources.mpegTinyUrl, source_key: 'mpegTinyUrl' });
+        stelsLog('zetflixnet-extractitems-before-proxy', { data_id: ctx && ctx.data_id || '', count: items.length, sources: zlogSourceSummary(sources), items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, url: zlogUrlInfo(item.file) }; }) });
         items.forEach(function (item) {
+          item.original_file = item.file;
           item.file = component.proxyLink(component.fixLinkProtocol(item.file, prefer_http, true), prox_api, prox_enc_api);
         });
+        stelsLog('zetflixnet-extractitems-after-proxy', { data_id: ctx && ctx.data_id || '', prox_api: !!prox_api, prefer_http: prefer_http, count: items.length, items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, original: zlogUrlInfo(item.original_file), final: zlogUrlInfo(item.file) }; }) });
         return items;
       }
 
       function getStream(element, call, error, force_direct) {
-        if (element.stream) return call(element);
-        if (!element.data_id) return error();
+        if (element.stream) {
+          stelsLog('zetflixnet-getstream-cache-hit', { data_id: element.data_id || '', stream: zlogUrlInfo(element.stream), quality_keys: element.qualitys ? Object.keys(element.qualitys) : [] });
+          return call(element);
+        }
+        if (!element.data_id) {
+          stelsLog('zetflixnet-getstream-no-data-id', { title: element.title || '', season: element.season || '', episode: element.episode || '', media: element.media || null });
+          return error();
+        }
         var url = api + 'video/' + encodeURIComponent(element.data_id);
         var use_prox = force_direct ? '' : prox_api;
         var use_enc = force_direct ? '' : prox_enc_api;
+        var final_url = component.proxyLink(url, use_prox, use_enc);
         network.clear();
         network.timeout(12000);
         api_headers.Referer = api_ref || ref;
-        network['native'](component.proxyLink(url, use_prox, use_enc), function (json) {
-          stelsLog('zetflixnet-video-response', { data_id: element.data_id, direct: !!force_direct, ok: true, referer: api_headers.Referer || '' });
+        stelsLog('zetflixnet-video-request', { data_id: element.data_id, direct: !!force_direct, source_url: zlogUrlInfo(url), final_url: zlogUrlInfo(final_url), prox_api: !!prox_api, use_proxy: !!use_prox, headers: api_headers, element: { title: element.title || '', season: element.season || '', episode: element.episode || '', voice: element.translate_voice || '', media: element.media || null } });
+        network['native'](final_url, function (json) {
+          var raw_type = typeof json;
+          var raw_len = raw_type === 'string' ? json.length : 0;
+          var raw_preview = raw_type === 'string' ? json.slice(0, 500) : '';
           if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, null);
+          stelsLog('zetflixnet-video-response', { data_id: element.data_id, direct: !!force_direct, ok: true, raw_type: raw_type, raw_len: raw_len, raw_preview: raw_preview, json_keys: json ? Object.keys(json) : [], unitedVideoId: json && json.unitedVideoId || '', duration: json && json.duration || 0, has_sources: !!(json && json.sources), source_summary: json && json.sources ? zlogSourceSummary(json.sources) : null, referer: api_headers.Referer || '' });
           if (json && json.sources) {
             var file = '', quality = false;
-            var items = extractItems(json.sources);
+            var items = extractItems(json.sources, { data_id: element.data_id });
             if (items && items.length) {
               file = items[0].file;
               quality = {};
@@ -13434,11 +13477,18 @@
             if (file) {
               element.stream = file;
               element.qualitys = quality;
+              stelsLog('zetflixnet-getstream-ready', { data_id: element.data_id, selected: zlogUrlInfo(file), selected_label: items[0] && items[0].label || '', quality_keys: quality ? Object.keys(quality) : [], quality_map: quality ? Object.keys(quality).map(function (k) { return { key: k, url: zlogUrlInfo(quality[k]) }; }) : [] });
               call(element);
-            } else error();
-          } else error();
+            } else {
+              stelsLog('zetflixnet-getstream-empty-file', { data_id: element.data_id, items_count: items ? items.length : 0 });
+              error();
+            }
+          } else {
+            stelsLog('zetflixnet-getstream-no-sources', { data_id: element.data_id, json: json || null });
+            error();
+          }
         }, function (a, c) {
-          stelsLog('zetflixnet-video-error', { data_id: element.data_id, direct: !!force_direct, status: a && a.status || 0, message: network.errorDecode(a, c) || '', referer: api_headers.Referer || '', origin: api_headers.Origin || '' });
+          stelsLog('zetflixnet-video-error', { data_id: element.data_id, direct: !!force_direct, status: a && a.status || 0, statusText: a && a.statusText || '', responseText: a && a.responseText ? String(a.responseText).slice(0, 800) : '', message: network.errorDecode(a, c) || '', referer: api_headers.Referer || '', origin: api_headers.Origin || '', final_url: zlogUrlInfo(final_url) });
           if (!force_direct) getStream(element, call, error, true);else error();
         }, false, {
           headers: api_headers
@@ -13473,6 +13523,7 @@
                 timeline: element.timeline,
                 title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title)
               };
+              stelsLog('zetflixnet-player-first', { data_id: element.data_id || '', title: first.title || '', selected_url: zlogUrlInfo(first.url), raw_stream: zlogUrlInfo(element.stream), quality_keys: first.quality ? Object.keys(first.quality) : [], quality_map: first.quality ? Object.keys(first.quality).map(function (k) { return { key: k, url: zlogUrlInfo(first.quality[k]) }; }) : [] });
               Lampa.Player.play(first);
               if (element.season && Lampa.Platform.version) {
                 var playlist = [];
@@ -13483,6 +13534,7 @@
                         getStream(elem, function (elem) {
                           cell.url = component.getDefaultQuality(elem.qualitys, elem.stream);
                           cell.quality = component.renameQualityMap(elem.qualitys);
+                          stelsLog('zetflixnet-playlist-cell-url', { data_id: elem.data_id || '', title: elem.title || '', url: zlogUrlInfo(cell.url), quality_keys: cell.quality ? Object.keys(cell.quality) : [] });
                           call();
                         }, function () { cell.url = ''; call(); });
                       },
@@ -13512,6 +13564,7 @@
             hash_file: hash_file,
             file: function file(call) {
               getStream(element, function (element) {
+                stelsLog('zetflixnet-context-file', { data_id: element.data_id || '', file: zlogUrlInfo(element.stream), quality_keys: element.qualitys ? Object.keys(element.qualitys) : [] });
                 call({ file: element.stream, quality: element.qualitys });
               }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
             }
@@ -23140,7 +23193,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.88: ZetflixNet video fix: Origin/Referer/User-Agent тепер задаються на всіх платформах, не тільки Android; video endpoint повторюється прямим запитом при 404.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.89: додано розширений діагностичний лог ZetflixNet video/player: data_id, media fields, headers, source keys, stream urls, quality map і URL, який передається в Lampa.Player.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
