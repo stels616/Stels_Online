@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.90';
+    var STELS_ONLINE_VERSION = '1.0.91';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13385,7 +13385,21 @@
             var inx = filter_items.voice.indexOf(choice.voice_name);
             if (inx == -1) choice.voice = 0;else if (inx !== choice.voice) choice.voice = inx;
           }
+        } else if (extract.items && extract.items.length) {
+          // Для фільмів ZetflixNet повертає кілька item одного й того ж фільму,
+          // де кожен item — це окрема озвучка. Не показуємо їх як 10 карточок;
+          // збираємо озвучки в фільтр "Переклад", а в списку лишаємо одну карточку фільму.
+          extract.items.forEach(function (data) {
+            var voice = data.voiceStudio || data.voiceType || '';
+            if (voice && filter_items.voice.indexOf(voice) == -1) filter_items.voice.push(voice);
+          });
+          if (!filter_items.voice[choice.voice]) choice.voice = 0;
+          if (choice.voice_name) {
+            var vinx = filter_items.voice.indexOf(choice.voice_name);
+            if (vinx == -1) choice.voice = 0;else if (vinx !== choice.voice) choice.voice = vinx;
+          }
         }
+        stelsLog('zetflixnet-filter-build', { seasons: filter_items.season || [], voices: filter_items.voice || [], selected_season: choice.season, selected_voice: filter_items.voice && filter_items.voice[choice.voice] || '', is_movie: !(extract.seasons && extract.seasons.length), items_count: extract.items ? extract.items.length : 0 });
         component.filter(filter_items, choice);
       }
 
@@ -13407,17 +13421,27 @@
               });
             }
           });
-        } else if (extract.items) {
+        } else if (extract.items && extract.items.length) {
+          var selected_voice = filter_items.voice[choice.voice] || '';
+          var selected = null;
           extract.items.forEach(function (data) {
-            out.push({
-              title: data.voiceStudio || data.voiceType || extract.title_name,
-              quality: '360p ~ 1080p',
-              info: '',
-              data_id: data.vkId,
-              media: data
-            });
+            var voice = data.voiceStudio || data.voiceType || '';
+            if (!selected && (!selected_voice || voice == selected_voice)) selected = data;
           });
+          if (!selected) selected = extract.items[0];
+          if (selected) {
+            var movie_voice = selected.voiceStudio || selected.voiceType || selected_voice || '';
+            out.push({
+              title: extract.title_name || select_title,
+              quality: '360p ~ 1080p',
+              info: movie_voice ? ' / ' + Lampa.Utils.shortText(movie_voice, 50) : '',
+              data_id: selected.vkId,
+              translate_voice: movie_voice,
+              media: selected
+            });
+          }
         }
+        stelsLog('zetflixnet-filtered-items', { count: out.length, is_movie: !(extract.seasons && extract.seasons.length), selected_voice: filter_items.voice && filter_items.voice[choice.voice] || '', sample: out.slice(0, 5).map(function (it) { return { title: it.title || '', data_id: it.data_id || '', voice: it.translate_voice || it.info || '', season: it.season || '', episode: it.episode || '' }; }) });
         return out;
       }
 
