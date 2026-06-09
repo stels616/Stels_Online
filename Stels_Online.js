@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.93';
+    var STELS_ONLINE_VERSION = '1.0.94';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13565,9 +13565,7 @@
               getStream(target, function (item) {
                 try { Lampa.Player.loading(false); } catch (e2) {}
                 var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-                var play = stelsSanitizeAndroidPlayable({
-                  url: component.getDefaultQuality(item.qualitys, item.stream),
-                  quality: component.renameQualityMap(item.qualitys),
+                var play = zetflixnetBuildPlayable(item, {
                   timeline: current.timeline || item.timeline || element.timeline,
                   poster: current.poster || item.poster || element.poster || '',
                   title: current.title || (item.season ? item.title : select_title + (item.title == select_title ? '' : ' / ' + item.title)),
@@ -13592,6 +13590,48 @@
           };
         });
       }
+
+      function zetflixnetBuildPlayable(element, base, ctx) {
+        base = base || {};
+        var default_url = component.getDefaultQuality(element.qualitys, element.stream);
+        var default_quality = component.renameQualityMap(element.qualitys);
+        base.url = default_url;
+        base.quality = default_quality;
+
+        if (stelsAndroidPlayerFixEnabled()) {
+          var hls = element && element.stream || '';
+          if (typeof hls == 'string' && /\.m3u8(?:$|\?)/i.test(hls)) {
+            base.url = hls;
+            base.url_reserve = default_url && default_url !== hls ? default_url : '';
+            base.quality = false;
+            base.hls_manifest_timeout = 45000;
+            base._stels_zetflix_android_hls = true;
+            base.headers = base.headers || { Referer: ref, 'User-Agent': user_agent };
+            stelsLog('zetflixnet-android-playable', {
+              ctx: ctx || '',
+              data_id: element && element.data_id || '',
+              title: base.title || element && element.title || '',
+              voice: base.voice_name || element && element.translate_voice || '',
+              selected_url: zlogUrlInfo(base.url),
+              reserve_url: zlogUrlInfo(base.url_reserve || ''),
+              quality_disabled: true,
+              playlist_disabled: true,
+              reason: 'android_hls_only'
+            });
+          } else {
+            stelsLog('zetflixnet-android-playable-no-hls', {
+              ctx: ctx || '',
+              data_id: element && element.data_id || '',
+              stream: zlogUrlInfo(hls),
+              default_url: zlogUrlInfo(default_url),
+              quality_keys: default_quality ? Object.keys(default_quality) : []
+            });
+          }
+        }
+
+        return stelsSanitizeAndroidPlayable(base, ctx || 'zetflixnet');
+      }
+
 
       function getStream(element, call, error, force_direct) {
         if (element.stream) {
@@ -13671,9 +13711,7 @@
               element.loading = false;
               var selected_voice = element.translate_voice || element.voice_name || (element.media && (element.media.voiceStudio || element.media.voiceType)) || filter_items.voice[choice.voice] || '';
               var voice_tracks = zetflixnetVoiceovers(element, selected_voice);
-              var first = {
-                url: component.getDefaultQuality(element.qualitys, element.stream),
-                quality: component.renameQualityMap(element.qualitys),
+              var first = zetflixnetBuildPlayable(element, {
                 timeline: element.timeline,
                 title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title),
                 season: element.season || '',
@@ -13681,10 +13719,10 @@
                 voice_name: selected_voice || '',
                 translate: voice_tracks ? { tracks: voice_tracks } : undefined,
                 voiceovers: voice_tracks
-              };
+              }, 'zetflixnet-first');
               stelsLog('zetflixnet-player-first', { data_id: element.data_id || '', title: first.title || '', voice: selected_voice || '', voice_count: voice_tracks ? voice_tracks.length : 0, selected_url: zlogUrlInfo(first.url), raw_stream: zlogUrlInfo(element.stream), quality_keys: first.quality ? Object.keys(first.quality) : [], quality_map: first.quality ? Object.keys(first.quality).map(function (k) { return { key: k, url: zlogUrlInfo(first.quality[k]) }; }) : [] });
               Lampa.Player.play(first);
-              if (element.season && Lampa.Platform.version) {
+              if (element.season && Lampa.Platform.version && !stelsAndroidPlayerFixEnabled()) {
                 var playlist = [];
                 items.forEach(function (elem) {
                   if (elem == element) playlist.push(first);else {
@@ -23249,7 +23287,7 @@
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_plugin_cache\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити кеш Stels_Online</div>\n            <div class=\"settings-param__descr\">Скинути збережені сезони, вибір озвучки, останні джерела та позначки перегляду. Налаштування джерел, проксі та cookie не очищаються.</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Android: сумісний запуск відео</div>\n            <div class=\"settings-param__descr\">Вмикати, якщо на Android у вбудованому плеєрі Lampa серії/фільми не стартують, хоча на Windows працюють. Режим прибирає lazy-плейлист сезону, відключає quality-map для m3u8 і залишає один конкретний потік.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_android_player_fix\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Правка плеєра Андроїд</div>\n            <div class=\"settings-param__descr\">Вмикає окрему логіку для Android: ZetflixNet запускається через HLS-потік без карти якостей і без lazy-playlist, щоб вбудований плеєр Lampa не показував «Відео не знайдене або пошкоджене».</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
@@ -23357,7 +23395,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.93: ZetflixNet: виправлено накладання аудіо при зміні перекладу в плеєрі — перед запуском нового voice stream примусово зупиняється старий video/audio element.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.94: ZetflixNet: додано режим «Правка плеєра Андроїд» — для Android вбудований плеєр отримує HLS-потік без quality-map/lazy-playlist, щоб не було «Відео не знайдене або пошкоджене».' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
