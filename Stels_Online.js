@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.84';
+    var STELS_ONLINE_VERSION = '1.0.85';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -1031,6 +1031,8 @@
       if (name === 'filmix_site') return proxy_other && !proxy_other_url && proxy_secret_ip || user_proxy1;
       if (name === 'filmix_abuse') return '';
       if (name === 'zetflix') return '';
+      if (name === 'zetflixnet') return user_proxy1;
+      if (name === 'zetflixnet_api') return proxy_secret || user_proxy2;
       if (name === 'allohacdn') return proxy_secret;
       if (name === 'cookie') return user_proxy1;
       if (name === 'cookie2') return user_proxy2;
@@ -1055,6 +1057,8 @@
         if (name === 'vibix') return proxy_secret;
         if (name === 'redheadsound') return user_proxy2;
         if (name === 'cdnvideohub') return proxy_secret;
+        if (name === 'zetflixnet') return user_proxy1;
+        if (name === 'zetflixnet_api') return proxy_secret || user_proxy2;
         if (name === 'anilibria') return user_proxy2;
         if (name === 'anilibria2') return user_proxy1;
         if (name === 'animelib') return proxy_secret;
@@ -12564,14 +12568,13 @@
       this.destroy = function () { destroyed = true; try { network.clear(); } catch (e) {} };
     }
 
-    function cdnvideohub(component, _object, pub_id) {
+    function cdnvideohub(component, _object) {
       var network = new Lampa.Reguest();
       var extract = {};
       var object = _object;
       var select_title = '';
       var prefer_http = Lampa.Storage.field('stels_online_prefer_http') === true;
       var prox = component.proxy('cdnvideohub');
-      var cdn_pub_id = String(pub_id || '12');
       var user_agent = Utils.baseUserAgent();
       var prox_enc = '';
 
@@ -12603,7 +12606,7 @@
           return;
         }
 
-        var url = Lampa.Utils.addUrlComponent(embed + 'playlist?pub=' + encodeURIComponent(cdn_pub_id) + '&aggr=kp', 'id=' + kinopoisk_id);
+        var url = Lampa.Utils.addUrlComponent(embed + atob('cGxheWxpc3Q/cHViPTEyJmFnZ3I9a3A='), 'id=' + kinopoisk_id);
         network.clear();
         network.timeout(10000);
         network["native"](component.proxyLink(url, prox, prox_enc), function (json) {
@@ -12992,6 +12995,488 @@
               }, function () {
                 Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
               });
+            }
+          });
+        });
+        component.start(true);
+      }
+    }
+
+
+    function zetflixnet(component, _object) {
+      var network = new Lampa.Reguest();
+      var extract = { items: [], seasons: [] };
+      var object = _object;
+      var select_title = '';
+      var prefer_http = Lampa.Storage.field('stels_online_prefer_http') === true;
+      var host = 'https://zetflix.net';
+      var ref = host + '/';
+      var iframe_host = 'https://blink.stloadi.live';
+      var api = 'https://plapi.cdnvideohub.com/api/v1/player/sv/';
+      var pub_id = '338';
+      var user_agent = Utils.baseUserAgent();
+      var prox_site = component.proxy('zetflixnet');
+      var prox_api = component.proxy('zetflixnet_api') || component.proxy('cdnvideohub');
+      var prox_enc_site = '';
+      var prox_enc_api = '';
+      var filter_items = {};
+      var choice = {
+        season: 0,
+        voice: 0,
+        voice_name: ''
+      };
+
+      if (prox_site) {
+        prox_enc_site += 'param/Origin=' + encodeURIComponent(host) + '/';
+        prox_enc_site += 'param/Referer=' + encodeURIComponent(ref) + '/';
+        prox_enc_site += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+      }
+
+      if (prox_api) {
+        prox_enc_api += 'param/Origin=' + encodeURIComponent(iframe_host) + '/';
+        prox_enc_api += 'param/Referer=' + encodeURIComponent(iframe_host + '/') + '/';
+        prox_enc_api += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+      }
+
+      var site_headers = Lampa.Platform.is('android') ? {
+        'Origin': host,
+        'Referer': ref,
+        'User-Agent': user_agent
+      } : {};
+
+      var api_headers = Lampa.Platform.is('android') ? {
+        'Origin': iframe_host,
+        'Referer': iframe_host + '/',
+        'User-Agent': user_agent
+      } : {};
+
+      this.search = function (_object, kinopoisk_id, data) {
+        object = _object;
+        select_title = object.search || object.movie.title;
+
+        if (data && data[0] && data[0].is_similars && data[0].link) {
+          loadPage(data[0].link, kinopoisk_id);
+          return;
+        }
+
+        component.loading(true);
+
+        // ZetflixNet з HAR: спочатку пробуємо знайти сторінку на zetflix.net,
+        // витягнути з неї iframe blink.stloadi.live / COLLAPS_CONF і тільки після цього
+        // беремо playlist/video API, який сам iframe викликає з pub=338.
+        searchSite(function (items) {
+          if (items && items.length) {
+            var best = selectBest(items);
+            if (best && best.sure) {
+              loadPage(best.link, kinopoisk_id);
+            } else {
+              items.forEach(function (c) { c.is_similars = true; });
+              component.similars(items);
+              component.loading(false);
+            }
+          } else if (!isNaN(kinopoisk_id)) {
+            stelsLog('zetflixnet-site-search-empty-fallback-kp', { title: select_title, kp: kinopoisk_id });
+            loadPlaylist(kinopoisk_id);
+          } else {
+            component.loading(false);
+            component.emptyForQuery(select_title);
+          }
+        }, function (err) {
+          if (!isNaN(kinopoisk_id)) {
+            stelsLog('zetflixnet-site-search-error-fallback-kp', { title: select_title, kp: kinopoisk_id, error: err || '' });
+            loadPlaylist(kinopoisk_id);
+          } else {
+            component.loading(false);
+            component.empty(err || 'ZetflixNet search error');
+          }
+        });
+      };
+
+      this.extendChoice = function (saved) {
+        Lampa.Arrays.extend(choice, saved, true);
+      };
+
+      this.reset = function () {
+        component.reset();
+        choice = {
+          season: 0,
+          voice: 0,
+          voice_name: ''
+        };
+        filter();
+        append(filtred());
+        component.saveChoice(choice);
+      };
+
+      this.filter = function (type, a, b) {
+        choice[a.stype] = b.index;
+        if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index];
+        component.reset();
+        filter();
+        append(filtred());
+        component.saveChoice(choice);
+      };
+
+      this.destroy = function () {
+        stelsStopSafePrecheck();
+        network.clear();
+        extract = null;
+      };
+
+      function requestText(url, call, error, postdata) {
+        network.clear();
+        network.timeout(12000);
+        network['native'](component.proxyLink(url, prox_site, prox_enc_site, 'enc2t'), function (str) {
+          call(str || '');
+        }, function (a, c) {
+          if (error) error(network.errorDecode(a, c));
+        }, postdata || false, {
+          dataType: 'text',
+          headers: site_headers
+        });
+      }
+
+      function searchSite(call, error) {
+        var query = component.cleanTitle(select_title || '');
+        var postdata = 'do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(query);
+        requestText(host + '/index.php?do=search', function (html) {
+          var items = parseSearchItems(html || '');
+          stelsLog('zetflixnet-site-search', { title: select_title, query: query, count: items.length });
+          call(items);
+        }, error, postdata);
+      }
+
+      function parseSearchItems(html) {
+        html = String(html || '').replace(/\n/g, ' ');
+        var items = [];
+        var seen = {};
+        var re = /<a\b[^>]*href=["']([^"']*(?:\/film\/|\/serials\/|\/multfilms\/|\/cartoons\/|\/anime\/)[^"']*)["'][^>]*>([\s\S]*?)<\/a>/ig;
+        var m;
+        while ((m = re.exec(html)) !== null) {
+          var link = normalizePageLink(component.fixLink(component.decodeHtml ? component.decodeHtml(m[1]) : m[1], ref));
+          if (!link || seen[link]) continue;
+          var raw = m[2] || '';
+          var title = cleanHtml(raw).replace(/\s*смотреть\s+онлайн.*$/i, '').trim();
+          if (!title || title.length < 2) {
+            var alt = raw.match(/(?:title|alt)=["']([^"']+)["']/i);
+            title = alt ? cleanHtml(alt[1]) : '';
+          }
+          if (!title || /^(смотреть|онлайн|плеер)$/i.test(title)) continue;
+          var around = html.substring(Math.max(0, m.index - 800), Math.min(html.length, re.lastIndex + 800));
+          var year = parseYear(around);
+          seen[link] = true;
+          items.push({ title: title, year: year, link: link });
+        }
+        return items.filter(function (item) {
+          return item.title && item.link && item.link.indexOf(host) === 0;
+        });
+      }
+
+      function cleanHtml(str) {
+        str = String(str || '');
+        str = str.replace(/<script[\s\S]*?<\/script>/ig, ' ');
+        str = str.replace(/<style[\s\S]*?<\/style>/ig, ' ');
+        str = str.replace(/<[^>]+>/g, ' ');
+        str = str.replace(/&nbsp;/g, ' ');
+        str = $('<div>').html(str).text();
+        return str.replace(/\s+/g, ' ').trim();
+      }
+
+      function parseYear(str) {
+        var y = String(str || '').match(/\b(19\d{2}|20\d{2})\b/);
+        return y ? parseInt(y[1], 10) : 0;
+      }
+
+      function normalizePageLink(link) {
+        link = String(link || '').split('#')[0];
+        link = link.replace(/\?.*$/, '');
+        link = link.replace(/\/\d+-season(?:\/\d+-episode)?\/?$/i, '');
+        return link;
+      }
+
+      function selectBest(items) {
+        var search_date = object.search_date || !object.clarification && (object.movie.release_date || object.movie.first_air_date || object.movie.last_air_date) || '0000';
+        var search_year = parseInt((search_date + '').slice(0, 4), 10) || 0;
+        var orig_titles = [];
+        if (object.movie.alternative_titles && object.movie.alternative_titles.results) {
+          orig_titles = object.movie.alternative_titles.results.map(function (t) { return t.title; });
+        }
+        if (object.movie.original_title) orig_titles.push(object.movie.original_title);
+        if (object.movie.original_name) orig_titles.push(object.movie.original_name);
+
+        var cards = items.slice(0);
+        var sure = false;
+        if (orig_titles.length) {
+          var by_orig = cards.filter(function (c) { return component.containsAnyTitle([c.title], orig_titles); });
+          if (by_orig.length) { cards = by_orig; sure = true; }
+        }
+        if (select_title) {
+          var by_title = cards.filter(function (c) { return component.containsAnyTitle([c.title], [select_title]); });
+          if (by_title.length) { cards = by_title; sure = true; }
+        }
+        if (cards.length > 1 && search_year) {
+          var by_year = cards.filter(function (c) { return c.year == search_year; });
+          if (!by_year.length) by_year = cards.filter(function (c) { return c.year && c.year > search_year - 2 && c.year < search_year + 2; });
+          if (by_year.length) cards = by_year;
+        }
+        if (cards.length == 1 && sure) {
+          if (search_year && cards[0].year) sure = cards[0].year > search_year - 2 && cards[0].year < search_year + 2;
+          if (sure && select_title) sure = component.equalAnyTitle([cards[0].title], [select_title]) || component.containsAnyTitle([cards[0].title], [select_title]);
+        } else sure = false;
+        return cards[0] ? Lampa.Arrays.extend(cards[0], { sure: sure }) : null;
+      }
+
+      function loadPage(link, fallback_kp, tried_episode) {
+        link = component.fixLink(link, ref);
+        requestText(link, function (html) {
+          var parsed = parsePage(html || '');
+          stelsLog('zetflixnet-page-parse', { link: link, kp: parsed.kp || '', token: !!parsed.token, episode_link: parsed.episode_link || '' });
+          if (parsed.kp) {
+            loadPlaylist(parsed.kp);
+          } else if (!tried_episode && parsed.episode_link) {
+            loadPage(parsed.episode_link, fallback_kp, true);
+          } else if (!isNaN(fallback_kp)) {
+            loadPlaylist(fallback_kp);
+          } else {
+            component.loading(false);
+            component.emptyForQuery(select_title);
+          }
+        }, function (err) {
+          if (!isNaN(fallback_kp)) loadPlaylist(fallback_kp);else {
+            component.loading(false);
+            component.empty(err || 'ZetflixNet page error');
+          }
+        });
+      }
+
+      function parsePage(html) {
+        html = String(html || '');
+        var out = { kp: '', token: '', episode_link: '' };
+        var kp = html.match(/kinopoisk_id\s*:\s*['"]?(\d+)/i) || html.match(/[?&]kp=(\d+)/i) || html.match(/data-kp\s*=\s*["'](\d+)/i);
+        if (kp) out.kp = kp[1];
+        var token = html.match(/[?&]token=([a-z0-9]+)/i);
+        if (token) out.token = token[1];
+        var ep = html.match(/href=["']([^"']*\/\d+-season\/\d+-episode)["']/i);
+        if (ep) out.episode_link = component.fixLink(ep[1], ref);
+        return out;
+      }
+
+      function loadPlaylist(kp_id) {
+        var url = api + 'playlist?pub=' + encodeURIComponent(pub_id) + '&aggr=kp&id=' + encodeURIComponent(kp_id);
+        network.clear();
+        network.timeout(12000);
+        network['native'](component.proxyLink(url, prox_api, prox_enc_api), function (json) {
+          parsePlaylist(json, kp_id);
+        }, function (a, c) {
+          if (a.status == 500 && !a.responseText || a.status == 0 && a.statusText !== 'timeout') {
+            parsePlaylist(null, kp_id);
+          } else component.empty(network.errorDecode(a, c));
+        }, false, {
+          headers: api_headers
+        });
+      }
+
+      function parsePlaylist(json, kp_id) {
+        component.loading(false);
+        if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, null);
+        if (json && json.items && json.items.forEach) {
+          var seasons = [];
+          var items = json.items;
+          items.sort(function (a, b) {
+            var cmp = (a.season || 0) - (b.season || 0);
+            if (cmp) return cmp;
+            cmp = (a.episode || 0) - (b.episode || 0);
+            if (cmp) return cmp;
+            if ((a.voiceStudio || a.voiceType || '') > (b.voiceStudio || b.voiceType || '')) return 1;
+            if ((a.voiceStudio || a.voiceType || '') < (b.voiceStudio || b.voiceType || '')) return -1;
+            return (a.vkId || 0) - (b.vkId || 0);
+          });
+          items.forEach(function (data) {
+            if (data.season != null) {
+              var s = seasons.filter(function (s) { return s.id === data.season; })[0];
+              if (!s) {
+                s = { id: data.season, title: Lampa.Lang.translate('torrent_serial_season') + ' ' + data.season, voices: [] };
+                seasons.push(s);
+              }
+              var voice = data.voiceStudio || data.voiceType || '';
+              if (s.voices.indexOf(voice) == -1) s.voices.push(voice);
+            }
+          });
+          extract = {
+            kp: kp_id,
+            title_name: json.titleName || json.title_name || select_title,
+            items: items,
+            seasons: seasons
+          };
+          stelsLog('zetflixnet-playlist', { kp: kp_id, title: extract.title_name, count: items.length, seasons: seasons.length, pub: pub_id });
+          filter();
+          append(filtred());
+        } else component.emptyForQuery(select_title);
+      }
+
+      function filter() {
+        filter_items = { season: [], voice: [] };
+        if (extract.seasons && extract.seasons.length) {
+          filter_items.season = extract.seasons.map(function (s) { return s.title; });
+          if (!filter_items.season[choice.season]) choice.season = 0;
+          var s = extract.seasons[choice.season];
+          if (s) filter_items.voice = s.voices;
+          if (!filter_items.voice[choice.voice]) choice.voice = 0;
+          if (choice.voice_name) {
+            var inx = filter_items.voice.indexOf(choice.voice_name);
+            if (inx == -1) choice.voice = 0;else if (inx !== choice.voice) choice.voice = inx;
+          }
+        }
+        component.filter(filter_items, choice);
+      }
+
+      function filtred() {
+        var out = [];
+        if (extract.seasons && extract.seasons.length) {
+          var season_id = extract.seasons[choice.season] && extract.seasons[choice.season].id;
+          extract.items.forEach(function (data) {
+            var voice = data.voiceStudio || data.voiceType || '';
+            if (data.season == season_id && voice == filter_items.voice[choice.voice]) {
+              out.push({
+                title: component.formatEpisodeTitle(season_id, data.episode),
+                quality: '360p ~ 1080p',
+                info: ' / ' + Lampa.Utils.shortText(voice, 50),
+                data_id: data.vkId,
+                season: '' + season_id,
+                episode: data.episode,
+                media: data
+              });
+            }
+          });
+        } else if (extract.items) {
+          extract.items.forEach(function (data) {
+            out.push({
+              title: data.voiceStudio || data.voiceType || extract.title_name,
+              quality: '360p ~ 1080p',
+              info: '',
+              data_id: data.vkId,
+              media: data
+            });
+          });
+        }
+        return out;
+      }
+
+      function extractItems(sources) {
+        if (!sources) return [];
+        var items = [];
+        if (sources.mpeg2kUrl) items.push({ label: '4K', quality: 2160, file: sources.mpeg2kUrl });
+        if (sources.mpeg4kUrl) items.push({ label: '2K', quality: 1440, file: sources.mpeg4kUrl });
+        if (sources.mpegQhdUrl) items.push({ label: '1440p', quality: 1440, file: sources.mpegQhdUrl });
+        if (sources.mpegFullHdUrl) items.push({ label: '1080p', quality: 1080, file: sources.mpegFullHdUrl });
+        if (sources.mpegHighUrl) items.push({ label: '720p', quality: 720, file: sources.mpegHighUrl });
+        if (sources.mpegMediumUrl) items.push({ label: '480p', quality: 480, file: sources.mpegMediumUrl });
+        if (sources.mpegLowUrl) items.push({ label: '360p', quality: 360, file: sources.mpegLowUrl });
+        if (sources.mpegLowestUrl) items.push({ label: '240p', quality: 240, file: sources.mpegLowestUrl });
+        if (sources.mpegTinyUrl) items.push({ label: '144p', quality: 144, file: sources.mpegTinyUrl });
+        if (!items.length && sources.hlsUrl) items.push({ label: 'HLS', quality: NaN, file: sources.hlsUrl });
+        items.forEach(function (item) {
+          item.file = component.proxyLink(component.fixLinkProtocol(item.file, prefer_http, true), prox_api, prox_enc_api);
+        });
+        return items;
+      }
+
+      function getStream(element, call, error) {
+        if (element.stream) return call(element);
+        if (!element.data_id) return error();
+        var url = api + 'video/' + encodeURIComponent(element.data_id);
+        network.clear();
+        network.timeout(12000);
+        network['native'](component.proxyLink(url, prox_api, prox_enc_api), function (json) {
+          if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, null);
+          if (json && json.sources) {
+            var file = '', quality = false;
+            var items = extractItems(json.sources);
+            if (items && items.length) {
+              file = items[0].file;
+              quality = {};
+              items.forEach(function (item) { quality[item.label] = item.file; });
+            }
+            if (file) {
+              element.stream = file;
+              element.qualitys = quality;
+              call(element);
+            } else error();
+          } else error();
+        }, function () { error(); }, false, {
+          headers: api_headers
+        });
+      }
+
+      function append(items) {
+        component.reset();
+        var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        items.forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = component.getLastEpisode(items);
+            element.translate_voice = filter_items.voice[choice.voice];
+          }
+          var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
+          var view = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', element);
+          var hash_file = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title, filter_items.voice[choice.voice], 'zetflixnet'].join('') : object.movie.original_title + element.data_id + 'zetflixnet');
+          element.timeline = view;
+          item.append(Lampa.Timeline.render(view));
+          if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
+          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+          item.on('hover:enter', function () {
+            if (element.loading) return;
+            if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            element.loading = true;
+            getStream(element, function (element) {
+              element.loading = false;
+              var first = {
+                url: component.getDefaultQuality(element.qualitys, element.stream),
+                quality: component.renameQualityMap(element.qualitys),
+                timeline: element.timeline,
+                title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title)
+              };
+              Lampa.Player.play(first);
+              if (element.season && Lampa.Platform.version) {
+                var playlist = [];
+                items.forEach(function (elem) {
+                  if (elem == element) playlist.push(first);else {
+                    var cell = {
+                      url: function url(call) {
+                        getStream(elem, function (elem) {
+                          cell.url = component.getDefaultQuality(elem.qualitys, elem.stream);
+                          cell.quality = component.renameQualityMap(elem.qualitys);
+                          call();
+                        }, function () { cell.url = ''; call(); });
+                      },
+                      timeline: elem.timeline,
+                      title: elem.title
+                    };
+                    playlist.push(cell);
+                  }
+                });
+                Lampa.Player.playlist(playlist);
+              } else Lampa.Player.playlist([first]);
+              if (viewed.indexOf(hash_file) == -1) {
+                viewed.push(hash_file);
+                item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+                Lampa.Storage.set('online_view', viewed);
+              }
+            }, function () {
+              element.loading = false;
+              Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
+            });
+          });
+          component.append(item);
+          component.contextmenu({
+            item: item,
+            view: view,
+            viewed: viewed,
+            hash_file: hash_file,
+            file: function file(call) {
+              getStream(element, function (element) {
+                call({ file: element.stream, quality: element.qualitys });
+              }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
             }
           });
         });
@@ -19281,8 +19766,8 @@
       }, {
         name: 'zetflixnet',
         title: 'ZetflixNet',
-        source: new cdnvideohub(this, object, 338),
-        search: false,
+        source: new zetflixnet(this, object),
+        search: true,
         kp: true,
         imdb: false
       }, {
@@ -19547,8 +20032,8 @@
           if (engine === 'vibix') return new vibix(fake, object);
           if (engine === 'redheadsound') return new redheadsound(fake, object, false);
           if (engine === 'redheadsound-dash') return new redheadsound(fake, object, true);
+          if (engine === 'zetflixnet') return new zetflixnet(fake, object);
           if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
-          if (engine === 'zetflixnet') return new cdnvideohub(fake, object, 338);
           if (engine === 'anilibria') return new anilibria(fake, object);
           if (engine === 'anilibria2') return new anilibria2(fake, object);
           if (engine === 'animelib') return new animelib(fake, object);
@@ -22618,7 +23103,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.84: додано джерело ZetflixNet через CDNVideoHub API pub=338; Kinogo fallback з 1.0.83 збережено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.85: ZetflixNet перероблено окремим parser-ом за HAR: пошук/сторінка zetflix.net -> iframe blink.stloadi.live -> playlist/video API pub=338; Kinogo-зміни 1.0.83 збережені.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
