@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.87';
+    var STELS_ONLINE_VERSION = '1.0.88';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13039,17 +13039,19 @@
         prox_enc_api += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
       }
 
-      var site_headers = Lampa.Platform.is('android') ? {
+      var site_headers = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Origin': host,
         'Referer': ref,
         'User-Agent': user_agent
-      } : {};
+      };
 
-      var api_headers = Lampa.Platform.is('android') ? {
+      var api_headers = {
+        'Accept': 'application/json, text/plain, */*',
         'Origin': host,
         'Referer': api_ref || ref,
         'User-Agent': user_agent
-      } : {};
+      };
 
       this.search = function (_object, kinopoisk_id, data) {
         object = _object;
@@ -13419,6 +13421,7 @@
         network.timeout(12000);
         api_headers.Referer = api_ref || ref;
         network['native'](component.proxyLink(url, use_prox, use_enc), function (json) {
+          stelsLog('zetflixnet-video-response', { data_id: element.data_id, direct: !!force_direct, ok: true, referer: api_headers.Referer || '' });
           if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, null);
           if (json && json.sources) {
             var file = '', quality = false;
@@ -13435,8 +13438,8 @@
             } else error();
           } else error();
         }, function (a, c) {
-          stelsLog('zetflixnet-video-error', { data_id: element.data_id, direct: !!force_direct, status: a && a.status || 0, message: network.errorDecode(a, c) || '' });
-          if (!force_direct && use_prox) getStream(element, call, error, true);else error();
+          stelsLog('zetflixnet-video-error', { data_id: element.data_id, direct: !!force_direct, status: a && a.status || 0, message: network.errorDecode(a, c) || '', referer: api_headers.Referer || '', origin: api_headers.Origin || '' });
+          if (!force_direct) getStream(element, call, error, true);else error();
         }, false, {
           headers: api_headers
         });
@@ -23137,7 +23140,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.87: ZetflixNet виправлено: API-запити playlist/video тепер ідуть з Origin/Referer zetflix.net як у HAR; ZetflixNet прибрано з DLE-search гілки, лишено KP-ланцюжок pub=338.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.88: ZetflixNet video fix: Origin/Referer/User-Agent тепер задаються на всіх платформах, не тільки Android; video endpoint повторюється прямим запитом при 404.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
