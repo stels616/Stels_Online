@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.92';
+    var STELS_ONLINE_VERSION = '1.0.93';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13508,6 +13508,39 @@
         return zetflixnetItemToElement(found, element);
       }
 
+      function zetflixnetStopCurrentPlayback(reason) {
+        var stopped = { reason: reason || '', player_pause: false, player_video: false, html_media: 0, errors: [] };
+        try {
+          if (Lampa && Lampa.Player && typeof Lampa.Player.pause === 'function') {
+            Lampa.Player.pause();
+            stopped.player_pause = true;
+          }
+        } catch (e) { stopped.errors.push('player_pause:' + (e && (e.message || e.toString()) || e)); }
+        try {
+          var pv = null;
+          if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') pv = Lampa.Player.video();
+          if (pv && pv.pause) {
+            pv.pause();
+            try { pv.removeAttribute('src'); } catch (e1) {}
+            try { pv.src = ''; } catch (e2) {}
+            try { pv.load(); } catch (e3) {}
+            stopped.player_video = true;
+          }
+        } catch (e4) { stopped.errors.push('player_video:' + (e4 && (e4.message || e4.toString()) || e4)); }
+        try {
+          var nodes = document.querySelectorAll('video,audio');
+          for (var i = 0; i < nodes.length; i++) {
+            var m = nodes[i];
+            try { m.pause(); } catch (e5) {}
+            try { m.removeAttribute('src'); } catch (e6) {}
+            try { m.src = ''; } catch (e7) {}
+            try { m.load(); } catch (e8) {}
+            stopped.html_media++;
+          }
+        } catch (e9) { stopped.errors.push('html_media:' + (e9 && (e9.message || e9.toString()) || e9)); }
+        stelsLog('zetflixnet-player-stop-before-switch', stopped);
+      }
+
       function zetflixnetVoiceovers(element, selectedVoice) {
         if (!(filter_items.voice && filter_items.voice.length > 1)) return false;
         selectedVoice = selectedVoice || element && (element.translate_voice || element.voice_name || (element.media && (element.media.voiceStudio || element.media.voiceType))) || filter_items.voice[choice.voice] || '';
@@ -13545,7 +13578,11 @@
                   voiceovers: zetflixnetVoiceovers(item, voiceName)
                 }, 'zetflixnet-voice-switch');
                 stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality) : [] });
-                Lampa.Player.play(play);
+                zetflixnetStopCurrentPlayback('voice-switch:' + voiceName);
+                setTimeout(function () {
+                  Lampa.Player.play(play);
+                  try { Lampa.Player.playlist([play]); } catch (e4) {}
+                }, 120);
               }, function (err) {
                 try { Lampa.Player.loading(false); } catch (e3) {}
                 stelsLog('zetflixnet-voice-switch-fail', { voice: voiceName, error: err || '', season: element && element.season || '', episode: element && element.episode || '' });
@@ -23320,7 +23357,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.92: ZetflixNet: додано перемикання перекладу прямо в плеєрі через voiceovers/translate tracks; фільми лишаються однією карточкою з перекладами у фільтрі.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.93: ZetflixNet: виправлено накладання аудіо при зміні перекладу в плеєрі — перед запуском нового voice stream примусово зупиняється старий video/audio element.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
