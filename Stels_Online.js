@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.89';
+    var STELS_ONLINE_VERSION = '1.0.90';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -13301,8 +13301,10 @@
 
       function loadPlaylist(kp_id, force_direct) {
         var url = api + 'playlist?pub=' + encodeURIComponent(pub_id) + '&aggr=kp&id=' + encodeURIComponent(kp_id);
-        var use_prox = force_direct ? '' : prox_api;
-        var use_enc = force_direct ? '' : prox_enc_api;
+        // Спочатку йдемо напряму. У логах 1.0.89 proxy-виклик до apn-latest давав
+        // `Malformed URL`, а прямий виклик plapi.cdnvideohub.com повертав коректний JSON.
+        var use_prox = force_direct ? prox_api : '';
+        var use_enc = force_direct ? prox_enc_api : '';
         network.clear();
         network.timeout(12000);
         api_headers.Referer = api_ref || ref;
@@ -13316,7 +13318,7 @@
 
           // Якщо увімкнений proxy для CDNVideoHub, він може віддати 404 саме на pub=338.
           // Повторюємо прямим URL, як у HAR, і тільки після цього показуємо помилку.
-          if (!force_direct && use_prox) {
+          if (!force_direct && prox_api) {
             loadPlaylist(kp_id, true);
             return;
           }
@@ -13437,9 +13439,12 @@
         stelsLog('zetflixnet-extractitems-before-proxy', { data_id: ctx && ctx.data_id || '', count: items.length, sources: zlogSourceSummary(sources), items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, url: zlogUrlInfo(item.file) }; }) });
         items.forEach(function (item) {
           item.original_file = item.file;
-          item.file = component.proxyLink(component.fixLinkProtocol(item.file, prefer_http, true), prox_api, prox_enc_api);
+          // Важливо: сам video API можна читати через proxy/fallback, але реальні потоки ZetflixNet
+          // приходять з okcdn/vd*.okcdn.ru. Їх не можна проганяти через apn/onrender proxy:
+          // Lampa/Electron після цього часто показує «файл не знайдений або пошкоджений».
+          item.file = component.fixLinkProtocol(item.file, prefer_http, true);
         });
-        stelsLog('zetflixnet-extractitems-after-proxy', { data_id: ctx && ctx.data_id || '', prox_api: !!prox_api, prefer_http: prefer_http, count: items.length, items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, original: zlogUrlInfo(item.original_file), final: zlogUrlInfo(item.file) }; }) });
+        stelsLog('zetflixnet-extractitems-after-proxy', { data_id: ctx && ctx.data_id || '', prox_api: false, stream_proxy_disabled: true, prefer_http: prefer_http, count: items.length, items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, original: zlogUrlInfo(item.original_file), final: zlogUrlInfo(item.file) }; }) });
         return items;
       }
 
@@ -13453,8 +13458,10 @@
           return error();
         }
         var url = api + 'video/' + encodeURIComponent(element.data_id);
-        var use_prox = force_direct ? '' : prox_api;
-        var use_enc = force_direct ? '' : prox_enc_api;
+        // Спочатку йдемо напряму. У логах 1.0.89 proxy-виклик до apn-latest давав
+        // `Malformed URL`, а прямий виклик plapi.cdnvideohub.com повертав коректний JSON.
+        var use_prox = force_direct ? prox_api : '';
+        var use_enc = force_direct ? prox_enc_api : '';
         var final_url = component.proxyLink(url, use_prox, use_enc);
         network.clear();
         network.timeout(12000);
@@ -13489,7 +13496,7 @@
           }
         }, function (a, c) {
           stelsLog('zetflixnet-video-error', { data_id: element.data_id, direct: !!force_direct, status: a && a.status || 0, statusText: a && a.statusText || '', responseText: a && a.responseText ? String(a.responseText).slice(0, 800) : '', message: network.errorDecode(a, c) || '', referer: api_headers.Referer || '', origin: api_headers.Origin || '', final_url: zlogUrlInfo(final_url) });
-          if (!force_direct) getStream(element, call, error, true);else error();
+          if (!force_direct && prox_api) getStream(element, call, error, true);else error();
         }, false, {
           headers: api_headers
         });
@@ -23193,7 +23200,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.89: додано розширений діагностичний лог ZetflixNet video/player: data_id, media fields, headers, source keys, stream urls, quality map і URL, який передається в Lampa.Player.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.90: ZetflixNet fix: video API спочатку прямий без proxy; OKCDN/HLS stream URL у плеєр напряму без apn-proxy; debug-лог залишено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
