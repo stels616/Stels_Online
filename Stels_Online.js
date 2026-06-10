@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.20';
+    var STELS_ONLINE_VERSION = '1.1.21';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -843,6 +843,7 @@
       });
 
       var remoteOkTimer = 0;
+      var remoteOkDownAt = 0;
       html.on('keydown', function (event) {
         var code = event && (event.keyCode || event.which) || 0;
         var key = event && event.key || '';
@@ -856,6 +857,7 @@
           if (code === 27 || code === 10009 || key === 'Escape' || key === 'Backspace') { movingMode = false; if (movingRow && movingRow.length) movingRow.removeClass('stels-online-source-moving').find('.stels-online-source-move-hint').text('Утримати'); event.preventDefault(); return false; }
         }
         if ((code === 13 || code === 23 || key === 'Enter') && current.length && !remoteOkTimer) {
+          remoteOkDownAt = Date.now();
           remoteOkTimer = setTimeout(function () {
             remoteOkTimer = 0;
             beginMove(current);
@@ -864,7 +866,47 @@
         }
       });
       html.on('keyup', function () {
-        if (remoteOkTimer) { clearTimeout(remoteOkTimer); remoteOkTimer = 0; }
+        if (remoteOkTimer) { clearTimeout(remoteOkTimer); remoteOkTimer = 0; } remoteOkDownAt = 0;
+      });
+
+      function stelsCurrentSourceRowForRemote() {
+        var current = html.find('.stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
+        if (!current.length) current = html.find('.stels-online-source-row:focus').first();
+        if (!current.length && document.activeElement) current = $(document.activeElement).closest('.stels-online-source-row');
+        if (!current.length && stelsLastFocusedSourceRow) current = $(stelsLastFocusedSourceRow).closest('.stels-online-source-row');
+        if (!current.length) {
+          try {
+            var selected = Lampa.Controller && Lampa.Controller.selected && Lampa.Controller.selected();
+            if (selected) current = $(selected).closest('.stels-online-source-row');
+          } catch (e) {}
+        }
+        if (!current.length) current = html.find('.stels-online-source-row').first();
+        return current;
+      }
+
+      $(document).off('keydown.stelsSourcesMove keyup.stelsSourcesMove');
+      $(document).on('keydown.stelsSourcesMove', function (event) {
+        var code = event && (event.keyCode || event.which) || 0;
+        var key = event && event.key || '';
+        if (!(code === 13 || code === 23 || key === 'Enter' || code === 38 || code === 40 || key === 'ArrowUp' || key === 'ArrowDown' || code === 27 || code === 10009 || key === 'Escape' || key === 'Backspace')) return;
+        var current = stelsCurrentSourceRowForRemote();
+        if (movingMode) {
+          if (code === 38 || key === 'ArrowUp') { moveSelectedRow(-1); event.preventDefault(); return false; }
+          if (code === 40 || key === 'ArrowDown') { moveSelectedRow(1); event.preventDefault(); return false; }
+          if (code === 13 || code === 23 || key === 'Enter') { commitMove(); event.preventDefault(); return false; }
+          if (code === 27 || code === 10009 || key === 'Escape' || key === 'Backspace') { movingMode = false; if (movingRow && movingRow.length) movingRow.removeClass('stels-online-source-moving').find('.stels-online-source-move-hint').text('Утримати'); event.preventDefault(); return false; }
+        }
+        if ((code === 13 || code === 23 || key === 'Enter') && current.length && !remoteOkTimer) {
+          remoteOkDownAt = Date.now();
+          remoteOkTimer = setTimeout(function () {
+            remoteOkTimer = 0;
+            beginMove(current);
+            stelsLog('sources-remote-long-start-document', { source: stelsNormalizeSourceKey(current.data('source')), code: code, key: key });
+          }, 620);
+        }
+      });
+      $(document).on('keyup.stelsSourcesMove', function () {
+        if (remoteOkTimer) { clearTimeout(remoteOkTimer); remoteOkTimer = 0; } remoteOkDownAt = 0;
       });
 
       function stopTouchAutoScroll() {
@@ -948,6 +990,13 @@
         var key = stelsNormalizeSourceKey(row.data('source'));
         var now = Date.now();
 
+        if (remoteOkTimer || (remoteOkDownAt && now - remoteOkDownAt > 120)) {
+          stelsLog('sources-toggle-skip-remote-hold-pending', { source: key, event_type: event && event.type || '', hold_ms: remoteOkDownAt ? now - remoteOkDownAt : 0 });
+          if (event && event.preventDefault) event.preventDefault();
+          if (event && event.stopPropagation) event.stopPropagation();
+          return false;
+        }
+
         if (movingMode) {
           if (now - stelsMoveStartedAt < 850 || now < stelsSuppressSourceToggleUntil) {
             stelsLog('sources-move-release-click-skip', { source: key, event_type: event && event.type || '', age: now - stelsMoveStartedAt });
@@ -986,6 +1035,7 @@
 
       stelsLog('sources-modal-opened', { total: STELS_REQUESTED_SOURCE_NAMES.length, hidden_count: hidden.length, hidden: hidden, active: active });
       function stelsCloseSourcesModal() {
+        try { $(document).off('keydown.stelsSourcesMove keyup.stelsSourcesMove'); } catch (e) {}
         if (movingMode) commitMove();
         Lampa.Modal.close();
         Lampa.Controller.toggle(controller);
@@ -13625,7 +13675,7 @@
       }
       function loadEmbed(embedUrl, pageUrl) {
         var candidates = tortugaEmbedCandidates(embedUrl);
-        stelsLog('uaserials-tortuga-candidates', { page: pageUrl, candidates: candidates });
+        stelsLog('uaserials-tortuga-candidates', { page: pageUrl, candidates: candidates, iframe_headers: { referer: host + '/', sec_fetch_dest: 'iframe', no_origin: true } });
         function tryCandidate(pos, lastErr) {
           if (destroyed) return;
           if (pos >= candidates.length) {
@@ -13652,7 +13702,16 @@
           }, function (err) {
             stelsLog('uaserials-tortuga-candidate-fail', { url: url, error: err || '' });
             tryCandidate(pos + 1, err || 'UASerials embed error');
-          }, { timeout: 15000, headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': pageUrl || host + '/', 'Origin': host, 'Accept-Language': 'uk-UA,uk;q=0.9,ru;q=0.8,en;q=0.6' } });
+          }, { timeout: 15000, headers: {
+              'User-Agent': Utils.baseUserAgent(),
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+              'Accept-Language': 'uk-UA,uk;q=0.9,ru;q=0.8,en;q=0.6',
+              'Referer': host + '/',
+              'Sec-Fetch-Dest': 'iframe',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'cross-site',
+              'Upgrade-Insecure-Requests': '1'
+            } });
         }
         tryCandidate(0, '');
       }
@@ -14753,9 +14812,19 @@
                 stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality) : [] });
                 zetflixnetStopCurrentPlayback('voice-switch:' + voiceName);
                 setTimeout(function () {
-                  if (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen') && play.quality) {
-                    try { play.url = component.getDefaultQuality(play.quality, play.url); } catch (e5) {}
-                    play._stels_tizen_voice_switch = true;
+                  if (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) {
+                    try {
+                      var tizenUrl = component.getDefaultQuality(play.quality, play.url) || play.url;
+                      play.url = tizenUrl;
+                      play.file = tizenUrl;
+                      play.stream = tizenUrl;
+                      play.url_reserve = '';
+                      // На Tizen при voice-switch quality-map іноді лишає старий source у playerjs.
+                      // Тому запускаємо один готовий потік; зміну якості можна робити вже після старту.
+                      play.quality = false;
+                      play._stels_tizen_voice_switch = true;
+                      stelsLog('zetflixnet-tizen-voice-single-url', { voice: voiceName, url: zlogUrlInfo(tizenUrl), data_id: item.data_id || '' });
+                    } catch (e5) { stelsLog('zetflixnet-tizen-voice-single-url-error', { voice: voiceName, error: e5 && (e5.message || e5.toString()) || '' }); }
                   }
                   Lampa.Player.play(play);
                   if (!stelsAndroidPlayerFixEnabled()) {
@@ -24654,7 +24723,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.20: UASerials /usp тепер пробується разом з /embed-кандидатом; виправлено відкриття Tortuga для Тачки та інших фільмів.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.21: UASerials /usp тепер пробується разом з /embed-кандидатом; виправлено відкриття Tortuga для Тачки та інших фільмів.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
