@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.08';
+    var STELS_ONLINE_VERSION = '1.1.09';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -188,7 +188,7 @@
         var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
         if (el.hasClass('view--stels_online')) {
-          if (el.hasClass('full-start__button')) {
+          if (el.attr('data-stels-main-button') === '1') {
             el.removeAttr('data-subtitle');
             el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
             return false;
@@ -244,7 +244,7 @@
             if (el.hasClass('view--stels_online')) {
               // На картці фільму головна кнопка має лишатися компактною, але в списку
               // джерел/плагінів елемент з таким самим класом повинен мати іконку і назву.
-              if (el.hasClass('full-start__button')) {
+              if (el.attr('data-stels-main-button') === '1') {
                 el.removeAttr('data-subtitle');
                 el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under,span').remove();
                 return;
@@ -272,7 +272,7 @@
             var componentKey = String(el.attr('data-component') || el.data('component') || el.attr('data-name') || el.attr('data-source') || '').toLowerCase();
             var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text) || /^Онлайн\s+Z01$/i.test(text) || text === 'Z01' || componentKey === 'stels_online';
             if (el.hasClass('view--stels_online')) {
-              if (el.hasClass('full-start__button')) return;
+              if (el.attr('data-stels-main-button') === '1') return;
               stelsPatchFlatPluginEntry(el);
               return;
             }
@@ -697,8 +697,8 @@
           '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
           '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-episode-badge{font-size:.7em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
-          '.full-start__button.view--stels_online .full-start__subtitle,.full-start__button.view--stels_online .selector__subtitle,.full-start__button.view--stels_online [class*="subtitle"],.full-start__button.view--stels_online .stels-online-version-under{display:none!important;}' +
-          '.full-start__button.view--stels_online:after{content:none!important;display:none!important;}' +
+          '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*="subtitle"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
+          '.full-start__button.view--stels_online[data-stels-main-button="1"]:after{content:none!important;display:none!important;}' +
           '.settings-folder.stels-online-settings-folder{display:grid!important;grid-template-columns:2.35em auto!important;column-gap:.65em!important;align-items:center!important;justify-content:start!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{display:flex!important;align-items:center!important;justify-content:center!important;width:2.25em!important;height:2.25em!important;min-width:2.25em!important;max-width:2.25em!important;margin:0!important;padding:0!important;font-size:1rem!important;color:transparent!important;overflow:visible!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__name{margin:0!important;padding:0!important;left:auto!important;transform:none!important;}' +
@@ -707,7 +707,8 @@
           '.stels-online-version-under{font-size:.72em;line-height:1.1;opacity:.6;margin-top:.12em;}' +
           '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;}' +
           '.stels-online-source-entry .stels-online-source-icon{width:2.15em!important;height:2.15em!important;margin-right:.7em!important;object-fit:contain!important;flex-shrink:0!important;}' +
-          '.full-start__button.view--stels_online .full-start__subtitle,.full-start__button.view--stels_online .selector__subtitle,.full-start__button.view--stels_online [class*=\"subtitle\"],.full-start__button.view--stels_online .stels-online-version-under{display:none!important;}' +
+          '.stels-online-source-moving{outline:2px solid #23d160!important;background:rgba(35,209,96,.12)!important;border-radius:.45em;padding-left:.45em!important;padding-right:.45em!important;}' +
+          '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*=\"subtitle\"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
           '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
@@ -759,6 +760,8 @@
       var controller = Lampa.Controller.enabled().name;
       var hidden = stelsGetHiddenSources();
       var active = stelsNormalizeSourceKey(Lampa.Storage.get('stels_online_balanser', ''));
+      var movingRow = null;
+      var movingMode = false;
 
       function makeRow(name) {
         name = stelsNormalizeSourceKey(name);
@@ -773,20 +776,21 @@
             '</div>' +
             '<div style="font-size:.78em;opacity:.55;margin-top:.15em">' + stelsEscapeHtml(name) + '</div>' +
           '</div>' +
-          '<div class="stels-online-source-arrows" aria-label="Порядок джерела">' +
-            '<div class="selector stels-online-source-arrow" data-move="up">▲</div>' +
-            '<div class="selector stels-online-source-arrow" data-move="down">▼</div>' +
-          '</div>' +
+          '<div class="stels-online-source-move-hint" style="opacity:.55;white-space:nowrap;text-align:right;font-size:.82em">Утримати</div>' +
           '<div class="stels-online-source-state" style="opacity:.8;white-space:nowrap;min-width:5.8em;text-align:right">' + (enabled ? 'Увімкнено' : 'Вимкнено') + '</div>' +
         '</div>';
       }
 
       var html = $('<div class="stels-online-sources-modal">' +
-        '<div style="opacity:.75;margin-bottom:.8em">Галочка керує тим, чи буде джерело показуватись у меню «Сортувати». Зелені стрілки змінюють порядок джерел у списку перегляду.</div>' +
+        '<div style="opacity:.75;margin-bottom:.8em">Галочка керує тим, чи буде джерело показуватись у меню «Сортувати». Для зміни порядку утримай джерело, перемісти його вгору/вниз, потім натисни один раз для збереження позиції.</div>' +
         '<div class="stels-online-sources-list" style="max-height:62vh;overflow-y:auto;padding-right:.3em">' +
           stelsGetSourceOrder().map(makeRow).join('') +
         '</div>' +
       '</div>');
+
+      var stelsLastSourceToggle = { key: '', time: 0 };
+      var stelsLastFocusedSourceRow = null;
+      var holdTimer = null;
 
       function updateRow(row, key) {
         hidden = stelsGetHiddenSources();
@@ -801,25 +805,6 @@
         html.find('.stels-online-source-row').each(function () { order.push(stelsNormalizeSourceKey($(this).data('source'))); });
         stelsSetSourceOrder(order);
       }
-
-      function moveSourceRow(row, dir) {
-        row = row && row.jquery ? row : $(row);
-        if (!row.length) return;
-        if (dir < 0) {
-          var prev = row.prev('.stels-online-source-row');
-          if (prev.length) row.insertBefore(prev);
-        } else {
-          var next = row.next('.stels-online-source-row');
-          if (next.length) row.insertAfter(next);
-        }
-        saveSourceOrderFromDom();
-        stelsScrollSourceRowIntoView(row);
-        try { Lampa.Controller.collectionSet(html, html.find('.selector')); Lampa.Controller.collectionFocus(row[0], html); } catch (e) {}
-        Lampa.Noty.show('Порядок змінено: ' + stelsSourceTitle(row.data('source')));
-      }
-
-      var stelsLastSourceToggle = { key: '', time: 0 };
-      var stelsLastFocusedSourceRow = null;
 
       function stelsScrollSourceRowIntoView(row) {
         try {
@@ -837,23 +822,75 @@
         } catch (e) {}
       }
 
+      function beginMove(row) {
+        row = row && row.jquery ? row : $(row);
+        if (!row.length) return;
+        if (movingRow && movingRow.length) movingRow.removeClass('stels-online-source-moving').find('.stels-online-source-move-hint').text('Утримати');
+        movingRow = row;
+        movingMode = true;
+        row.addClass('stels-online-source-moving');
+        row.find('.stels-online-source-move-hint').text('Рух ↑↓');
+        stelsScrollSourceRowIntoView(row);
+        try { Lampa.Controller.collectionSet(html, html.find('.selector')); Lampa.Controller.collectionFocus(row[0], html); } catch (e) {}
+        Lampa.Noty.show('Режим переміщення: ' + stelsSourceTitle(row.data('source')));
+        stelsLog('sources-move-start', { source: stelsNormalizeSourceKey(row.data('source')) });
+      }
+
+      function moveSelectedRow(dir) {
+        if (!movingMode || !movingRow || !movingRow.length) return false;
+        if (dir < 0) {
+          var prev = movingRow.prev('.stels-online-source-row');
+          if (prev.length) movingRow.insertBefore(prev);
+        } else {
+          var next = movingRow.next('.stels-online-source-row');
+          if (next.length) movingRow.insertAfter(next);
+        }
+        stelsScrollSourceRowIntoView(movingRow);
+        try { Lampa.Controller.collectionSet(html, html.find('.selector')); Lampa.Controller.collectionFocus(movingRow[0], html); } catch (e) {}
+        return true;
+      }
+
+      function commitMove() {
+        if (!movingMode || !movingRow || !movingRow.length) return false;
+        var key = stelsNormalizeSourceKey(movingRow.data('source'));
+        saveSourceOrderFromDom();
+        movingRow.removeClass('stels-online-source-moving');
+        movingRow.find('.stels-online-source-move-hint').text('Утримати');
+        movingMode = false;
+        stelsLog('sources-move-commit', { source: key, order_count: html.find('.stels-online-source-row').length });
+        Lampa.Noty.show('Позицію збережено: ' + stelsSourceTitle(key));
+        return true;
+      }
+
       html.on('hover:focus focus mouseenter', '.stels-online-source-row', function () {
         stelsScrollSourceRowIntoView(this);
       });
 
-      html.on('hover:enter click', '.stels-online-source-arrow', function (event) {
-        if (event && event.stopPropagation) event.stopPropagation();
+      html.on('hover:long', '.stels-online-source-row', function (event) {
         if (event && event.preventDefault) event.preventDefault();
-        var arrow = $(this);
-        var row = arrow.closest('.stels-online-source-row');
-        moveSourceRow(row, arrow.data('move') === 'up' ? -1 : 1);
+        beginMove(this);
         return false;
+      });
+
+      html.on('mousedown touchstart', '.stels-online-source-row', function () {
+        var row = this;
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(function () { beginMove(row); }, 650);
+      });
+      html.on('mouseup mouseleave touchend touchcancel', '.stels-online-source-row', function () {
+        clearTimeout(holdTimer);
       });
 
       html.find('.stels-online-source-row').on('hover:enter click', function (event) {
         var row = $(this);
         var key = stelsNormalizeSourceKey(row.data('source'));
         var now = Date.now();
+
+        if (movingMode) {
+          commitMove();
+          if (event && event.preventDefault) event.preventDefault();
+          return false;
+        }
 
         // На частині платформ Lampa одне натискання приходить як hover:enter + click.
         // Без цього захисту джерело вимикається і одразу вмикається назад.
@@ -873,6 +910,7 @@
 
       stelsLog('sources-modal-opened', { total: STELS_REQUESTED_SOURCE_NAMES.length, hidden_count: hidden.length, hidden: hidden, active: active });
       function stelsCloseSourcesModal() {
+        if (movingMode) commitMove();
         Lampa.Modal.close();
         Lampa.Controller.toggle(controller);
       }
@@ -895,10 +933,12 @@
               stelsScrollSourceRowIntoView(stelsLastFocusedSourceRow || html.find('.stels-online-source-row')[0]);
             },
             up: function () {
+              if (moveSelectedRow(-1)) return;
               Navigator.move('up');
               stelsScrollSourceRowIntoView(html.find('.focus')[0] || html.find('.stels-online-source-row.focus')[0]);
             },
             down: function () {
+              if (moveSelectedRow(1)) return;
               Navigator.move('down');
               stelsScrollSourceRowIntoView(html.find('.focus')[0] || html.find('.stels-online-source-row.focus')[0]);
             },
@@ -3464,6 +3504,7 @@
       var host = 'https://zerx.tv';
       var ref = host + '/';
       var prox = component.proxy('zerx');
+      var player_prox = component.proxy('cookie2') || component.proxy('cookie3') || component.proxy('iframe') || '';
       var user_agent = Utils.baseUserAgent();
       var player_browser_ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
       var page_headers = {
@@ -3619,7 +3660,8 @@
         opts = opts || {};
         var post = opts.post || false;
         var req_headers = opts.headers || page_headers;
-        var req_url = opts.raw ? url : component.proxyLink(url, prox, opts.prox_enc || '', opts.enc || 'enc2t');
+        var req_proxy = opts.proxy != null ? opts.proxy : prox;
+        var req_url = opts.raw ? url : component.proxyLink(url, req_proxy, opts.prox_enc || '', opts.enc || 'enc2t');
         var timeoutMs = opts.timeout || 18000;
         var finished = false;
         function doneOk(data) {
@@ -4062,12 +4104,22 @@
               return {
                 'User-Agent': player_browser_ua,
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
                 'Referer': host + '/',
                 'Upgrade-Insecure-Requests': '1',
                 'Sec-Fetch-Dest': 'iframe',
                 'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'cross-site'
+                'Sec-Fetch-Site': 'cross-site',
+                'sec-ch-ua': '"Chromium";v="148", "Google Chrome";v="148", "Not=A?Brand";v="24"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"'
               };
+            }
+            function playerProxyEnc(currentIframe) {
+              var hh = playerHeadersFor(currentIframe);
+              var enc = '';
+              Object.keys(hh).forEach(function (k) { enc += 'param/' + k + '=' + encodeURIComponent(hh[k]) + '/'; });
+              return enc;
             }
             function parsePlayerOrNext(playerHtml, sourceKind) {
               var items = parsePlayerHtml(playerHtml, iframe, forcedSeason || 0);
@@ -4084,7 +4136,7 @@
               }, function () {
                 stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'proxy-empty' });
                 tryIframe(i + 1);
-              }, { kind: 'player_proxy', raw: false, headers: playerHeadersFor(iframe), timeout: 18000 });
+              }, { kind: 'player_proxy', raw: false, proxy: player_prox, prox_enc: playerProxyEnc(iframe), headers: playerHeadersFor(iframe), timeout: 22000 });
             }, function () {
               stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'direct' });
               requestText(iframe, function (proxiedHtml) {
@@ -4093,7 +4145,7 @@
               }, function () {
                 stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'proxy' });
                 tryIframe(i + 1);
-              }, { kind: 'player_proxy', raw: false, headers: playerHeadersFor(iframe), timeout: 18000 });
+              }, { kind: 'player_proxy', raw: false, proxy: player_prox, prox_enc: playerProxyEnc(iframe), headers: playerHeadersFor(iframe), timeout: 22000 });
             }, { kind: 'player', raw: true, headers: playerHeadersFor(iframe), timeout: 18000 });
           }
           tryIframe(0);
