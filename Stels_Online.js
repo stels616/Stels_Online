@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.26';
+    var STELS_ONLINE_VERSION = '1.1.27';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -43,7 +43,7 @@
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
       videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', kinoflix: 'KinoFlix',
-      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobase', asiage: 'AsiaGe',
+      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
@@ -5150,6 +5150,261 @@
       this.reset = function () { component.reset(); choice = { season: 0, voice: 0, voice_name: '' }; filter(); append(currentItems()); component.saveChoice(choice); };
       this.filter = function (type, a, b) { choice[a.stype] = b.index; if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index]; component.reset(); filter(); append(currentItems()); component.saveChoice(choice); };
       this.destroy = function () { destroyed = true; network.clear(); extract = []; };
+    }
+
+
+    function kinobazaOnline(component, _object) {
+      var network = new Lampa.Reguest();
+      var object = _object || {};
+      var movie = object.movie || {};
+      var host = 'https://kinobaza.online';
+      var ref = host + '/';
+      var extract = [];
+      var filter_items = { season: [], voice: [] };
+      var choice = { season: 0, voice: 0 };
+      var select_title = movie.title || movie.name || movie.original_title || movie.original_name || '';
+      var expected_year = String((movie.release_date || movie.first_air_date || movie.year || '').match(/\d{4}/) || '').replace(/\D/g, '') || '';
+      var expected_serial = !!(object.method == 'tv' || object.type == 'tv' || movie.number_of_seasons || movie.first_air_date);
+      var headers = {
+        'User-Agent': Utils.baseUserAgent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': ref
+      };
+
+      function log(ev, data) { try { stelsLog('kinobaza-' + ev, data || {}); } catch (e) {} }
+      function enc(v) { return encodeURIComponent(v || ''); }
+      function clean(t) { return String(t || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&#039;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim(); }
+      function norm(t) { return clean(t).toLowerCase().replace(/[ё]/g, 'е').replace(/[^a-zа-яіїєґ0-9]+/gi, ' ').trim(); }
+      function abs(u) { if (!u) return ''; if (/^https?:\/\//i.test(u)) return u; if (u[0] == '/') return host + u; return host + '/' + u; }
+      function firstYear(t) { var m = String(t || '').match(/(?:19|20)\d{2}/); return m ? m[0] : ''; }
+      function titleVariants() {
+        var arr = [];
+        [movie.title, movie.name, movie.original_title, movie.original_name, select_title].forEach(function (x) { x = clean(x); if (x && arr.indexOf(x) < 0) arr.push(x); });
+        if (/^from$/i.test(movie.original_title || movie.original_name || select_title)) ['Извне','Ззовні','Іззовні','From'].forEach(function (x) { if (arr.indexOf(x) < 0) arr.push(x); });
+        return arr.length ? arr : [select_title];
+      }
+      function scoreResult(r) {
+        var nt = norm(r.title), best = -100;
+        titleVariants().forEach(function (v) {
+          var nv = norm(v); if (!nv) return;
+          var sc = 0;
+          if (nt == nv) sc += 160;
+          else if (nt.indexOf(nv) >= 0 || nv.indexOf(nt) >= 0) sc += 100;
+          if (expected_year && (r.year || '').indexOf(expected_year) >= 0) sc += 80;
+          else if (expected_year && r.year) sc -= 60;
+          if (expected_serial && /сериал|сериалы|tv|series|серіал/i.test(r.kind || r.title || '')) sc += 20;
+          if (sc > best) best = sc;
+        });
+        return best;
+      }
+      function parseSearchHtml(html) {
+        var out = [], seen = {};
+        html = html || '';
+        var re = /<a[^>]+href=["']([^"']*\/id-\d+[^"']*)["'][\s\S]*?<\/a>/ig, m;
+        while ((m = re.exec(html))) {
+          var block = m[0], link = abs(m[1]);
+          if (seen[link]) continue; seen[link] = true;
+          var title = clean((block.match(/class=["'][^"']*(?:title|name|short-title|item-title)[^"']*["'][^>]*>([\s\S]*?)<\//i) || [])[1] || block.replace(/<img[\s\S]*?>/ig, ''));
+          if (!title) title = clean(block);
+          var year = firstYear(block);
+          out.push({ title: title, link: link, year: year, kind: clean(block) });
+        }
+        // fallback: links around cards sometimes are not closed inside a compact block
+        if (!out.length) {
+          re = /href=["']([^"']*\/id-\d+[^"']*)["'][\s\S]{0,900}?((?:19|20)\d{2})?/ig;
+          while ((m = re.exec(html))) {
+            var l = abs(m[1]); if (seen[l]) continue; seen[l] = true;
+            var part = html.slice(Math.max(0, m.index - 300), Math.min(html.length, m.index + 900));
+            out.push({ title: clean(part).slice(0, 180), link: l, year: firstYear(part), kind: clean(part) });
+          }
+        }
+        return out;
+      }
+      function parseSearchJson(txt) {
+        var out = [];
+        try {
+          var j = JSON.parse(txt || '[]');
+          var list = Array.isArray(j) ? j : (j.results || j.items || j.data || []);
+          if (!Array.isArray(list)) list = [];
+          list.forEach(function (it) {
+            var link = it.url || it.link || it.href || it.path || '';
+            var id = it.id || it.ID || it.kinobaza_id || '';
+            if (!link && id) link = '/id-' + id;
+            var title = it.title || it.name || it.ru_title || it.original_title || it.label || '';
+            out.push({ title: clean(title), link: abs(link), year: String(it.year || firstYear(JSON.stringify(it)) || ''), kind: JSON.stringify(it) });
+          });
+        } catch (e) {}
+        return out.filter(function (x) { return x.link; });
+      }
+      function pageParams(html, pageUrl) {
+        var params = {};
+        html.replace(/data-cinemaplayer-query-api-([a-zA-Z0-9_]+)=["']([^"']*)["']/g, function (_, k, v) { params[k] = clean(v); return _; });
+        var api = (html.match(/data-cinemaplayer-api=["']([^"']+)/) || [])[1] || '/cinemaplayer/information';
+        var q = [];
+        Object.keys(params).forEach(function (k) { q.push(k + '=' + enc(params[k])); });
+        var url = abs(api) + '?' + q.join('&');
+        log('page-params', { page: pageUrl, params: params, information_url: url });
+        return { params: params, url: url };
+      }
+      function pickAlloha(info) {
+        var list = info && (info['simple-api'] || info.simpleApi || info.players || []);
+        if (!Array.isArray(list)) list = [];
+        var item = null;
+        list.some(function (x) { if (/alloha/i.test(x.name || '') && x.iframe) { item = x; return true; } return false; });
+        if (!item) list.some(function (x) { if (x.iframe && !/youtube|trailer/i.test((x.name || '') + x.iframe)) { item = x; return true; } return false; });
+        return item;
+      }
+      function parseAllohaIframe(html, iframeUrl) {
+        var token = (html.match(/token\s*:\s*['"]([^'"]+)/) || [])[1] || (iframeUrl.match(/[?&]token=([^&]+)/) || [])[1] || '';
+        var raw = (html.match(/const\s+fileList\s*=\s*JSON\.parse\('([\s\S]*?)'\);/) || html.match(/fileList\s*=\s*JSON\.parse\('([\s\S]*?)'\);/) || [])[1] || '';
+        var fl = null;
+        try { fl = JSON.parse(raw.replace(/\\'/g, "'")); } catch (e) { try { fl = JSON.parse(JSON.parse('"' + raw.replace(/"/g, '\\"') + '"')); } catch (e2) {} }
+        if (!fl) throw new Error('fileList not found');
+        var out = [];
+        function addNode(node, season, episode) {
+          if (!node || !node.id) return;
+          out.push({
+            title: season ? ('Сезон ' + season + ' / Серія ' + episode) : (select_title || clean(node.title || 'Фільм')),
+            season: season || 0,
+            episode: episode || 0,
+            voice: clean(node.translation || node.voice || ''),
+            data_id: String(node.id),
+            token: token,
+            iframe: iframeUrl,
+            file_node: node
+          });
+        }
+        if (fl.type == 'serial' && fl.all) {
+          Object.keys(fl.all).forEach(function (s) {
+            var seasonObj = fl.all[s] || {};
+            Object.keys(seasonObj).forEach(function (e) {
+              var epObj = seasonObj[e] || {};
+              Object.keys(epObj).forEach(function (t) { addNode(epObj[t], parseInt(s), parseInt(e)); });
+            });
+          });
+        } else if (fl.all) {
+          Object.keys(fl.all).forEach(function (k) {
+            var v = fl.all[k];
+            if (v && v.id) addNode(v, 0, 0);
+            else if (v && typeof v == 'object') Object.keys(v).forEach(function (kk) { addNode(v[kk], 0, 0); });
+          });
+        }
+        if (!out.length && fl.active) addNode(fl.active, fl.active.seasons || 0, fl.active.episode || 0);
+        log('alloha-filelist', { count: out.length, token: !!token, type: fl.type || '', sample: out.slice(0, 12).map(function (x) { return 'S' + x.season + 'E' + x.episode + '|' + x.voice + '|' + x.data_id; }) });
+        return out;
+      }
+      function buildFilters() {
+        var seasons = [], voices = [];
+        extract.forEach(function (x) { if (x.season && seasons.indexOf(x.season) < 0) seasons.push(x.season); if (x.voice && voices.indexOf(x.voice) < 0) voices.push(x.voice); });
+        seasons.sort(function (a,b) { return a-b; });
+        filter_items.season = seasons.map(function (s) { return 'Сезон ' + s; });
+        filter_items.voice = voices;
+        if (choice.season >= filter_items.season.length) choice.season = 0;
+        if (choice.voice >= filter_items.voice.length) choice.voice = 0;
+        log('filter-build', { seasons: filter_items.season, voices: voices, selected_season: seasons[choice.season] || 0, selected_voice: voices[choice.voice] || '' });
+      }
+      function currentItems() {
+        var season = filter_items.season.length ? parseInt(String(filter_items.season[choice.season]).replace(/\D/g,'')) : 0;
+        var voice = filter_items.voice[choice.voice] || '';
+        return extract.filter(function (x) { return (!season || x.season == season) && (!voice || x.voice == voice); }).sort(function (a,b) { return (a.season-b.season) || (a.episode-b.episode); });
+      }
+      function qualityMapFromAlloha(json) {
+        var quality = {}, first = '';
+        var srcs = json && json.hlsSource || [];
+        if (!Array.isArray(srcs)) srcs = [];
+        srcs.forEach(function (src) {
+          var q = src.quality || {};
+          Object.keys(q).forEach(function (k) {
+            var label = /^\d+$/.test(k) ? (k + 'p') : k;
+            var val = String(q[k] || '').split(/\s+or\s+/i)[0].trim();
+            if (val) { quality[label] = val; if (!first) first = val; }
+          });
+        });
+        var order = ['2160p','1440p','1080p','720p','480p','360p','240p','144p'];
+        for (var i=0;i<order.length;i++) if (quality[order[i]]) { first = quality[order[i]]; break; }
+        return { url: first, quality: quality };
+      }
+      function loadStream(el, ok, fail) {
+        var url = String(el.iframe || '').replace(/\?.*/, '') + '/bnsi/movies/' + el.data_id;
+        var post = 'token=' + enc(el.token || '') + '&av1=true&autoplay=0&audio=&subtitle=';
+        network.clear(); network.timeout(1000 * 12);
+        log('stream-request', { url: url, data_id: el.data_id, voice: el.voice, season: el.season, episode: el.episode });
+        network.native(url, function (txt) {
+          var json = {};
+          try { json = typeof txt == 'string' ? JSON.parse(txt) : txt; } catch (e) {}
+          var q = qualityMapFromAlloha(json);
+          log('stream-response', { data_id: el.data_id, ok: !!q.url, quality_keys: q.quality ? Object.keys(q.quality) : [] });
+          if (!q.url) { if (fail) fail('no stream'); return; }
+          ok({ url: q.url, quality: component.renameQualityMap(q.quality), raw_quality: q.quality });
+        }, function (a,c) { log('stream-error', { data_id: el.data_id, status: a && a.status || 0, message: network.errorDecode(a,c) || '' }); if (fail) fail(network.errorDecode(a,c)); }, post, {
+          dataType: 'text',
+          headers: { 'User-Agent': Utils.baseUserAgent(), 'Origin': String(el.iframe || '').replace(/\/\?.*/, '').replace(/\/$/, ''), 'Referer': el.iframe || ref, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Accept': 'application/json, text/javascript, */*; q=0.01' }
+        });
+      }
+      function render() {
+        component.reset();
+        buildFilters();
+        var items = currentItems();
+        log('render', { count: items.length, sample: items.slice(0, 8).map(function (x) { return x.title + '|' + x.voice + '|' + x.data_id; }) });
+        items.forEach(function (el) {
+          el.translate_voice = el.voice;
+          var hash = Lampa.Utils.hash((el.season ? [el.season, ':', el.episode, movie.original_title || movie.title || '', 'kinobaza'].join('') : (movie.original_title || movie.title || '') + 'kinobaza'));
+          el.timeline = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', el);
+          item.append(Lampa.Timeline.render(el.timeline));
+          item.on('hover:enter', function () {
+            loadStream(el, function (stream) {
+              var playlist = [];
+              var first = { url: component.getDefaultQuality(stream.raw_quality, stream.url), quality: stream.quality, timeline: el.timeline, title: el.title, poster: el.poster || '' };
+              playlist.push(first);
+              Lampa.Player.play(first);
+              Lampa.Player.playlist(playlist);
+            }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
+          });
+          component.append(item);
+        });
+      }
+      function openBestResult(best) {
+        network.clear(); network.timeout(1000 * 12);
+        network.native(best.link, function (html) {
+          var pp = pageParams(html, best.link);
+          network.clear(); network.timeout(1000 * 12);
+          network.native(pp.url, function (txt) {
+            var info = {}; try { info = typeof txt == 'string' ? JSON.parse(txt) : txt; } catch (e) {}
+            var alloha = pickAlloha(info);
+            log('information', { players: info && info['simple-api'] ? info['simple-api'].map(function (x) { return x.name + '|' + x.iframe; }) : [], selected: alloha && alloha.iframe || '' });
+            if (!alloha || !alloha.iframe) { component.empty('Kinobaza: Alloha не знайдено'); return; }
+            network.clear(); network.timeout(1000 * 12);
+            network.native(alloha.iframe, function (iframeHtml) {
+              try { extract = parseAllohaIframe(iframeHtml, alloha.iframe); } catch (e) { log('alloha-parse-error', { error: e && (e.message || e.toString()) || '' }); component.empty('Kinobaza: fileList не знайдено'); return; }
+              if (!extract.length) { component.emptyForQuery(select_title); return; }
+              render();
+            }, function (a,c) { component.empty(network.errorDecode(a,c)); }, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': best.link, 'Accept': 'text/html,*/*' } });
+          }, function (a,c) { component.empty(network.errorDecode(a,c)); }, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': best.link, 'Accept': 'application/json,*/*' } });
+        }, function (a,c) { component.empty(network.errorDecode(a,c)); }, false, { dataType: 'text', headers: headers });
+      }
+      function searchNext(vars, i, bestAll) {
+        if (i >= vars.length) {
+          if (!bestAll) { component.emptyForQuery(select_title); return; }
+          openBestResult(bestAll); return;
+        }
+        var q = vars[i];
+        var url = host + '/search/?q=' + enc(q);
+        network.clear(); network.timeout(1000 * 10);
+        log('search-try', { query: q, url: url });
+        network.native(url, function (html) {
+          var results = parseSearchHtml(html);
+          results.forEach(function (r) { r.score = scoreResult(r); });
+          results.sort(function (a,b) { return b.score - a.score; });
+          log('search-results', { query: q, count: results.length, sample: results.slice(0, 6).map(function (x) { return x.score + '|' + x.title + '|' + x.year + '|' + x.link; }) });
+          if (results[0] && (!bestAll || results[0].score > bestAll.score)) bestAll = results[0];
+          if (bestAll && bestAll.score >= 150) openBestResult(bestAll); else searchNext(vars, i + 1, bestAll);
+        }, function () { searchNext(vars, i + 1, bestAll); }, false, { dataType: 'text', headers: headers });
+      }
+      this.search = function () { component.loading(true); searchNext(titleVariants(), 0, null); };
+      this.filter = function (type, a, b) { if (type == 'season') choice.season = b.index; if (type == 'voice') choice.voice = b.index; render(); };
+      this.reset = function () { extract = []; };
+      this.destroy = function () { network.clear(); };
     }
 
     function kinobase(component, _object) {
@@ -14848,53 +15103,6 @@
         }
         return Math.max(0, Number(out) || 0);
       }
-      function zetflixnetSeekBackAfterVoiceSwitch(baseTime, seconds, voiceName) {
-        baseTime = Number(baseTime) || 0;
-        seconds = Number(seconds) || 5;
-        if (!baseTime || baseTime <= 1) {
-          stelsLog('zetflixnet-voice-rewind-skip', { voice: voiceName || '', base_time: baseTime });
-          return;
-        }
-        var target = Math.max(0, baseTime - seconds);
-        var attempts = [350, 800, 1400, 2300, 3600];
-        stelsLog('zetflixnet-voice-rewind-plan', { voice: voiceName || '', base_time: baseTime, target: target, seconds: seconds });
-        attempts.forEach(function (delay) {
-          setTimeout(function () {
-            var ok = false;
-            var method = '';
-            try {
-              if (Lampa && Lampa.Player) {
-                if (typeof Lampa.Player.seek === 'function') {
-                  Lampa.Player.seek(target);
-                  ok = true;
-                  method = 'Lampa.Player.seek';
-                } else if (typeof Lampa.Player.video === 'function') {
-                  var v = Lampa.Player.video();
-                  if (v && isFinite(v.duration || 0)) {
-                    v.currentTime = target;
-                    ok = true;
-                    method = 'Lampa.Player.video.currentTime';
-                  }
-                }
-              }
-            } catch (e) { stelsLog('zetflixnet-voice-rewind-player-error', { voice: voiceName || '', delay: delay, error: e && (e.message || e.toString()) || '' }); }
-            if (!ok) {
-              try {
-                var nodes = document.querySelectorAll('video');
-                for (var i = 0; i < nodes.length; i++) {
-                  if (nodes[i]) {
-                    nodes[i].currentTime = target;
-                    ok = true;
-                    method = 'html-video.currentTime';
-                    break;
-                  }
-                }
-              } catch (e2) { stelsLog('zetflixnet-voice-rewind-html-error', { voice: voiceName || '', delay: delay, error: e2 && (e2.message || e2.toString()) || '' }); }
-            }
-            stelsLog('zetflixnet-voice-rewind-attempt', { voice: voiceName || '', delay: delay, target: target, ok: ok, method: method });
-          }, delay);
-        });
-      }
       function zetflixnetApplyWantedQuality(play, wantedLabel, voiceName, item) {
         if (!play || !wantedLabel || !play.quality) return false;
         var q = play.quality || {};
@@ -14948,7 +15156,7 @@
           stelsLog('zetflixnet-voice-quality-force-skip', { voice: voiceName || '', wanted_quality: wantedLabel || '', reason: !play ? 'no-play' : !wantedLabel ? 'no-quality' : 'no-map' });
           return;
         }
-        var delays = (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? [450, 950, 1650, 2600] : [220, 650, 1200];
+        var delays = (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? [2000, 2600, 3400, 4600] : [1200, 2000, 3000];
         stelsLog('zetflixnet-voice-quality-force-plan', { voice: voiceName || '', wanted_quality: wantedLabel || '', data_id: item && item.data_id || '', delays: delays, quality_keys: play.quality ? Object.keys(play.quality) : [] });
         delays.forEach(function (delay, index) {
           setTimeout(function () {
@@ -15049,7 +15257,7 @@
                   if (voiceQualityFixActive && wantedQuality) {
                     zetflixnetForceQualityAfterVoiceSwitch(play, wantedQuality, voiceName, item);
                   }
-                }, (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 260 : 120);
+                }, (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 450 : 180);
               }, function (err) {
                 try { Lampa.Player.loading(false); } catch (e3) {}
                 stelsLog('zetflixnet-voice-switch-fail', { voice: voiceName, error: err || '', season: element && element.season || '', episode: element && element.episode || '' });
@@ -21452,12 +21660,12 @@
         imdb: false
       }, {
         name: 'kinobase',
-        title: 'Kinobase',
-        source: new kinobase(this, object),
+        title: 'Kinobaza',
+        source: new kinobazaOnline(this, object),
         search: true,
         kp: false,
-        imdb: false,
-        disabled: true
+        imdb: true,
+        disabled: false
       }, {
         name: 'collaps',
         title: 'Collaps',
@@ -21868,7 +22076,7 @@
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
-          if (engine === 'kinobase') return new kinobase(fake, object);
+          if (engine === 'kinobase') return new kinobazaOnline(fake, object);
           if (engine === 'collaps') return new collaps(fake, object, false);
           if (engine === 'collaps-dash') return new collaps(fake, object, true);
           if (engine === 'cdnmovies') return new cdnmovies(fake, object);
@@ -24821,7 +25029,7 @@
       template += `
         <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
             <div class="settings-param__name">Зміна логіки Перекладів</div>
-            <div class="settings-param__descr">Після зміни перекладу ZetflixNet плагін повторно вибирає ту саму якість, яка була активна до зміни перекладу, і перемотує відео на 5 секунд назад. Рекомендовано для Tizen.</div>
+            <div class="settings-param__descr">Після зміни перекладу ZetflixNet плагін із паузою приблизно 2 секунди повторно застосовує ту саму якість, яка була активна до зміни перекладу. Рекомендовано для Tizen.</div>
             <div class="settings-param__value"></div>
         </div>`;
 
@@ -24838,7 +25046,7 @@
           </div>
           <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle">
               <div class="settings-param__name">Зміна логіки Перекладів</div>
-              <div class="settings-param__descr">Після зміни перекладу ZetflixNet повторно вибирається якість, яка була активна до зміни перекладу, і відео перемотується на 5 секунд назад.</div>
+              <div class="settings-param__descr">Після зміни перекладу ZetflixNet із паузою приблизно 2 секунди повторно застосовується якість, яка була активна до зміни перекладу.</div>
               <div class="settings-param__value"></div>
           </div>
         </div>`);
@@ -25058,7 +25266,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.26: прибрано перемотування у ZetflixNet; логіка перекладів тепер примусово повторно застосовує вибрану якість після запуску нового перекладу, як ручне повторне натискання якості.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.27: ZetflixNet повторно застосовує якість із паузою ~2 секунди; додано нове джерело Kinobaza за HAR kinobaza.online.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
