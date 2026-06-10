@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.06';
+    var STELS_ONLINE_VERSION = '1.1.07';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -156,9 +156,12 @@
         var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
         if (el.hasClass('view--stels_online')) {
-          el.removeAttr('data-subtitle');
-          el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
-          return false;
+          if (el.hasClass('full-start__button')) {
+            el.removeAttr('data-subtitle');
+            el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
+            return false;
+          }
+          return true;
         }
         if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) return true;
         if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text)) return true;
@@ -208,9 +211,14 @@
           scope.find('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').addBack('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').each(function () {
             var el = $(this);
             if (el.hasClass('view--stels_online')) {
-              // Головна кнопка на картці має залишатися тільки іконкою SO.
-              el.removeAttr('data-subtitle');
-              el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under,span').remove();
+              // На картці фільму головна кнопка має лишатися компактною, але в списку
+              // джерел/плагінів елемент з таким самим класом повинен мати іконку і назву.
+              if (el.hasClass('full-start__button')) {
+                el.removeAttr('data-subtitle');
+                el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under,span').remove();
+                return;
+              }
+              stelsPatchFlatPluginEntry(el);
               return;
             }
             var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
@@ -232,7 +240,11 @@
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
             var componentKey = String(el.attr('data-component') || el.data('component') || el.attr('data-name') || el.attr('data-source') || '').toLowerCase();
             var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text) || componentKey === 'stels_online';
-            if (el.hasClass('view--stels_online')) return;
+            if (el.hasClass('view--stels_online')) {
+              if (el.hasClass('full-start__button')) return;
+              stelsPatchFlatPluginEntry(el);
+              return;
+            }
             if (el.find('.stels-online-plugin-icon').length) {
               if (flatMatch) stelsPatchFlatPluginEntry(el);
               return;
@@ -3740,17 +3752,20 @@
           var raw = abs(component.decodeHtml(url || ''), ref);
           if (!raw || !/(synthezoid|stloadi|allarknow|ortified)/i.test(raw)) return;
           var normalized = normalizePlayerUrl(raw);
-          if (normalized && list.indexOf(normalized) == -1) list.push(normalized);
-          if (!/allarknow/i.test(raw) && raw !== normalized && list.indexOf(raw) == -1) list.push(raw);
+          // Не викидаємо оригінальний allarknow: токен може бути прив'язаний саме до
+          // цього домену. Далі пробуємо normalized stloadi як резервний варіант.
+          if (raw && list.indexOf(raw) == -1) list.push(raw);
+          if (normalized && normalized !== raw && list.indexOf(normalized) == -1) list.push(normalized);
         }
         String(html || '').replace(/data-videoframe=["']([^"']+)["']/gi, function (all, url) { add(url); return all; });
         String(html || '').replace(/<iframe[^>]+src=["']([^"']+)["']/gi, function (all, url) { add(url); return all; });
         list.sort(function (a, b) {
           function rank(u) {
             u = String(u || '');
-            if (/stloadi/i.test(u)) return 0;
-            if (/synthezoid/i.test(u)) return 1;
-            if (/ortified/i.test(u)) return 2;
+            if (/allarknow/i.test(u)) return 0;
+            if (/stloadi/i.test(u)) return 1;
+            if (/synthezoid/i.test(u)) return 2;
+            if (/ortified/i.test(u)) return 3;
             return 9;
           }
           return rank(a) - rank(b);
@@ -3985,12 +4000,21 @@
           tryIframe(0);
         }, fail, { kind: 'page', headers: page_headers, timeout: 18000 });
       }
-      function loadPlayerPage(pageUrl, forcedSeason) {
+      function loadPlayerPage(pageUrl, forcedSeason, fallbackResults) {
         parsePlayerPage(pageUrl, forcedSeason || 0, function (items) {
           all_items = items;
           buildFilters(all_items);
           append(currentItems());
-        }, function () { component.loading(false); component.emptyForQuery(select_title); });
+        }, function () {
+          stelsLog('zerx-player-page-failed', { page: pageUrl, forced_season: forcedSeason || 0, fallback_count: fallbackResults && fallbackResults.length || 0 });
+          if (fallbackResults && fallbackResults.length) {
+            component.similars(fallbackResults);
+            component.loading(false);
+          } else {
+            component.loading(false);
+            component.emptyForQuery(select_title);
+          }
+        });
       }
       function loadSeasonPages(results) {
         var pages = [];
@@ -4061,7 +4085,7 @@
               stelsLog('zerx-search-final', { count: results.length, season_group: sameSeasonSeriesResults(results), best: best && { title: best.title, url: best.url, score: scoreResult(best) }, sample: results.slice(0, 8) });
               // Для серіалів Zerx правильна структура лежить у player fileList, а не в результатах пошуку.
               // Тому сезонну сторінку відкриваємо автоматично і будуємо фільтри сезон/озвучка/серія з fileList.
-              if (sameSeasonSeriesResults(results)) loadPlayerPage((best || results[0]).url, 0);
+              if (sameSeasonSeriesResults(results)) loadPlayerPage((best || results[0]).url, 0, results);
               else if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
               else loadPlayerPage((best || results[0]).url, seasonOfResult(best || results[0]) || 0);
             });
@@ -23762,6 +23786,8 @@
 
     function initSettings() {
       var template = "<div>";
+      template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_sources\" data-static=\"true\">\n            <div class=\"settings-param__name\">Джерела</div>\n            <div class=\"settings-param__descr\">Увімкнення або вимкнення джерел у меню Сортувати</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"stels-online-advanced-settings\" style=\"display:none\">";
 
       if (Utils.isDebug()) {
@@ -23862,10 +23888,6 @@
         template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_av1_support\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_av1_support}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       }
       template += "\n        </div>";
-
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_sources\" data-static=\"true\">\n            <div class=\"settings-param__name\">Джерела</div>\n            <div class=\"settings-param__descr\">Увімкнення або вимкнення джерел у меню Сортувати</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_clear_plugin_cache\" data-static=\"true\">\n            <div class=\"settings-param__name\">Очистити кеш Stels_Online</div>\n            <div class=\"settings-param__descr\">Скинути збережені сезони, вибір озвучки, останні джерела та позначки перегляду. Налаштування джерел, проксі та cookie не очищаються.</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія Stels_Online</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
 
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_zetflixnet_settings_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Налаштування ZetflixNet</div>\n            <div class=\"settings-param__descr\">Окремі параметри для джерела ZetflixNet</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"stels-online-zetflixnet-settings\" style=\"display:none\">";
