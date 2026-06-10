@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.36';
+    var STELS_ONLINE_VERSION = '1.1.37';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -15424,6 +15424,116 @@
         }
       }
 
+      function zetflixnetMarkVoiceTracksSelected(tracks, voiceName) {
+        var result = { total: 0, selected: 0, errors: [] };
+        try {
+          voiceName = cleanText(voiceName || '');
+          if (!tracks || !tracks.length || !voiceName) return result;
+          var wanted = voiceName.toLowerCase();
+          for (var i = 0; i < tracks.length; i++) {
+            var t = tracks[i];
+            if (!t) continue;
+            var name = cleanText(t.language || t.name || t.title || t.voice || t.label || '').toLowerCase();
+            var sel = name === wanted;
+            try {
+              t.selected = sel;
+              t.active = sel;
+              t.checked = sel;
+              t.current = sel;
+              t.default = sel;
+              t.enable = true;
+              t.enabled = true;
+              if (sel) result.selected++;
+              result.total++;
+            } catch (e1) { result.errors.push(e1 && (e1.message || e1.toString()) || ''); }
+          }
+        } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+        return result;
+      }
+
+      function zetflixnetInstallVoiceCheckStyle() {
+        try {
+          if (document.getElementById('stels-zetflixnet-voice-check-style')) return;
+          var st = document.createElement('style');
+          st.id = 'stels-zetflixnet-voice-check-style';
+          st.textContent = '' +
+            '.stels-zetflixnet-voice-row{position:relative!important;}' +
+            '.stels-zetflixnet-voice-row .stels-zetflixnet-voice-check{position:absolute!important;right:1.35em!important;top:50%!important;transform:translateY(-50%)!important;font-size:1.25em!important;line-height:1!important;z-index:9!important;color:#fff!important;text-shadow:0 0 4px rgba(0,0,0,.9)!important;pointer-events:none!important;}' +
+            '.stels-zetflixnet-voice-row.stels-zetflixnet-voice-current .stels-zetflixnet-voice-check{display:block!important;}';
+          (document.head || document.documentElement).appendChild(st);
+        } catch (e) {}
+      }
+
+      function zetflixnetRefreshVisibleVoiceCheckmark(voiceName, reason) {
+        var result = { voice: voiceName || '', reason: reason || '', rows: 0, target_rows: 0, removed: 0, errors: [] };
+        try {
+          voiceName = cleanText(voiceName || '');
+          if (!voiceName) return result;
+          zetflixnetInstallVoiceCheckStyle();
+          var wanted = voiceName.toLowerCase();
+          var voiceNames = [];
+          try {
+            if (filter_items && filter_items.voice) {
+              for (var vi = 0; vi < filter_items.voice.length; vi++) {
+                var vv = cleanText(filter_items.voice[vi] || '');
+                if (vv) voiceNames.push(vv.toLowerCase());
+              }
+            }
+          } catch (ev) {}
+          var selector = '.selectbox-item,.selectbox__item,.selector,.selector__item,.menu__item,.simple-button,.player-panel__button,.settings-param';
+          var nodes = [];
+          try { nodes = Array.prototype.slice.call(document.querySelectorAll(selector)); } catch (eq) { nodes = []; }
+          function rowVoice(text) {
+            var found = '';
+            if (!text) return found;
+            for (var i = 0; i < voiceNames.length; i++) {
+              var vn = voiceNames[i];
+              if (!vn) continue;
+              if (text === vn || text.indexOf(vn) >= 0) {
+                if (found && found !== vn) return ''; // це, ймовірно, контейнер зі всіма перекладами, не рядок
+                found = vn;
+              }
+            }
+            return found;
+          }
+          for (var i = 0; i < nodes.length; i++) {
+            var el = nodes[i];
+            if (!el || !el.textContent) continue;
+            var text = cleanText(el.textContent).toLowerCase();
+            if (!text || text.length > 160) continue;
+            var rv = rowVoice(text);
+            if (!rv) continue;
+            result.rows++;
+            var selected = rv === wanted;
+            try { el.classList.add('stels-zetflixnet-voice-row'); } catch (c0) {}
+            try { el.classList.toggle('stels-zetflixnet-voice-current', selected); } catch (c1) {}
+            try { el.classList.toggle('active', selected); } catch (c2) {}
+            try { el.classList.toggle('selected', selected); } catch (c3) {}
+            try { el.classList.toggle('focus', selected); } catch (c4) {}
+            try { el.classList.toggle('selector--active', selected); } catch (c5) {}
+            try { el.classList.toggle('selector--selected', selected); } catch (c6) {}
+            try { el.classList.toggle('selectbox-item--active', selected); } catch (c7) {}
+            try { el.classList.toggle('selectbox__item--active', selected); } catch (c8) {}
+            try { el.setAttribute('data-selected', selected ? 'true' : 'false'); } catch (c9) {}
+            try {
+              var old = el.querySelectorAll ? el.querySelectorAll('.stels-zetflixnet-voice-check') : [];
+              for (var oi = 0; oi < old.length; oi++) { try { old[oi].parentNode.removeChild(old[oi]); result.removed++; } catch (or) {} }
+            } catch (erem) {}
+            if (selected) {
+              try {
+                var chk = document.createElement('span');
+                chk.className = 'stels-zetflixnet-voice-check';
+                chk.textContent = '✓';
+                el.appendChild(chk);
+                result.target_rows++;
+              } catch (ea) { result.errors.push('append:' + (ea && (ea.message || ea.toString()) || ea)); }
+            }
+          }
+        } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+        stelsLog('zetflixnet-visible-voice-checkmark-updated', result);
+        return result;
+      }
+
       function zetflixnetUpdateVoiceSelectionState(play, voiceName, item) {
         var result = { voice: voiceName || '', data_id: item && item.data_id || '', choice_updated: false, play_updated: false, current_updated: false, dom_updated: 0, errors: [] };
         try {
@@ -15440,6 +15550,8 @@
             }
           } catch (ec) { result.errors.push('choice:' + (ec && (ec.message || ec.toString()) || ec)); }
           var tracks = zetflixnetVoiceovers(item || {}, voiceName) || [];
+          try { zetflixnetMarkVoiceTracksSelected(tracks, voiceName); } catch (emt0) {}
+          try { if (play) { zetflixnetMarkVoiceTracksSelected(play.voiceovers, voiceName); zetflixnetMarkVoiceTracksSelected(play.translate && play.translate.tracks, voiceName); } } catch (emt1) {}
           function applyTo(obj, label) {
             if (!obj) return false;
             try {
@@ -15464,6 +15576,7 @@
           try {
             if (Lampa && Lampa.Player && typeof Lampa.Player.playdata === 'function') {
               var current = Lampa.Player.playdata() || {};
+              try { zetflixnetMarkVoiceTracksSelected(current.voiceovers, voiceName); zetflixnetMarkVoiceTracksSelected(current.translate && current.translate.tracks, voiceName); } catch (emt2) {}
               result.current_updated = applyTo(current, 'current');
               try {
                 if (Lampa.Player.playdata.length > 0) Lampa.Player.playdata(current);
@@ -15497,6 +15610,7 @@
               result.dom_updated++;
             }
           } catch (ed) { result.errors.push('dom:' + (ed && (ed.message || ed.toString()) || ed)); }
+          try { zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'state-update'); } catch (ed2) { result.errors.push('visible-check:' + (ed2 && (ed2.message || ed2.toString()) || ed2)); }
         } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
         stelsLog('zetflixnet-voice-selection-state-updated', result);
         return result;
@@ -15707,13 +15821,16 @@
       function zetflixnetVoiceovers(element, selectedVoice) {
         if (!(filter_items.voice && filter_items.voice.length > 1)) return false;
         selectedVoice = selectedVoice || element && (element.translate_voice || element.voice_name || (element.media && (element.media.voiceStudio || element.media.voiceType))) || filter_items.voice[choice.voice] || '';
-        return filter_items.voice.map(function (voiceName, index) {
+        var trackList = filter_items.voice.map(function (voiceName, index) {
           return {
             index: index,
             language: voiceName,
             name: voiceName,
             label: 'ZetflixNet',
             selected: voiceName === selectedVoice,
+            active: voiceName === selectedVoice,
+            checked: voiceName === selectedVoice,
+            current: voiceName === selectedVoice,
             enabled: true,
             onSelect: function () {
               if (voiceName === selectedVoice) return;
@@ -15723,6 +15840,20 @@
                 Lampa.Noty.show('Не вдалося знайти переклад: ' + voiceName);
                 return;
               }
+              try {
+                selectedVoice = voiceName;
+                zetflixnetMarkVoiceTracksSelected(trackList, voiceName);
+                if (element) {
+                  element.voice_name = voiceName;
+                  element.translate_voice = voiceName;
+                  element.voice = voiceName;
+                  element.data_id = target.data_id || element.data_id || '';
+                  element.voiceovers = trackList;
+                  element.translate = element.translate || {};
+                  element.translate.tracks = trackList;
+                }
+                zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'onselect-before-request');
+              } catch (esel0) {}
               var voiceQualityFixActive = zetflixnetVoiceQualityFixEnabled();
               var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
               var currentTimeBeforeVoiceSwitch = zetflixnetGetCurrentTimeSafe();
@@ -15760,6 +15891,7 @@
                   }
                 }
                 zetflixnetUpdateVoiceSelectionState(play, voiceName, item);
+                try { zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'before-play'); } catch (evc0) {}
                 stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], wanted_quality: zetflixnetNormalizeQualityLabel(wantedQuality || ''), quality_preselected: !!play._stels_zetflixnet_voice_quality_preselected, tizen_hls_voice: useHlsVoice });
                 if (isTizenVoice) {
                   play._stels_tizen_voice_switch = true;
@@ -15767,8 +15899,9 @@
                   // На Tizen не можна створювати другий Player поверх першого: міняємо src у поточному video,
                   // а всі інші media-елементи глушимо.
                   zetflixnetTizenReplaceSourceInCurrentVideo(play, voiceName, item, currentTimeBeforeVoiceSwitch);
-                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); }, 350);
-                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); }, 1200);
+                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'tizen-after-350'); }, 350);
+                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'tizen-after-1200'); }, 1200);
+                  setTimeout(function () { zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'tizen-after-2200'); }, 2200);
                 } else {
                   // У Windows/Electron і частині TV-збірок Lampa.Player.play() може залишати старий audio/video живим.
                   // Тому перед запуском нового перекладу повністю зупиняємо попередній потік і НЕ викликаємо playlist([play]).
@@ -15790,6 +15923,7 @@
             }
           };
         });
+        return trackList;
       }
 
       function zetflixnetPickAndroidUrl(element) {
@@ -25801,7 +25935,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.36: збережено виправлення накладання звукових доріжок ZetflixNet; додано оновлення вибраного перекладу в playdata/voiceovers, щоб галочка на Tizen переходила на новий переклад після перемикання.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.37: збережено виправлення накладання звукових доріжок ZetflixNet; додано примусове оновлення selected-state і видимої галочки перекладу на Tizen після перемикання озвучки.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
