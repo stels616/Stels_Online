@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.15';
+    var STELS_ONLINE_VERSION = '1.1.16';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -203,7 +203,7 @@
           if (!el.find('.settings-folder__icon').length) el.prepend('<div class="settings-folder__icon stels-online-settings-icon" aria-hidden="true"></div>');
           if (!el.find('.settings-folder__name').length) el.append('<div class="settings-folder__name"></div>');
           el.find('.settings-folder__icon').first().html('<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0" alt="">');
-          el.find('.settings-folder__name').first().text(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online');
+          el.find('.settings-folder__name').first().html('<div>' + stelsEscapeHtml(Lampa.Lang.translate('stels_online_title_full') || 'Stels_Online') + '</div><div class="stels-online-version-under">' + stelsEscapeHtml(STELS_ONLINE_VERSION) + '</div>');
           el.children().filter(function () {
             var node = $(this);
             if (node.hasClass('settings-folder__icon') || node.hasClass('settings-folder__name')) return false;
@@ -13292,15 +13292,34 @@
         var key = CryptoJS.PBKDF2(uasPassword, salt, { hasher: CryptoJS.algo.SHA512, keySize: 8, iterations: 999 });
         return CryptoJS.AES.decrypt(obj.ciphertext || '', key, { iv: iv }).toString(CryptoJS.enc.Utf8);
       }
-      function tortugaDecode(input) {
+      function tortugaDecodeOnce(input) {
         try {
-          var raw = atob(String(input || ''));
+          var raw = atob(String(input || '').replace(/\n|\r|\s/g, ''));
           if (!raw || raw.length < 2) return input;
           var seed = raw.charCodeAt(0);
           var out = '';
           for (var i = 1; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ ((seed + 7 * (i - 1) + 13) % 256));
           try { return decodeURIComponent(escape(out)); } catch (e) { return out; }
         } catch (e) { return input; }
+      }
+      function looksBase64(value) {
+        value = String(value || '').trim();
+        return value.length > 16 && /^[A-Za-z0-9+\/=_-]+$/.test(value) && value.indexOf('{') === -1 && value.indexOf('[') === -1;
+      }
+      function tortugaDecode(input) {
+        var value = String(input || '').trim();
+        var chain = [];
+        for (var i = 0; i < 4; i++) {
+          var before = value;
+          var after = tortugaDecodeOnce(before);
+          chain.push({ step: i + 1, in_len: before.length, out_len: String(after || '').length, out_start: String(after || '').slice(0, 12) });
+          value = String(after || '');
+          var t = value.replace(/^\uFEFF/, '').trim();
+          if (t.charAt(0) === '[' || t.charAt(0) === '{') { value = t; break; }
+          if (after === before || !looksBase64(value)) break;
+        }
+        stelsLog('uaserials-tortuga-decode-chain', { steps: chain });
+        return value;
       }
       function movieTitles() {
         var movie = object.movie || {};
@@ -13367,10 +13386,21 @@
           stelsLog('uaserials-tortuga-file-missing', { embed: embedUrl, html_len: String(html || '').length, sample: String(html || '').slice(0, 500) });
           return [];
         }
-        var decoded = tortugaDecode(fm[2]);
+        var encoded = fm[2];
+        var decoded = tortugaDecode(encoded);
         var json = [];
-        try { json = JSON.parse(decoded); } catch (e) { stelsLog('uaserials-tortuga-json-error', { error: e && (e.message || e.toString()), sample: String(decoded || '').slice(0, 500) }); }
-        stelsLog('uaserials-tortuga-decoded', { embed: embedUrl, decoded_len: String(decoded || '').length, is_array: Array.isArray(json), count: Array.isArray(json) ? json.length : 0, sample: Array.isArray(json) ? json.slice(0, 2).map(function (x) { return { title: x.title, season: x.season, folder: x.folder && x.folder.length }; }) : [] });
+        try { json = JSON.parse(decoded); }
+        catch (e) {
+          stelsLog('uaserials-tortuga-json-error', {
+            error: e && (e.message || e.toString()),
+            encoded_len: String(encoded || '').length,
+            encoded_start: String(encoded || '').slice(0, 32),
+            decoded_len: String(decoded || '').length,
+            decoded_start: String(decoded || '').slice(0, 80),
+            sample: String(decoded || '').slice(0, 500)
+          });
+        }
+        stelsLog('uaserials-tortuga-decoded', { embed: embedUrl, encoded_len: String(encoded || '').length, decoded_len: String(decoded || '').length, decoded_start: String(decoded || '').slice(0, 24), is_array: Array.isArray(json), count: Array.isArray(json) ? json.length : 0, sample: Array.isArray(json) ? json.slice(0, 2).map(function (x) { return { title: x.title, season: x.season, folder: x.folder && x.folder.length }; }) : [] });
         return Array.isArray(json) ? json : [];
       }
       function parseFileEntries(str) {
@@ -24447,7 +24477,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.14: швидке повернення кнопки на головній картці, touch-переміщення джерел, структурний UASerials через player-control + Tortuga file.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.15: логіку кнопки Stels_Online на головній картці відновлено за робочим Stels_Online1.js; інші зміни 1.1.14 збережено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
