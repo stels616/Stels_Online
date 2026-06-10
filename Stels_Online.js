@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.10';
+    var STELS_ONLINE_VERSION = '1.1.11';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -182,13 +182,22 @@
       if (window.stels_online_icon_patcher_installed) return;
       window.stels_online_icon_patcher_installed = true;
 
+      function stelsIsMainCardButton(el) {
+        try {
+          if (!el || !el.length || el.attr('data-stels-main-button') !== '1') return false;
+          // Та сама кнопка Stels_Online з картки фільму може клонуватись у меню «Джерело».
+          // На самій картці вона лежить у блоці full-start, а в меню джерел — ні.
+          return !!el.closest('.full-start, .full-start-new, .full-start__buttons, .full-start-new__buttons, .full-start__body, .full-start-new__body').length;
+        } catch (e) { return el && el.attr && el.attr('data-stels-main-button') === '1'; }
+      }
+
       function shouldPatch(el) {
         if (!el || !el.length) return false;
         if (el.find('.stels-online-plugin-icon').length) return false;
         var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
         if (el.hasClass('view--stels_online')) {
-          if (el.attr('data-stels-main-button') === '1') {
+          if (stelsIsMainCardButton(el)) {
             el.removeAttr('data-subtitle');
             el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
             return false;
@@ -196,7 +205,7 @@
           return true;
         }
         if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) return true;
-        if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text) || /^Онлайн\s+Z01$/i.test(text) || text === 'Z01') return true;
+        if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text)) return true;
         return false;
       }
 
@@ -244,7 +253,7 @@
             if (el.hasClass('view--stels_online')) {
               // На картці фільму головна кнопка має лишатися компактною, але в списку
               // джерел/плагінів елемент з таким самим класом повинен мати іконку і назву.
-              if (el.attr('data-stels-main-button') === '1') {
+              if (stelsIsMainCardButton(el)) {
                 el.removeAttr('data-subtitle');
                 el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under,span').remove();
                 return;
@@ -270,9 +279,9 @@
             var el = $(this);
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
             var componentKey = String(el.attr('data-component') || el.data('component') || el.attr('data-name') || el.attr('data-source') || '').toLowerCase();
-            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text) || /^Онлайн\s+Z01$/i.test(text) || text === 'Z01' || componentKey === 'stels_online';
+            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text) || componentKey === 'stels_online';
             if (el.hasClass('view--stels_online')) {
-              if (el.attr('data-stels-main-button') === '1') return;
+              if (stelsIsMainCardButton(el)) return;
               stelsPatchFlatPluginEntry(el);
               return;
             }
@@ -3998,35 +4007,49 @@
         return { season: sm ? (parseInt(sm[1], 10) || 0) : 0, episode: em ? (parseInt(em[1], 10) || 0) : 0 };
       }
       function zerxDirectItemsFromHtml(html, iframeUrl, forcedSeason) {
-        var items = [];
-        var seen = {};
         var title = clean((String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || select_title || 'Zerx');
         var meta = parseSeasonEpisodeFromTextZerx(title);
         var season = forcedSeason || meta.season || 0;
         var episode = meta.episode || 0;
-        function addUrl(u, source) {
+        var rawUrls = [];
+        var rawSeen = {};
+        function collectUrl(u) {
           u = cleanStreamUrl(u || '');
-          if (!u || seen[u]) return;
-          seen[u] = true;
-          items.push({
-            title: episode ? ('Сезон ' + (season || 0) + ' / Серія ' + episode) : (title || select_title),
-            season: season || 0,
-            episode: episode || 0,
-            voice: source || 'Zerx',
-            stream: component.proxyStream(u, 'zerx'),
-            quality: 'Zerx',
-            headers: { 'User-Agent': player_browser_ua, 'Referer': iframeUrl || player_referer, 'Origin': (zerxTokenInfo(iframeUrl).origin || player_origin) }
-          });
+          if (!u || rawSeen[u]) return;
+          rawSeen[u] = true;
+          rawUrls.push(u);
         }
-        String(html || '').replace(/https?:\/\/[^\s"'<>\\,]+(?:\.m3u8|\.mp4)(?:\?[^\s"'<>\\,]*)?/ig, function (u) { addUrl(u, 'direct-url'); return u; });
+        String(html || '').replace(/https?:\/\/[^\s"'<>\\,]+(?:\.m3u8|\.mp4)(?:\?[^\s"'<>\\,]*)?/ig, function (u) { collectUrl(u); return u; });
         String(html || '').replace(/(?:file|hls|src)\s*[:=]\s*(["'])([\s\S]*?)\1/ig, function (all, q, val) {
           val = jsStringToText(val || '').replace(/\\\//g, '/');
-          if (/\.m3u8|\.mp4/i.test(val)) addUrl(val, 'playerjs-file');
+          if (/\.m3u8|\.mp4/i.test(val)) collectUrl(val);
           return all;
         });
-        if (items.length) stelsLog('zerx-direct-player-streams', { iframe: iframeUrl, title: title, count: items.length, sample: items.slice(0, 6).map(function (i) { return i.title + '|' + i.voice + '|' + preview(i.stream, 140); }) });
-        return items;
+        if (!rawUrls.length) return [];
+        var quality = {};
+        var first = '';
+        rawUrls.forEach(function (u, idx) {
+          var playable = zerxProxyPlayableUrl(u);
+          if (!playable) return;
+          if (!first) first = playable;
+          var label = rawUrls.length === 1 ? 'Zerx' : ('Zerx ' + (idx + 1));
+          quality[label] = playable;
+        });
+        if (!first) return [];
+        var item = {
+          title: episode ? ('Сезон ' + (season || 0) + ' / Серія ' + episode) : (title || select_title),
+          season: season || 0,
+          episode: episode || 0,
+          voice: 'direct-url',
+          stream: first,
+          qualitys: Object.keys(quality).length > 1 ? quality : false,
+          quality: Object.keys(quality).length > 1 ? ('Zerx ×' + Object.keys(quality).length) : 'Zerx',
+          headers: { 'User-Agent': player_browser_ua, 'Referer': iframeUrl || player_referer, 'Origin': (zerxTokenInfo(iframeUrl).origin || player_origin) }
+        };
+        stelsLog('zerx-direct-player-streams', { iframe: iframeUrl, title: title, raw_count: rawUrls.length, output_count: 1, sample: rawUrls.slice(0, 8).map(function (u, i) { return (i + 1) + '|' + preview(u, 160); }) });
+        return [item];
       }
+
       function parsePlayerHtml(html, iframeUrl, forcedSeason) {
         player_referer = normalizePlayerUrl(iframeUrl || player_referer);
         try { var om = String(player_referer || '').match(/^(https?:\/\/[^\/]+)/i); if (om) player_origin = om[1]; } catch (e) {}
@@ -4114,6 +4137,15 @@
         url = String(url || '').replace(/\\\//g, '/').replace(/&amp;/g, '&').trim();
         if (url.indexOf(' or ') > -1) url = url.split(' or ')[0].trim();
         return url;
+      }
+      function zerxProxyPlayableUrl(url) {
+        url = cleanStreamUrl(url || '');
+        if (!url) return '';
+        // api.ortified/ws іноді вже повертає готовий stream через apn.cfhttp/apn.watch.
+        // Повторний component.proxyStream робить URL виду apn.watch/http://apn.cfhttp...,
+        // через що плеєр відкривається, але потік не стартує.
+        if (/^https?:\/\/(?:apn\.cfhttp\.top|apn\.watch)\//i.test(url)) return url;
+        return component.proxyStream(url, 'zerx');
       }
       function parseHlsJson(json, voice) {
         if (typeof json == 'string') json = Lampa.Arrays.decodeJson(json, {});
@@ -24286,7 +24318,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.0.96: ZetflixNet Android: замість HLS передається один прямий MP4/OKCDN stream без quality/playlist/reserve; Налаштування ZetflixNet зроблено як окрему кнопку-розділ.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.11: ZetflixNet Android: замість HLS передається один прямий MP4/OKCDN stream без quality/playlist/reserve; Налаштування ZetflixNet зроблено як окрему кнопку-розділ.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
