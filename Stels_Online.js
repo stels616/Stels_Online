@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.04';
+    var STELS_ONLINE_VERSION = '1.1.05';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -3681,33 +3681,33 @@
           return good;
         }
         function next() { searchAll(hash, variants, index + 1, acc, callback, fail); }
-        function maybeFastFinish(good) {
-          // Якщо перші російські запити вже дали сторінки сезонів, не ганяємо
-          // всі інші переклади TMDB, бо це створює довгий spinner.
-          if (good && good.length && (sameSeasonSeriesResults(good) || scoreResult(good[0]) >= 120)) {
-            var merged = filterGoodResults(acc);
-            merged.sort(function (a, b) { return scoreResult(b) - scoreResult(a); });
+        function maybeFastFinish() {
+          // Важливо: не завершуємося після одного AJAX. У 1.1.04 саме це ламало Zerx:
+          // AJAX по "Извне" повертав лише сезонні сторінки 3/4, а повний DLE-пошук
+          // уже не запускався. Тепер спершу об'єднуємо AJAX + DLE для цього запиту.
+          var merged = filterGoodResults(acc);
+          merged.sort(function (a, b) { return scoreResult(b) - scoreResult(a); });
+          var best = merged[0];
+          if (best && scoreResult(best) >= 165 && !isSeasonResult(best)) {
             callback(merged);
             return true;
           }
           return false;
         }
         searchAjax(hash, q, function (list) {
-          var good = logAndMerge(list, 'ajax');
-          if (maybeFastFinish(good)) return;
-          // LazyDev AJAX часто повертає порожньо для точного запиту з роком.
-          // У такому випадку обов'язково пробуємо повний DLE-пошук тим самим рядком.
-          if (!good.length) {
-            searchDle(q, function (list2) {
-              var good2 = logAndMerge(list2, 'dle');
-              if (maybeFastFinish(good2)) return;
-              next();
-            }, next);
-          } else next();
+          logAndMerge(list, 'ajax');
+          searchDle(q, function (list2) {
+            logAndMerge(list2, 'dle');
+            if (maybeFastFinish()) return;
+            next();
+          }, function () {
+            if (maybeFastFinish()) return;
+            next();
+          });
         }, function () {
           searchDle(q, function (list2) {
-            var good2 = logAndMerge(list2, 'dle');
-            if (maybeFastFinish(good2)) return;
+            logAndMerge(list2, 'dle');
+            if (maybeFastFinish()) return;
             next();
           }, next);
         });
@@ -3724,18 +3724,30 @@
         (results || []).forEach(function (r) { if (isSeasonResult(r)) seasonCount++; });
         return seasonCount >= 2 || (seasonCount >= 1 && (results || []).length <= 3);
       }
-      function extractIframe(html) {
-        var found = '';
-        String(html || '').replace(/data-videoframe=["']([^"']+)["'][^>]*>[\s\S]{0,220}?(?:HD\s*Плеер|HD|Плеер|Смотреть)/gi, function (all, url) {
-          url = abs(url, ref);
-          if (/synthezoid|stloadi/i.test(url)) found = url;
-          return all;
-        });
-        if (!found) {
-          var m = String(html || '').match(/data-videoframe=["']([^"']*(?:synthezoid|stloadi)[^"']+)["']/i) || String(html || '').match(/<iframe[^>]+src=["']([^"']*(?:synthezoid|stloadi)[^"']+)["']/i);
-          if (m) found = abs(m[1], ref);
+      function extractIframes(html) {
+        var list = [];
+        function add(url) {
+          url = abs(component.decodeHtml(url || ''), ref);
+          if (!url || !/(synthezoid|stloadi|ortified)/i.test(url)) return;
+          if (list.indexOf(url) == -1) list.push(url);
         }
-        return found;
+        String(html || '').replace(/data-videoframe=["']([^"']+)["']/gi, function (all, url) { add(url); return all; });
+        String(html || '').replace(/<iframe[^>]+src=["']([^"']+)["']/gi, function (all, url) { add(url); return all; });
+        list.sort(function (a, b) {
+          function rank(u) {
+            u = String(u || '');
+            if (/stloadi/i.test(u)) return 0;
+            if (/synthezoid/i.test(u)) return 1;
+            if (/ortified/i.test(u)) return 2;
+            return 9;
+          }
+          return rank(a) - rank(b);
+        });
+        return list;
+      }
+      function extractIframe(html) {
+        var list = extractIframes(html);
+        return list[0] || '';
       }
       function parseJsonParseVariable(html, varName) {
         var re = new RegExp('const\\s+' + varName + '\\s*=\\s*JSON\\.parse\\(\\\'([\\s\\S]*?)\\\'\\);');
@@ -3912,14 +3924,22 @@
       }
       function parsePlayerPage(pageUrl, forcedSeason, callback, fail) {
         requestText(pageUrl, function (html) {
-          var iframe = extractIframe(html);
-          stelsLog('zerx-iframe', { found: !!iframe, iframe: iframe, page: pageUrl, forced_season: forcedSeason || 0 });
-          if (!iframe) { fail && fail(); return; }
-          requestText(iframe, function (playerHtml) {
-            var items = parsePlayerHtml(playerHtml, iframe, forcedSeason || 0);
-            if (!items.length) { fail && fail(); return; }
-            callback(items);
-          }, fail, { kind: 'player', raw: true, headers: { 'User-Agent': user_agent, 'Referer': pageUrl, 'Accept': 'text/html,*/*' }, timeout: 20000 });
+          var iframes = extractIframes(html);
+          stelsLog('zerx-iframe', { found: !!iframes.length, iframe: iframes[0] || '', count: iframes.length, page: pageUrl, forced_season: forcedSeason || 0, sample: iframes.slice(0, 4) });
+          if (!iframes.length) { fail && fail(); return; }
+          function tryIframe(i) {
+            if (i >= iframes.length) { fail && fail(); return; }
+            var iframe = iframes[i];
+            requestText(iframe, function (playerHtml) {
+              var items = parsePlayerHtml(playerHtml, iframe, forcedSeason || 0);
+              if (!items.length) { stelsLog('zerx-player-empty', { iframe: iframe, index: i }); tryIframe(i + 1); return; }
+              callback(items);
+            }, function () {
+              stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1 });
+              tryIframe(i + 1);
+            }, { kind: 'player', raw: true, headers: { 'User-Agent': user_agent, 'Referer': pageUrl, 'Accept': 'text/html,*/*' }, timeout: 14000 });
+          }
+          tryIframe(0);
         }, fail, { kind: 'page', headers: page_headers, timeout: 18000 });
       }
       function loadPlayerPage(pageUrl, forcedSeason) {
@@ -3996,8 +4016,11 @@
             finishOnce(function () {
               var best = pickBest(results);
               stelsLog('zerx-search-final', { count: results.length, season_group: sameSeasonSeriesResults(results), best: best && { title: best.title, url: best.url, score: scoreResult(best) }, sample: results.slice(0, 8) });
-              if (sameSeasonSeriesResults(results)) loadSeasonPages(results);
-              else if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
+              // У 1.1.03/1.1.04 автоматичний merge сезонних сторінок ламав джерело:
+              // якщо один сезонний player давав 404/timeout, увесь Zerx показував "нічого не знайдено".
+              // Повертаємо безпечну поведінку 1.1.02: коли є кілька знайдених сторінок,
+              // показуємо користувачу результати, а не відкриваємо сезонні сторінки автоматично.
+              if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
               else loadPlayerPage((best || results[0]).url, seasonOfResult(best || results[0]) || 0);
             });
           }, function () { finishOnce(function () { component.loading(false); component.emptyForQuery(select_title); }); });
