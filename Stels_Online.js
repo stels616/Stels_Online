@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.19';
+    var STELS_ONLINE_VERSION = '1.1.20';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13472,12 +13472,17 @@
         return tags;
       }
       function parseTortugaEmbed(html, embedUrl) {
-        var m = String(html || '').match(/new\s+TortugaCore\s*\(\s*\{([\s\S]*?)\}\s*\)\s*;/i);
-        var body = m && m[1] || '';
-        var fm = body.match(/file\s*:\s*(['"])([\s\S]*?)\1/i);
+        html = String(html || '');
+        var body = '';
+        var m = html.match(/new\s+TortugaCore\s*\(\s*\{([\s\S]*?)\}\s*\)\s*;?/i);
+        if (m) body = m[1] || '';
+        var fm = body.match(/file\s*:\s*(['"])([\s\S]*?)\1/i) || html.match(/file\s*:\s*(['"])([A-Za-z0-9+\/_=\-]{80,})\1/i);
         if (!fm) {
-          stelsLog('uaserials-tortuga-file-missing', { embed: embedUrl, html_len: String(html || '').length, sample: String(html || '').slice(0, 500) });
-          return [];
+          var next = '';
+          var nm = html.match(/(?:src|href)\s*=\s*(['"])([^'"]*(?:tortuga\.tw\/(?:embed|usp)\/|\/embed\/|\/usp\/)[^'"]*)\1/i);
+          if (nm) next = absolute(nm[2], embedUrl);
+          stelsLog('uaserials-tortuga-file-missing', { embed: embedUrl, html_len: html.length, next: next, sample: html.slice(0, 700) });
+          return { data: [], next: next };
         }
         var encoded = fm[2];
         var decoded = tortugaDecode(encoded);
@@ -13485,6 +13490,7 @@
         try { json = JSON.parse(decoded); }
         catch (e) {
           stelsLog('uaserials-tortuga-json-error', {
+            embed: embedUrl,
             error: e && (e.message || e.toString()),
             encoded_len: String(encoded || '').length,
             encoded_start: String(encoded || '').slice(0, 32),
@@ -13494,7 +13500,7 @@
           });
         }
         stelsLog('uaserials-tortuga-decoded', { embed: embedUrl, encoded_len: String(encoded || '').length, decoded_len: String(decoded || '').length, decoded_start: String(decoded || '').slice(0, 24), is_array: Array.isArray(json), count: Array.isArray(json) ? json.length : 0, sample: Array.isArray(json) ? json.slice(0, 2).map(function (x) { return { title: x.title, season: x.season, folder: x.folder && x.folder.length }; }) : [] });
-        return Array.isArray(json) ? json : [];
+        return { data: Array.isArray(json) ? json : [], next: '' };
       }
       function parseFileEntries(str) {
         var out = [];
@@ -13607,16 +13613,48 @@
         });
         component.start(true);
       }
+      function tortugaEmbedCandidates(url) {
+        var out = [];
+        function add(u) { u = absolute(u || '', tortugaHost + '/'); if (u && out.indexOf(u) === -1) out.push(u); }
+        add(url);
+        var m = String(url || '').match(/tortuga\.tw\/usp\/(\d+)/i);
+        if (m) add(tortugaHost + '/embed/' + m[1]);
+        m = String(url || '').match(/tortuga\.tw\/embed\/(\d+)/i);
+        if (m) add(tortugaHost + '/usp/' + m[1]);
+        return out;
+      }
       function loadEmbed(embedUrl, pageUrl) {
-        requestText(embedUrl, function (embedHtml) {
+        var candidates = tortugaEmbedCandidates(embedUrl);
+        stelsLog('uaserials-tortuga-candidates', { page: pageUrl, candidates: candidates });
+        function tryCandidate(pos, lastErr) {
           if (destroyed) return;
-          var data = parseTortugaEmbed(embedHtml, embedUrl);
-          normalizeTortugaData(data);
-          component.loading(false);
-          buildFilters();
-          var list = currentItems();
-          if (list.length) append(list); else component.emptyForQuery(select_title);
-        }, function (err) { component.loading(false); component.empty(err || 'UASerials embed error'); }, { timeout: 15000, headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': pageUrl || host + '/', 'Origin': host, 'Accept-Language': 'uk-UA,uk;q=0.9,ru;q=0.8,en;q=0.6' } });
+          if (pos >= candidates.length) {
+            component.loading(false);
+            component.empty(lastErr || 'UASerials: Tortuga file не знайдено');
+            return;
+          }
+          var url = candidates[pos];
+          requestText(url, function (embedHtml) {
+            if (destroyed) return;
+            var parsed = parseTortugaEmbed(embedHtml, url);
+            var data = parsed && parsed.data || [];
+            if ((!data || !data.length) && parsed && parsed.next && candidates.indexOf(parsed.next) === -1) candidates.splice(pos + 1, 0, parsed.next);
+            if (!data || !data.length) {
+              stelsLog('uaserials-tortuga-empty-candidate', { url: url, next: parsed && parsed.next || '', pos: pos, total: candidates.length });
+              tryCandidate(pos + 1, 'UASerials: Tortuga file не знайдено');
+              return;
+            }
+            normalizeTortugaData(data);
+            component.loading(false);
+            buildFilters();
+            var list = currentItems();
+            if (list.length) append(list); else component.emptyForQuery(select_title);
+          }, function (err) {
+            stelsLog('uaserials-tortuga-candidate-fail', { url: url, error: err || '' });
+            tryCandidate(pos + 1, err || 'UASerials embed error');
+          }, { timeout: 15000, headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': pageUrl || host + '/', 'Origin': host, 'Accept-Language': 'uk-UA,uk;q=0.9,ru;q=0.8,en;q=0.6' } });
+        }
+        tryCandidate(0, '');
       }
       function loadPage(item) {
         component.loading(true);
@@ -13628,7 +13666,7 @@
               var main = tabs.filter(function (t) { return t.url && /tortuga\.tw\/(?:embed|usp)\//i.test(t.url) && !/трейлер|trailer/i.test(t.tabName || ''); })[0] || tabs.filter(function (t) { return t.url && /tortuga\.tw\/(?:embed|usp)\//i.test(t.url); })[0];
               if (!main) {
                 component.loading(false);
-                component.empty('UASerials: player-control знайдено, але embed Tortuga не знайдено');
+                component.empty('UASerials: player-control знайдено, але URL Tortuga не знайдено');
                 return;
               }
               loadEmbed(absolute(main.url, item.link), item.link);
@@ -24616,7 +24654,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.19: Zerx домен плеєра береться з HAR/сторінки без примусової підміни; UASerials підтримує tortuga /usp; додано OK-long для Tizen і стабілізацію ZetflixNet voice switch.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.20: UASerials /usp тепер пробується разом з /embed-кандидатом; виправлено відкриття Tortuga для Тачки та інших фільмів.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
