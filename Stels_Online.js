@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.09';
+    var STELS_ONLINE_VERSION = '1.1.10';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -791,6 +791,9 @@
       var stelsLastSourceToggle = { key: '', time: 0 };
       var stelsLastFocusedSourceRow = null;
       var holdTimer = null;
+      var stelsMoveStartedAt = 0;
+      var stelsSuppressSourceToggleUntil = 0;
+      var stelsSuppressSourceToggleKey = '';
 
       function updateRow(row, key) {
         hidden = stelsGetHiddenSources();
@@ -828,6 +831,9 @@
         if (movingRow && movingRow.length) movingRow.removeClass('stels-online-source-moving').find('.stels-online-source-move-hint').text('Утримати');
         movingRow = row;
         movingMode = true;
+        stelsMoveStartedAt = Date.now();
+        stelsSuppressSourceToggleUntil = stelsMoveStartedAt + 950;
+        stelsSuppressSourceToggleKey = stelsNormalizeSourceKey(row.data('source'));
         row.addClass('stels-online-source-moving');
         row.find('.stels-online-source-move-hint').text('Рух ↑↓');
         stelsScrollSourceRowIntoView(row);
@@ -853,6 +859,8 @@
       function commitMove() {
         if (!movingMode || !movingRow || !movingRow.length) return false;
         var key = stelsNormalizeSourceKey(movingRow.data('source'));
+        stelsSuppressSourceToggleUntil = Date.now() + 650;
+        stelsSuppressSourceToggleKey = key;
         saveSourceOrderFromDom();
         movingRow.removeClass('stels-online-source-moving');
         movingRow.find('.stels-online-source-move-hint').text('Утримати');
@@ -887,8 +895,22 @@
         var now = Date.now();
 
         if (movingMode) {
+          if (now - stelsMoveStartedAt < 850 || now < stelsSuppressSourceToggleUntil) {
+            stelsLog('sources-move-release-click-skip', { source: key, event_type: event && event.type || '', age: now - stelsMoveStartedAt });
+            if (event && event.preventDefault) event.preventDefault();
+            if (event && event.stopPropagation) event.stopPropagation();
+            return false;
+          }
           commitMove();
           if (event && event.preventDefault) event.preventDefault();
+          if (event && event.stopPropagation) event.stopPropagation();
+          return false;
+        }
+
+        if (key === stelsSuppressSourceToggleKey && now < stelsSuppressSourceToggleUntil) {
+          stelsLog('sources-toggle-after-move-skip', { source: key, event_type: event && event.type || '', left_ms: stelsSuppressSourceToggleUntil - now });
+          if (event && event.preventDefault) event.preventDefault();
+          if (event && event.stopPropagation) event.stopPropagation();
           return false;
         }
 
@@ -3924,15 +3946,99 @@
         }
         return null;
       }
+      function zerxTokenInfo(url) {
+        url = String(url || '');
+        var origin = '';
+        try { var om = url.match(/^(https?:\/\/[^\/]+)/i); if (om) origin = om[1]; } catch (e) {}
+        var tm = url.match(/[?&]token_movie=([^&#]+)/i);
+        var tk = url.match(/[?&]token=([^&#]+)/i);
+        return {
+          origin: origin,
+          token_movie: tm ? decodeURIComponent(tm[1]) : '',
+          token: tk ? decodeURIComponent(tk[1]) : ''
+        };
+      }
+      function zerxIframeVariants(list) {
+        var out = [];
+        var seen = {};
+        function add(u, reason) {
+          u = normalizePlayerUrl(u || '');
+          if (!u || seen[u]) return;
+          seen[u] = true;
+          out.push({ url: u, reason: reason || 'original' });
+        }
+        (list || []).forEach(function (u) {
+          add(u, 'page');
+          var info = zerxTokenInfo(u);
+          if (info.token_movie && info.token) {
+            ['https://synthezoid-as.allarknow.online', 'https://synthezoid-as.stloadi.live'].forEach(function (origin) {
+              add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token), 'token-normal');
+              add(origin + '/?token=' + encodeURIComponent(info.token) + '&token_movie=' + encodeURIComponent(info.token_movie), 'token-reverse');
+              add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token) + '&domain=' + encodeURIComponent(host + '/'), 'token-domain');
+            });
+          }
+        });
+        return out;
+      }
+      function zerxPlayerProxyAttempts() {
+        var arr = [{ name: 'direct', raw: true, proxy: '', enc: '' }];
+        var used = { direct: true };
+        [['cookie', component.proxy('cookie')], ['cookie2', component.proxy('cookie2')], ['cookie3', component.proxy('cookie3')], ['iframe', component.proxy('iframe')]].forEach(function (p) {
+          if (p[1] && !used[p[0] + ':' + p[1]]) {
+            used[p[0] + ':' + p[1]] = true;
+            arr.push({ name: p[0] + ':enc2t', raw: false, proxy: p[1], enc: 'enc2t' });
+          }
+        });
+        return arr;
+      }
+      function parseSeasonEpisodeFromTextZerx(text) {
+        text = String(text || '');
+        var sm = text.match(/(?:^|[^0-9])(\d{1,2})\s*(?:сезон|season|sezon)/i) || text.match(/(?:сезон|season|sezon)\s*(\d{1,2})/i);
+        var em = text.match(/(?:^|[^0-9])(\d{1,3})\s*(?:серия|серія|episode|ep\.?)/i) || text.match(/(?:серия|серія|episode|ep\.?)\s*(\d{1,3})/i);
+        return { season: sm ? (parseInt(sm[1], 10) || 0) : 0, episode: em ? (parseInt(em[1], 10) || 0) : 0 };
+      }
+      function zerxDirectItemsFromHtml(html, iframeUrl, forcedSeason) {
+        var items = [];
+        var seen = {};
+        var title = clean((String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || select_title || 'Zerx');
+        var meta = parseSeasonEpisodeFromTextZerx(title);
+        var season = forcedSeason || meta.season || 0;
+        var episode = meta.episode || 0;
+        function addUrl(u, source) {
+          u = cleanStreamUrl(u || '');
+          if (!u || seen[u]) return;
+          seen[u] = true;
+          items.push({
+            title: episode ? ('Сезон ' + (season || 0) + ' / Серія ' + episode) : (title || select_title),
+            season: season || 0,
+            episode: episode || 0,
+            voice: source || 'Zerx',
+            stream: component.proxyStream(u, 'zerx'),
+            quality: 'Zerx',
+            headers: { 'User-Agent': player_browser_ua, 'Referer': iframeUrl || player_referer, 'Origin': (zerxTokenInfo(iframeUrl).origin || player_origin) }
+          });
+        }
+        String(html || '').replace(/https?:\/\/[^\s"'<>\\,]+(?:\.m3u8|\.mp4)(?:\?[^\s"'<>\\,]*)?/ig, function (u) { addUrl(u, 'direct-url'); return u; });
+        String(html || '').replace(/(?:file|hls|src)\s*[:=]\s*(["'])([\s\S]*?)\1/ig, function (all, q, val) {
+          val = jsStringToText(val || '').replace(/\\\//g, '/');
+          if (/\.m3u8|\.mp4/i.test(val)) addUrl(val, 'playerjs-file');
+          return all;
+        });
+        if (items.length) stelsLog('zerx-direct-player-streams', { iframe: iframeUrl, title: title, count: items.length, sample: items.slice(0, 6).map(function (i) { return i.title + '|' + i.voice + '|' + preview(i.stream, 140); }) });
+        return items;
+      }
       function parsePlayerHtml(html, iframeUrl, forcedSeason) {
         player_referer = normalizePlayerUrl(iframeUrl || player_referer);
         try { var om = String(player_referer || '').match(/^(https?:\/\/[^\/]+)/i); if (om) player_origin = om[1]; } catch (e) {}
+        var tokenInfo = zerxTokenInfo(iframeUrl || '');
         var mtoken = String(html || '').match(/token:\s*['"]([^'"]+)/i) || String(iframeUrl || '').match(/[?&]token=([^&]+)/i);
-        player_token = mtoken ? decodeURIComponent(mtoken[1]) : '';
+        player_token = mtoken ? decodeURIComponent(mtoken[1]) : (tokenInfo.token || '');
+        stelsLog('zerx-player-token-info', { iframe: iframeUrl, origin: tokenInfo.origin, token_movie_len: tokenInfo.token_movie.length, token_len: player_token.length, html_len: String(html || '').length, has_fileList_text: String(html || '').indexOf('fileList') >= 0, has_userParam_text: String(html || '').indexOf('userParam') >= 0, title: clean((String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '') });
         var fileList = parseJsonParseVariable(html, 'fileList');
         if (!fileList) {
-          stelsLog('zerx-filelist-missing', { sample: preview(html, 500) });
-          return [];
+          var directFallback = zerxDirectItemsFromHtml(html, iframeUrl, forcedSeason || 0);
+          stelsLog('zerx-filelist-missing', { iframe: iframeUrl, token_movie_len: tokenInfo.token_movie.length, token_len: player_token.length, html_len: String(html || '').length, direct_fallback_count: directFallback.length, sample: preview(html, 900) });
+          return directFallback;
         }
         var items = [];
         var seen = {};
@@ -4094,61 +4200,76 @@
       }
       function parsePlayerPage(pageUrl, forcedSeason, callback, fail) {
         requestText(pageUrl, function (html) {
-          var iframes = extractIframes(html);
-          stelsLog('zerx-iframe', { found: !!iframes.length, iframe: iframes[0] || '', count: iframes.length, page: pageUrl, forced_season: forcedSeason || 0, sample: iframes.slice(0, 4) });
-          if (!iframes.length) { fail && fail(); return; }
-          function tryIframe(i) {
-            if (i >= iframes.length) { fail && fail(); return; }
-            var iframe = iframes[i];
-            function playerHeadersFor(currentIframe) {
-              return {
-                'User-Agent': player_browser_ua,
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Referer': host + '/',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'iframe',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'cross-site',
-                'sec-ch-ua': '"Chromium";v="148", "Google Chrome";v="148", "Not=A?Brand";v="24"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"'
-              };
-            }
-            function playerProxyEnc(currentIframe) {
-              var hh = playerHeadersFor(currentIframe);
-              var enc = '';
-              Object.keys(hh).forEach(function (k) { enc += 'param/' + k + '=' + encodeURIComponent(hh[k]) + '/'; });
-              return enc;
-            }
-            function parsePlayerOrNext(playerHtml, sourceKind) {
-              var items = parsePlayerHtml(playerHtml, iframe, forcedSeason || 0);
-              stelsLog('zerx-player-parse-attempt', { iframe: iframe, index: i, source: sourceKind, items: items.length, sample: items.slice(0, 6) });
-              if (!items.length) { stelsLog('zerx-player-empty', { iframe: iframe, index: i, source: sourceKind }); return false; }
-              callback(items);
-              return true;
-            }
-            requestText(iframe, function (playerHtml) {
-              if (parsePlayerOrNext(playerHtml, 'direct')) return;
-              requestText(iframe, function (proxiedHtml) {
-                if (parsePlayerOrNext(proxiedHtml, 'proxy')) return;
-                tryIframe(i + 1);
-              }, function () {
-                stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'proxy-empty' });
-                tryIframe(i + 1);
-              }, { kind: 'player_proxy', raw: false, proxy: player_prox, prox_enc: playerProxyEnc(iframe), headers: playerHeadersFor(iframe), timeout: 22000 });
-            }, function () {
-              stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'direct' });
-              requestText(iframe, function (proxiedHtml) {
-                if (parsePlayerOrNext(proxiedHtml, 'proxy-after-direct-fail')) return;
-                tryIframe(i + 1);
-              }, function () {
-                stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'proxy' });
-                tryIframe(i + 1);
-              }, { kind: 'player_proxy', raw: false, proxy: player_prox, prox_enc: playerProxyEnc(iframe), headers: playerHeadersFor(iframe), timeout: 22000 });
-            }, { kind: 'player', raw: true, headers: playerHeadersFor(iframe), timeout: 18000 });
+          var rawIframes = extractIframes(html);
+          var iframeVariants = zerxIframeVariants(rawIframes);
+          var proxyAttempts = zerxPlayerProxyAttempts();
+          stelsLog('zerx-iframe', {
+            found: !!rawIframes.length,
+            iframe: rawIframes[0] || '',
+            count: rawIframes.length,
+            variants_count: iframeVariants.length,
+            proxy_attempts: proxyAttempts.map(function (p) { return p.name; }),
+            page: pageUrl,
+            forced_season: forcedSeason || 0,
+            sample: iframeVariants.slice(0, 8).map(function (v) { return v.reason + '|' + v.url; })
+          });
+          if (!iframeVariants.length) { fail && fail(); return; }
+          function playerHeadersFor(currentIframe) {
+            return {
+              'User-Agent': player_browser_ua,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+              'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Referer': host + '/',
+              'Upgrade-Insecure-Requests': '1',
+              'Sec-Fetch-Dest': 'iframe',
+              'Sec-Fetch-Mode': 'navigate',
+              'Sec-Fetch-Site': 'cross-site',
+              'sec-ch-ua': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+              'sec-ch-ua-mobile': '?0',
+              'sec-ch-ua-platform': '"Windows"'
+            };
           }
-          tryIframe(0);
+          function playerProxyEnc(currentIframe) {
+            var hh = playerHeadersFor(currentIframe);
+            var enc = '';
+            Object.keys(hh).forEach(function (k) { enc += 'param/' + k + '=' + encodeURIComponent(hh[k]) + '/'; });
+            return enc;
+          }
+          var combos = [];
+          iframeVariants.forEach(function (variant, iframeIndex) {
+            proxyAttempts.forEach(function (attempt) {
+              combos.push({ iframe: variant.url, reason: variant.reason, iframeIndex: iframeIndex, attempt: attempt });
+            });
+          });
+          stelsLog('zerx-player-combos', {
+            page: pageUrl,
+            count: combos.length,
+            sample: combos.slice(0, 12).map(function (c) { return c.iframeIndex + ':' + c.reason + ':' + c.attempt.name + '|' + c.iframe; })
+          });
+          function tryCombo(pos) {
+            if (pos >= combos.length) { fail && fail(); return; }
+            var combo = combos[pos];
+            var iframe = combo.iframe;
+            var attempt = combo.attempt;
+            var opts = { kind: attempt.raw ? 'player' : ('player_proxy_' + attempt.name), raw: attempt.raw, headers: playerHeadersFor(iframe), timeout: attempt.raw ? 14000 : 18000 };
+            if (!attempt.raw) {
+              opts.proxy = attempt.proxy;
+              opts.enc = attempt.enc || 'enc2t';
+              opts.prox_enc = playerProxyEnc(iframe);
+            }
+            stelsLog('zerx-player-try', { pos: pos, total: combos.length, iframe: iframe, reason: combo.reason, attempt: attempt.name, raw: !!attempt.raw, proxy_len: attempt.proxy ? attempt.proxy.length : 0, enc: opts.enc || '' });
+            requestText(iframe, function (playerHtml) {
+              var items = parsePlayerHtml(playerHtml, iframe, forcedSeason || 0);
+              stelsLog('zerx-player-parse-attempt', { iframe: iframe, pos: pos, source: attempt.name, reason: combo.reason, html_len: String(playerHtml || '').length, items: items.length, sample: items.slice(0, 6) });
+              if (items.length) { callback(items); return; }
+              stelsLog('zerx-player-empty', { iframe: iframe, pos: pos, source: attempt.name, reason: combo.reason });
+              tryCombo(pos + 1);
+            }, function (message) {
+              stelsLog('zerx-player-fallback', { iframe: iframe, pos: pos, left: combos.length - pos - 1, source: attempt.name, reason: combo.reason, message: preview(message, 220) });
+              tryCombo(pos + 1);
+            }, opts);
+          }
+          tryCombo(0);
         }, fail, { kind: 'page', headers: page_headers, timeout: 18000 });
       }
       function loadPlayerPage(pageUrl, forcedSeason, fallbackResults) {
