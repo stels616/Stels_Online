@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.41';
+    var STELS_ONLINE_VERSION = '1.1.42';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -630,6 +630,21 @@
       return String(value == null ? '' : value).replace(/[&<>"']/g, function(s) {
         return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[s];
       });
+    }
+
+    function cleanText(value) {
+      value = value == null ? '' : String(value);
+      value = value.replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      try {
+        if (typeof component !== 'undefined' && component && component.decodeHtml) value = component.decodeHtml(value);
+        else if (Lampa && Lampa.Utils && Lampa.Utils.decodeHtml) value = Lampa.Utils.decodeHtml(value);
+      } catch (e) {}
+      return String(value || '').replace(/\s+/g, ' ').trim();
     }
 
     function stelsInstallImageStyles() {
@@ -2304,6 +2319,12 @@
         voice: 0,
         voice_name: ''
       };
+
+      var zetflixnetLastSelectedVoiceName = '';
+      var zetflixnetVoiceMenuObserver = null;
+      var zetflixnetVoiceMenuTimer = 0;
+      var zetflixnetVoiceCheckApplying = false;
+      var zetflixnetVoiceCheckMuteUntil = 0;
 
       function lumex_api(api, callback, error) {
         var error_check = function error_check(a, c) {
@@ -15595,12 +15616,39 @@
         } catch (e) {}
       }
 
+      function zetflixnetInstallVoiceMenuObserver() {
+        try {
+          if (zetflixnetVoiceMenuObserver || typeof MutationObserver === 'undefined' || !document.body) return;
+          zetflixnetVoiceMenuObserver = new MutationObserver(function () {
+            if (!zetflixnetLastSelectedVoiceName || zetflixnetVoiceCheckApplying) return;
+            if (Date.now() < zetflixnetVoiceCheckMuteUntil) return;
+            clearTimeout(zetflixnetVoiceMenuTimer);
+            zetflixnetVoiceMenuTimer = setTimeout(function () {
+              if (!zetflixnetLastSelectedVoiceName || Date.now() < zetflixnetVoiceCheckMuteUntil) return;
+              zetflixnetRefreshVisibleVoiceCheckmark(zetflixnetLastSelectedVoiceName, 'mutation-observer');
+            }, 140);
+          });
+          zetflixnetVoiceMenuObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style', 'aria-selected', 'data-selected', 'disabled']
+          });
+          stelsLog('zetflixnet-voice-menu-observer-installed', { platform_tizen: zetflixnetIsTizenPlatform(), ua: (navigator && navigator.userAgent || '').slice(0, 180) });
+        } catch (e) {
+          stelsLog('zetflixnet-voice-menu-observer-error', { error: e && (e.message || e.toString()) || '' });
+        }
+      }
+
       function zetflixnetRefreshVisibleVoiceCheckmark(voiceName, reason) {
         var result = { voice: voiceName || '', reason: reason || '', rows: 0, target_rows: 0, removed: 0, forced: 0, errors: [] };
         try {
           voiceName = cleanText(voiceName || '');
           if (!voiceName) return result;
+          zetflixnetLastSelectedVoiceName = voiceName;
           zetflixnetInstallVoiceCheckStyle();
+          zetflixnetInstallVoiceMenuObserver();
+          zetflixnetVoiceCheckApplying = true;
           var wanted = voiceName.toLowerCase();
           var voiceNames = [];
           try {
@@ -15696,13 +15744,14 @@
             var selected = entry.voice === wanted;
             result.rows++;
             try { el.classList.add('stels-zetflixnet-voice-row'); } catch (c0) {}
+            try { el.setAttribute('data-stels-voice-name', entry.voice || ''); } catch (c00) {}
             try { el.classList.toggle('stels-zetflixnet-voice-current', selected); } catch (c1) {}
             ['active','selected','focus','checked','current','selector--active','selector--selected','selectbox-item--active','selectbox__item--active','selectbox-item--checked','selectbox__item--checked'].forEach(function (cls) {
               try { el.classList.toggle(cls, selected); } catch (cx) {}
             });
             try { el.setAttribute('data-selected', selected ? 'true' : 'false'); } catch (c9) {}
             try { el.setAttribute('aria-selected', selected ? 'true' : 'false'); } catch (c10) {}
-            try { if (selected) { el.removeAttribute('disabled'); el.removeAttribute('aria-disabled'); } } catch (c11) {}
+            try { el.removeAttribute('disabled'); el.removeAttribute('aria-disabled'); } catch (c11) {}
             try {
               var old = el.querySelectorAll ? el.querySelectorAll('.stels-zetflixnet-voice-check') : [];
               for (var oi = old.length - 1; oi >= 0; oi--) { try { old[oi].parentNode.removeChild(old[oi]); result.removed++; } catch (or) {} }
@@ -15732,6 +15781,7 @@
           });
           result.forced = rows.length;
         } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+        try { zetflixnetVoiceCheckApplying = false; zetflixnetVoiceCheckMuteUntil = Date.now() + 350; } catch (emute) {}
         stelsLog('zetflixnet-visible-voice-checkmark-updated', result);
         return result;
       }
@@ -15741,6 +15791,8 @@
         try {
           voiceName = cleanText(voiceName || '');
           if (!voiceName) return result;
+          zetflixnetLastSelectedVoiceName = voiceName;
+          try { zetflixnetInstallVoiceMenuObserver(); } catch (eobs) {}
           try {
             var idx = filter_items && filter_items.voice ? filter_items.voice.indexOf(voiceName) : -1;
             if (idx >= 0) {
@@ -26290,7 +26342,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.41: глобальні затемнені карточки майбутніх серій для всіх джерел; посилено оновлення галочки перекладу ZetflixNet на Tizen/SmartTV.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.42: виправлено cleanText для оновлення галочки перекладу ZetflixNet; додано MutationObserver меню перекладів для Tizen/SmartTV/Android/Windows; майбутні серії лишаються глобально.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
