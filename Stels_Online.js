@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.03';
+    var STELS_ONLINE_VERSION = '1.1.04';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -3630,12 +3630,30 @@
       function queryVariants() {
         var arr = [];
         function add(v) { v = clean(v || ''); if (v && arr.indexOf(v) == -1) arr.push(v); }
-        var base = collectTitleAliases();
+        var movie = object && object.movie || {};
+        var originalNorm = norm(movie.original_title || movie.original_name || '');
         var year = yearOf();
-        base.concat(zerxKnownAliases()).forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
-        base.forEach(add);
-        zerxKnownAliases().forEach(add);
-        return arr.filter(Boolean).slice(0, 18);
+
+        // Zerx переважно індексує назви російською. Тому для цього джерела
+        // спочатку пробуємо російські alias-и без року, потім з роком, і тільки
+        // після цього англійську/українську та інші варіанти з TMDB.
+        if (originalNorm === 'from') {
+          add('Извне');
+          if (year) add('Извне ' + year);
+          add('From');
+          add('FROM');
+          if (year) add('FROM ' + year);
+          add('Ззовні');
+          if (year) add('Ззовні ' + year);
+          return arr.filter(Boolean).slice(0, 8);
+        }
+
+        var known = zerxKnownAliases();
+        known.forEach(add);
+        known.forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
+        collectTitleAliases().forEach(add);
+        collectTitleAliases().forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
+        return arr.filter(Boolean).slice(0, 10);
       }
       function mergeResultList(acc, list) {
         var seen = {};
@@ -3655,16 +3673,43 @@
           return;
         }
         var q = variants[index];
-        function finish(list, source) {
+        function logAndMerge(list, source) {
           var good = filterGoodResults(list || []);
+          good.sort(function (a, b) { return scoreResult(b) - scoreResult(a); });
           stelsLog('zerx-search-filtered', { query: q, source: source, count: good.length, best_score: good[0] ? scoreResult(good[0]) : 0, sample: good.slice(0, 4) });
           mergeResultList(acc, good);
-          searchAll(hash, variants, index + 1, acc, callback, fail);
+          return good;
+        }
+        function next() { searchAll(hash, variants, index + 1, acc, callback, fail); }
+        function maybeFastFinish(good) {
+          // Якщо перші російські запити вже дали сторінки сезонів, не ганяємо
+          // всі інші переклади TMDB, бо це створює довгий spinner.
+          if (good && good.length && (sameSeasonSeriesResults(good) || scoreResult(good[0]) >= 120)) {
+            var merged = filterGoodResults(acc);
+            merged.sort(function (a, b) { return scoreResult(b) - scoreResult(a); });
+            callback(merged);
+            return true;
+          }
+          return false;
         }
         searchAjax(hash, q, function (list) {
-          finish(list, 'ajax');
+          var good = logAndMerge(list, 'ajax');
+          if (maybeFastFinish(good)) return;
+          // LazyDev AJAX часто повертає порожньо для точного запиту з роком.
+          // У такому випадку обов'язково пробуємо повний DLE-пошук тим самим рядком.
+          if (!good.length) {
+            searchDle(q, function (list2) {
+              var good2 = logAndMerge(list2, 'dle');
+              if (maybeFastFinish(good2)) return;
+              next();
+            }, next);
+          } else next();
         }, function () {
-          searchDle(q, function (list2) { finish(list2, 'dle'); }, function () { searchAll(hash, variants, index + 1, acc, callback, fail); });
+          searchDle(q, function (list2) {
+            var good2 = logAndMerge(list2, 'dle');
+            if (maybeFastFinish(good2)) return;
+            next();
+          }, next);
         });
       }
       function isSeasonResult(item) {
@@ -3928,18 +3973,35 @@
         destroyed = false;
         select_title = object.search || object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name || '';
         component.loading(true);
-        if (data && data[0] && (data[0].url || data[0].link)) { loadPlayerPage(data[0].url || data[0].link); return; }
+        var finished = false;
+        var watchdog = setTimeout(function () {
+          if (finished || destroyed) return;
+          finished = true;
+          try { network.clear(); } catch (e) {}
+          stelsLog('zerx-search-watchdog', { title: select_title, timeout: 26000 });
+          component.loading(false);
+          component.emptyForQuery(select_title);
+        }, 26000);
+        function finishOnce(fn) {
+          if (finished || destroyed) return;
+          finished = true;
+          clearTimeout(watchdog);
+          fn && fn();
+        }
+        if (data && data[0] && (data[0].url || data[0].link)) { finishOnce(function () { loadPlayerPage(data[0].url || data[0].link); }); return; }
         getHash(function (hash) {
           var vars = queryVariants();
           stelsLog('zerx-search-start', { title: select_title, variants: vars, serial: isSerial(), year: yearOf() });
           searchAll(hash, vars, 0, [], function (results) {
-            var best = pickBest(results);
-            stelsLog('zerx-search-final', { count: results.length, season_group: sameSeasonSeriesResults(results), best: best && { title: best.title, url: best.url, score: scoreResult(best) }, sample: results.slice(0, 8) });
-            if (sameSeasonSeriesResults(results)) loadSeasonPages(results);
-            else if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
-            else loadPlayerPage((best || results[0]).url, seasonOfResult(best || results[0]) || 0);
-          }, function () { component.loading(false); component.emptyForQuery(select_title); });
-        }, function () { component.loading(false); component.emptyForQuery(select_title); });
+            finishOnce(function () {
+              var best = pickBest(results);
+              stelsLog('zerx-search-final', { count: results.length, season_group: sameSeasonSeriesResults(results), best: best && { title: best.title, url: best.url, score: scoreResult(best) }, sample: results.slice(0, 8) });
+              if (sameSeasonSeriesResults(results)) loadSeasonPages(results);
+              else if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
+              else loadPlayerPage((best || results[0]).url, seasonOfResult(best || results[0]) || 0);
+            });
+          }, function () { finishOnce(function () { component.loading(false); component.emptyForQuery(select_title); }); });
+        }, function () { finishOnce(function () { component.loading(false); component.emptyForQuery(select_title); }); });
       };
       this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
       this.reset = function () { component.reset(); choice = { season: 0, voice: 0, voice_name: '' }; buildFilters(all_items); append(currentItems()); component.saveChoice(choice); };
