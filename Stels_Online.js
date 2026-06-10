@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.16';
+    var STELS_ONLINE_VERSION = '1.1.17';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13292,9 +13292,42 @@
         var key = CryptoJS.PBKDF2(uasPassword, salt, { hasher: CryptoJS.algo.SHA512, keySize: 8, iterations: 999 });
         return CryptoJS.AES.decrypt(obj.ciphertext || '', key, { iv: iv }).toString(CryptoJS.enc.Utf8);
       }
+      function tortugaBase64ToBinary(input) {
+        var s = String(input || '').replace(/\n|\r|\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        if (!s) return '';
+        // Tortuga часто віддає base64 без фінального padding. Browser atob у Lampa
+        // на таких рядках може падати, тому нормалізуємо padding вручну.
+        s = s.replace(/=+$/g, '');
+        while (s.length % 4) s += '=';
+        try { return atob(s); } catch (e1) {}
+        try {
+          if (typeof CryptoJS !== 'undefined' && CryptoJS.enc && CryptoJS.enc.Base64) {
+            return CryptoJS.enc.Latin1.stringify(CryptoJS.enc.Base64.parse(s));
+          }
+        } catch (e2) {}
+        try {
+          var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+          var out = '', buffer = 0, bits = 0;
+          s = s.replace(/[^A-Za-z0-9\+\/\=]/g, '');
+          for (var i = 0; i < s.length; i++) {
+            var c = s.charAt(i);
+            if (c === '=') break;
+            var v = chars.indexOf(c);
+            if (v < 0) continue;
+            buffer = (buffer << 6) | v;
+            bits += 6;
+            if (bits >= 8) {
+              bits -= 8;
+              out += String.fromCharCode((buffer >> bits) & 255);
+            }
+          }
+          return out;
+        } catch (e3) {}
+        return '';
+      }
       function tortugaDecodeOnce(input) {
         try {
-          var raw = atob(String(input || '').replace(/\n|\r|\s/g, ''));
+          var raw = tortugaBase64ToBinary(input);
           if (!raw || raw.length < 2) return input;
           var seed = raw.charCodeAt(0);
           var out = '';
