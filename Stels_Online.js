@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.11';
+    var STELS_ONLINE_VERSION = '1.1.12';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -182,13 +182,27 @@
       if (window.stels_online_icon_patcher_installed) return;
       window.stels_online_icon_patcher_installed = true;
 
+      function stelsLooksLikeSourceChooser(el) {
+        try {
+          if (!el || !el.length) return false;
+          var box = el.closest('.selectbox, .selectbox__content, .selectbox__body, .modal, .modal__content, .source, .sources, .online-source, .online-sources');
+          if (!box.length) return false;
+          var txt = (box.text() || '').replace(/\s+/g, ' ').trim();
+          var sourceLike = /Джерело|Джерела|Онлайн|Трейлери|BwaRC|Z01/i.test(txt);
+          var hasManySourceButtons = box.find('.view--stels_online,.view--online,.view--torrent,.view--trailer,.selectbox-item,.source__item,.full-start__button').length > 1;
+          return sourceLike || hasManySourceButtons;
+        } catch (e) { return false; }
+      }
+
       function stelsIsMainCardButton(el) {
         try {
           if (!el || !el.length || el.attr('data-stels-main-button') !== '1') return false;
-          // Та сама кнопка Stels_Online з картки фільму може клонуватись у меню «Джерело».
-          // На самій картці вона лежить у блоці full-start, а в меню джерел — ні.
+          // Та сама кнопка Stels_Online з картки фільму клонується в меню «Джерело».
+          // Якщо вона вже всередині source/selectbox/modal-списку — це не основна кнопка картки,
+          // її треба показувати з назвою та іконкою.
+          if (stelsLooksLikeSourceChooser(el)) return false;
           return !!el.closest('.full-start, .full-start-new, .full-start__buttons, .full-start-new__buttons, .full-start__body, .full-start-new__body').length;
-        } catch (e) { return el && el.attr && el.attr('data-stels-main-button') === '1'; }
+        } catch (e) { return el && el.attr && el.attr('data-stels-main-button') === '1' && !stelsLooksLikeSourceChooser(el); }
       }
 
       function shouldPatch(el) {
@@ -234,14 +248,13 @@
           if (!el || !el.length) return;
           if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
           el.addClass('stels-online-source-entry');
-          var display = el.css('display');
-          if (display === 'inline') el.css('display', 'inline-flex');
-          else if (display === 'block') el.css('display', 'flex');
-          el.css('align-items', 'center');
+          el.removeAttr('data-stels-main-button');
+          el.attr('data-component', 'stels_online');
+          el.css({ display: 'flex', 'align-items': 'center', 'justify-content': 'flex-start', 'min-height': '4.4em', 'padding-top': '.55em', 'padding-bottom': '.55em' });
           el.attr('data-subtitle', STELS_ONLINE_VERSION);
           el.html('<img class="stels-online-plugin-icon stels-online-source-icon" src="' + STELS_ICON_URL + '" style="width:2.15em;height:2.15em;object-fit:contain;display:block;flex-shrink:0;margin-right:.7em" alt="Stels_Online">' +
             '<div class="stels-online-source-title-wrap" style="display:flex;flex-direction:column;line-height:1.25"><div>Stels_Online</div><div class="stels-online-version-under" style="font-size:.72em;opacity:.65;margin-top:.15em">' + stelsEscapeHtml(STELS_ONLINE_VERSION) + '</div></div>');
-          stelsLog('plugin-source-entry-patched', { class_name: el.attr('class') || '', component: el.attr('data-component') || '', text: (el.text() || '').replace(/\s+/g, ' ').trim() });
+          stelsLog('plugin-source-entry-patched', { class_name: el.attr('class') || '', component: el.attr('data-component') || '', source_chooser: stelsLooksLikeSourceChooser(el), text: (el.text() || '').replace(/\s+/g, ' ').trim() });
         } catch (e) {}
       }
 
@@ -291,6 +304,12 @@
             }
             if (!flatMatch) return;
             stelsPatchFlatPluginEntry(el);
+          });
+          // Якщо Lampa клонувала компактну кнопку з картки в меню «Джерело», вона може бути
+          // порожнім рядком без тексту. Патчимо саме такі клоновані full-start кнопки окремо.
+          scope.find('.full-start__button.view--stels_online[data-stels-main-button="1"]').addBack('.full-start__button.view--stels_online[data-stels-main-button="1"]').each(function () {
+            var el = $(this);
+            if (stelsLooksLikeSourceChooser(el)) stelsPatchFlatPluginEntry(el);
           });
           stelsPatchUaFlagIcons(scope);
         } catch (e) {
@@ -714,7 +733,7 @@
           '.settings-folder.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{display:block!important;width:2.05em!important;height:2.05em!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;font-size:1rem!important;}' +
           '.stels-online-settings-folder .full-start__subtitle,.stels-online-settings-folder .selector__subtitle,.stels-online-settings-folder .settings-folder__subtitle{display:none!important;}' +
           '.stels-online-version-under{font-size:.72em;line-height:1.1;opacity:.6;margin-top:.12em;}' +
-          '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;}' +
+          '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;min-height:4.4em!important;}' +
           '.stels-online-source-entry .stels-online-source-icon{width:2.15em!important;height:2.15em!important;margin-right:.7em!important;object-fit:contain!important;flex-shrink:0!important;}' +
           '.stels-online-source-moving{outline:2px solid #23d160!important;background:rgba(35,209,96,.12)!important;border-radius:.45em;padding-left:.45em!important;padding-right:.45em!important;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*=\"subtitle\"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
@@ -3883,10 +3902,8 @@
       function normalizePlayerUrl(url) {
         url = abs(component.decodeHtml(url || ''), ref);
         if (!url) return '';
-        // Zerx зараз часто вставляє synthezoid-as.allarknow.online, але у HAR робочий
-        // плеєр і /bnsi/movies/* йдуть через synthezoid-as.stloadi.live. allarknow дає 404.
-        url = url.replace(/^https?:\/\/synthezoid-as\.allarknow\.online\//i, 'https://synthezoid-as.stloadi.live/');
-        url = url.replace(/^https?:\/\/synthezoid-as\.allarknow\.online$/i, 'https://synthezoid-as.stloadi.live');
+        // ВАЖЛИВО: не замінюємо allarknow на stloadi. У from.har саме allarknow містить
+        // повний fileList з усіма сезонами/серіями/озвучками, а stloadi для цих токенів часто дає 404.
         return url;
       }
       function extractIframes(html) {
@@ -4387,9 +4404,11 @@
             finishOnce(function () {
               var best = pickBest(results);
               stelsLog('zerx-search-final', { count: results.length, season_group: sameSeasonSeriesResults(results), best: best && { title: best.title, url: best.url, score: scoreResult(best) }, sample: results.slice(0, 8) });
-              // Для серіалів Zerx правильна структура лежить у player fileList, а не в результатах пошуку.
-              // Тому сезонну сторінку відкриваємо автоматично і будуємо фільтри сезон/озвучка/серія з fileList.
-              if (sameSeasonSeriesResults(results)) loadPlayerPage((best || results[0]).url, 0, results);
+              // Якщо є головна сторінка серіалу без номера сезону — відкриваємо її: у player fileList
+              // зазвичай лежить повна структура всіх сезонів/серій/озвучок.
+              // Якщо знайдені тільки окремі сезонні сторінки — пробуємо зібрати їх через loadSeasonPages.
+              if (sameSeasonSeriesResults(results) && best && !seasonOfResult(best)) loadPlayerPage(best.url, 0, results);
+              else if (sameSeasonSeriesResults(results)) loadSeasonPages(results);
               else if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
               else loadPlayerPage((best || results[0]).url, seasonOfResult(best || results[0]) || 0);
             });
@@ -24318,7 +24337,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.11: ZetflixNet Android: замість HLS передається один прямий MP4/OKCDN stream без quality/playlist/reserve; Налаштування ZetflixNet зроблено як окрему кнопку-розділ.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.12: Zerx: не нормалізуємо allarknow у stloadi, першим пробуємо оригінальний player з fileList; UI: патчимо клон full-start кнопки у меню Джерело.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
