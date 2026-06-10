@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.25';
+    var STELS_ONLINE_VERSION = '1.1.26';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -14910,8 +14910,79 @@
         play.file = target;
         play.stream = target;
         play._stels_zetflixnet_reselect_quality = wantedLabel;
+        play._quality = wantedLabel;
+        play.quality_name = wantedLabel;
+        play.qualityLabel = wantedLabel;
         stelsLog('zetflixnet-voice-quality-reselect', { voice: voiceName || '', quality: wantedLabel, url: zlogUrlInfo(target), data_id: item && item.data_id || '' });
         return true;
+      }
+
+      function zetflixnetClonePlayableForQuality(play, wantedLabel) {
+        var clone = {};
+        try {
+          Object.keys(play || {}).forEach(function (k) { clone[k] = play[k]; });
+        } catch (e) {}
+        var q = clone.quality || {};
+        var target = q[wantedLabel] || '';
+        if (!target) {
+          try {
+            Object.keys(q).some(function (k) {
+              if (String(k).toLowerCase() === String(wantedLabel).toLowerCase()) { target = q[k]; wantedLabel = k; return true; }
+              return false;
+            });
+          } catch (e2) {}
+        }
+        if (!target) target = clone.url || clone.file || clone.stream || '';
+        clone.url = target;
+        clone.file = target;
+        clone.stream = target;
+        clone._quality = wantedLabel;
+        clone.quality_name = wantedLabel;
+        clone.qualityLabel = wantedLabel;
+        clone._stels_zetflixnet_manual_quality_reselect = true;
+        return clone;
+      }
+
+      function zetflixnetForceQualityAfterVoiceSwitch(play, wantedLabel, voiceName, item) {
+        if (!play || !wantedLabel || !play.quality) {
+          stelsLog('zetflixnet-voice-quality-force-skip', { voice: voiceName || '', wanted_quality: wantedLabel || '', reason: !play ? 'no-play' : !wantedLabel ? 'no-quality' : 'no-map' });
+          return;
+        }
+        var delays = (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? [450, 950, 1650, 2600] : [220, 650, 1200];
+        stelsLog('zetflixnet-voice-quality-force-plan', { voice: voiceName || '', wanted_quality: wantedLabel || '', data_id: item && item.data_id || '', delays: delays, quality_keys: play.quality ? Object.keys(play.quality) : [] });
+        delays.forEach(function (delay, index) {
+          setTimeout(function () {
+            try {
+              var clone = zetflixnetClonePlayableForQuality(play, wantedLabel);
+              var target = clone.url || clone.file || clone.stream || '';
+              if (!target) {
+                stelsLog('zetflixnet-voice-quality-force-empty', { voice: voiceName || '', quality: wantedLabel || '', delay: delay });
+                return;
+              }
+              try {
+                var pd = Lampa.Player && Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+                if (pd) {
+                  pd.url = target;
+                  pd.file = target;
+                  pd.stream = target;
+                  pd._quality = wantedLabel;
+                  pd.quality_name = wantedLabel;
+                  pd.qualityLabel = wantedLabel;
+                  pd._stels_zetflixnet_manual_quality_reselect = true;
+                }
+              } catch (pdErr) {
+                stelsLog('zetflixnet-voice-quality-force-playdata-error', { voice: voiceName || '', delay: delay, error: pdErr && (pdErr.message || pdErr.toString()) || '' });
+              }
+              Lampa.Player.play(clone);
+              if (!stelsAndroidPlayerFixEnabled()) {
+                try { Lampa.Player.playlist([clone]); } catch (plErr) {}
+              }
+              stelsLog('zetflixnet-voice-quality-force-play', { voice: voiceName || '', quality: wantedLabel || '', delay: delay, index: index, url: zlogUrlInfo(target), data_id: item && item.data_id || '' });
+            } catch (e) {
+              stelsLog('zetflixnet-voice-quality-force-error', { voice: voiceName || '', quality: wantedLabel || '', delay: delay, error: e && (e.message || e.toString()) || '' });
+            }
+          }, delay);
+        });
       }
 
       function zetflixnetVoiceovers(element, selectedVoice) {
@@ -14940,7 +15011,6 @@
                 var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
                 var voiceQualityFixActive = zetflixnetVoiceQualityFixEnabled();
                 var wantedQuality = voiceQualityFixActive ? zetflixnetDetectCurrentQualityLabel(current) : '';
-                var currentTimeBeforeVoiceSwitch = voiceQualityFixActive ? zetflixnetGetCurrentTimeSafe() : 0;
                 var play = zetflixnetBuildPlayable(item, {
                   timeline: current.timeline || item.timeline || element.timeline,
                   poster: current.poster || item.poster || element.poster || '',
@@ -14976,21 +15046,8 @@
                   if (!stelsAndroidPlayerFixEnabled()) {
                     try { Lampa.Player.playlist([play]); } catch (e4) {}
                   }
-                  if (voiceQualityFixActive && currentTimeBeforeVoiceSwitch) {
-                    zetflixnetSeekBackAfterVoiceSwitch(currentTimeBeforeVoiceSwitch, 5, voiceName);
-                  }
                   if (voiceQualityFixActive && wantedQuality) {
-                    setTimeout(function () {
-                      try {
-                        var pd = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-                        if (pd && pd.quality && pd.quality[wantedQuality]) {
-                          pd.url = pd.quality[wantedQuality];
-                          pd.file = pd.quality[wantedQuality];
-                          pd.stream = pd.quality[wantedQuality];
-                          stelsLog('zetflixnet-voice-quality-after-playdata', { quality: wantedQuality, url: zlogUrlInfo(pd.url) });
-                        }
-                      } catch (qe) { stelsLog('zetflixnet-voice-quality-after-error', { error: qe && (qe.message || qe.toString()) || '' }); }
-                    }, 180);
+                    zetflixnetForceQualityAfterVoiceSwitch(play, wantedQuality, voiceName, item);
                   }
                 }, (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 260 : 120);
               }, function (err) {
@@ -25001,7 +25058,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.25: прибрано вкладений settings-folder, через який Lampa падала при відкритті налаштувань; кнопку ZetflixNet зроблено безпечним data-static з відкриттям окремої панелі/резервного вікна; перемотування -5 секунд для логіки перекладів залишено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.26: прибрано перемотування у ZetflixNet; логіка перекладів тепер примусово повторно застосовує вибрану якість після запуску нового перекладу, як ручне повторне натискання якості.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
