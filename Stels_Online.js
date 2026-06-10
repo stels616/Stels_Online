@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.98';
+    var STELS_ONLINE_VERSION = '1.0.99';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -19735,7 +19735,9 @@
       }, {
         name: 'kinoukr',
         title: 'KinoUkr',
-        source: new kinoukr(this, object),
+        // Прямий пошук kinoukr.tv блокується Cloudflare 403, тому для пошуку/списку серій
+        // використовуємо той самий LampUA endpoint, який уже бачить KinoUkr у загальному списку джерел.
+        source: new lampauaRemoteSource(this, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { directPath: 'kinoukr' }),
         search: true,
         kp: false,
         imdb: false
@@ -20118,7 +20120,7 @@
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
-          if (name === 'kinoukr' || engine === 'kinoukr') return new kinoukr(fake, object);
+          if (name === 'kinoukr' || engine === 'kinoukr') return new lampauaRemoteSource(fake, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { directPath: 'kinoukr' });
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
