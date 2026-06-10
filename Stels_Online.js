@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.31';
+    var STELS_ONLINE_VERSION = '1.1.32';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5505,6 +5505,52 @@
         season: 0,
         voice: 0
       };
+      function kinobaseCleanSearchTitle(v) {
+        return component.cleanTitle(String(v || '')).replace(/\s+/g, ' ').trim();
+      }
+      function kinobaseSearchTitleVariants(preferred) {
+        var arr = [];
+        function add(v) {
+          v = kinobaseCleanSearchTitle(v);
+          if (v && arr.indexOf(v) === -1) arr.push(v);
+        }
+        var movie = object && object.movie || {};
+        add(preferred);
+        add(select_title);
+        add(movie.title);
+        add(movie.name);
+        add(movie.original_title);
+        add(movie.original_name);
+        try {
+          var alt = movie.alternative_titles || movie.alt_titles || movie.titles || [];
+          if (Array.isArray(alt)) alt.forEach(function (x) { add(typeof x === 'string' ? x : (x && (x.title || x.name))); });
+        } catch (e) {}
+        var joined = arr.join(' | ').toLowerCase();
+        if (joined.indexOf('from') !== -1 || joined.indexOf('ззов') !== -1 || joined.indexOf('іззов') !== -1 || joined.indexOf('извне') !== -1) add('Извне');
+        if (joined.indexOf('cars') !== -1 || joined.indexOf('тач') !== -1) add('Тачки');
+        return arr;
+      }
+      function kinobasePreferredSearchQuery() {
+        var movie = object && object.movie || {};
+        var variants = kinobaseSearchTitleVariants('');
+        // Для kinobase.org російська назва часто дає точніший результат, ніж українська назва з TMDB.
+        for (var i = 0; i < variants.length; i++) {
+          if (/^извне$/i.test(variants[i])) return variants[i];
+          if (/^тачки$/i.test(variants[i])) return variants[i];
+        }
+        return kinobaseCleanSearchTitle(movie.original_title || movie.original_name || select_title || movie.title || movie.name || '') || kinobaseCleanSearchTitle(select_title);
+      }
+      function kinobaseTitleMatchesAny(title, variants) {
+        title = kinobaseCleanSearchTitle(title);
+        if (!title) return false;
+        for (var i = 0; i < variants.length; i++) {
+          var v = variants[i];
+          if (!v) continue;
+          if (component.equalTitle(title, v) || component.containsTitle(title, v) || component.containsTitle(v, title)) return true;
+        }
+        return false;
+      }
+
       /**
        * Поиск
        * @param {Object} _object
@@ -5517,14 +5563,21 @@
         object = _object;
         select_title = object.search || object.movie.title;
         if (this.wait_similars && data && data[0].is_similars) return getPage(data[0].link);
-        var url = embed + 'search?query=' + encodeURIComponent(component.cleanTitle(select_title));
+        var query = kinobasePreferredSearchQuery();
+        var titleVariants = kinobaseSearchTitleVariants(query);
+        var url = embed + 'search';
+        var post = 'query=' + encodeURIComponent(query);
         var cookie = check_cookie;
-        var headers = Lampa.Platform.is('android') ? {
+        var headers = {
           'Origin': host,
           'Referer': ref,
           'User-Agent': user_agent,
+          'Accept': 'text/html, */*; q=0.01',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
           'Cookie': cookie
-        } : {};
+        };
+        stelsLog('kinobase-search-post', { query: query, variants: titleVariants, url: url });
         var prox_enc_page = '';
 
         if (prox) {
@@ -5538,8 +5591,10 @@
         network.clear();
         network.timeout(1000 * 10);
         network["native"](component.proxyLink(url, prox, prox_enc_page), function (str) {
+          stelsLog('kinobase-search-response', { query: query, length: String(str || '').length, sample: String(str || '').slice(0, 280) });
           str = (str || '').replace(/\n/g, '');
           var links = object.movie.number_of_seasons ? str.match(/<div class="title"><a href="\/(serial|tv_show)\/([^"]*)"[^>]*>(.*?)<\/a><\/div>/g) : str.match(/<div class="title"><a href="\/film\/([^"]*)"[^>]*>(.*?)<\/a><\/div>/g);
+          if (!links) links = object.movie.number_of_seasons ? str.match(/<a[^>]+href=["']\/(serial|tv_show)\/[^"']+["'][^>]*>[\s\S]*?<\/a>/g) : str.match(/<a[^>]+href=["']\/film\/[^"']+["'][^>]*>[\s\S]*?<\/a>/g);
           var search_date = object.search_date || !object.clarification && (object.movie.release_date || object.movie.first_air_date || object.movie.last_air_date) || '0000';
           var search_year = parseInt((search_date + '').slice(0, 4));
 
@@ -5566,9 +5621,9 @@
             var cards = items;
 
             if (cards.length) {
-              if (select_title) {
+              if (titleVariants && titleVariants.length) {
                 var tmp = cards.filter(function (c) {
-                  return component.containsTitle(c.title, select_title);
+                  return kinobaseTitleMatchesAny(c.title, titleVariants);
                 });
 
                 if (tmp.length) {
@@ -5597,8 +5652,8 @@
               if (is_sure) {
                 is_sure = false;
 
-                if (select_title) {
-                  is_sure |= component.equalTitle(cards[0].title, select_title);
+                if (titleVariants && titleVariants.length) {
+                  is_sure |= kinobaseTitleMatchesAny(cards[0].title, titleVariants);
                 }
               }
             }
@@ -5619,8 +5674,9 @@
             }
           } else component.emptyForQuery(select_title);
         }, function (a, c) {
+          stelsLog('kinobase-search-error', { query: query, status: a && a.status, message: network.errorDecode(a, c) });
           component.empty(network.errorDecode(a, c));
-        }, false, {
+        }, post, {
           dataType: 'text',
           withCredentials: logged_in,
           headers: headers
@@ -15193,6 +15249,24 @@
         } catch (e) {}
         return out;
       }
+      function zetflixnetPreselectQualityInPlay(play, wantedLabel, voiceName, item) {
+        if (!play || !wantedLabel || !play.quality) return play;
+        var found = zetflixnetFindQualityByLabel(play.quality, wantedLabel);
+        if (!found.url) {
+          stelsLog('zetflixnet-voice-quality-preselect-skip', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), data_id: item && item.data_id || '', quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [] });
+          return play;
+        }
+        play.url = found.url;
+        play.file = found.url;
+        play.stream = found.url;
+        play._quality = found.label || wantedLabel;
+        play.quality_name = found.label || wantedLabel;
+        play.qualityLabel = found.label || wantedLabel;
+        play._stels_zetflixnet_voice_quality_preselected = true;
+        stelsLog('zetflixnet-voice-quality-preselect', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), resolved_quality: zetflixnetNormalizeQualityLabel(found.label || wantedLabel), data_id: item && item.data_id || '', url: zlogUrlInfo(found.url) });
+        return play;
+      }
+
       function zetflixnetCurrentVideoUrlSafe() {
         var url = '';
         try {
@@ -15339,11 +15413,13 @@
                 // Нова логіка: не підміняємо URL до старту перекладу.
                 // Спочатку даємо плеєру переключити переклад, потім окремо виконуємо ручний вибір попередньої якості.
                 stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], wanted_quality: zetflixnetNormalizeQualityLabel(wantedQuality || ''), quality_manual_select_planned: !!(voiceQualityFixActive && wantedQuality) });
-                zetflixnetStopCurrentPlayback('voice-switch:' + voiceName);
                 setTimeout(function () {
+                  if (voiceQualityFixActive && wantedQuality) {
+                    play = zetflixnetPreselectQualityInPlay(play, wantedQuality, voiceName, item);
+                  }
                   if (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) {
                     try {
-                      if (!zetflixnetVoiceQualityFixEnabled()) {
+                      if (!voiceQualityFixActive) {
                         var tizenUrl = component.getDefaultQuality(play.quality, play.url) || play.url;
                         play.url = tizenUrl;
                         play.file = tizenUrl;
@@ -15352,8 +15428,8 @@
                         play.quality = false;
                         stelsLog('zetflixnet-tizen-voice-single-url', { voice: voiceName, url: zlogUrlInfo(tizenUrl), data_id: item.data_id || '' });
                       } else {
-                        play._stels_tizen_voice_quality_reselect = wantedQuality || '';
-                        stelsLog('zetflixnet-tizen-voice-quality-mode', { voice: voiceName, wanted_quality: wantedQuality || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality) : [] });
+                        play._stels_tizen_voice_quality_preselected = wantedQuality || '';
+                        stelsLog('zetflixnet-tizen-voice-quality-preselected-mode', { voice: voiceName, wanted_quality: zetflixnetNormalizeQualityLabel(wantedQuality || ''), url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [] });
                       }
                       play._stels_tizen_voice_switch = true;
                     } catch (e5) { stelsLog('zetflixnet-tizen-voice-single-url-error', { voice: voiceName, error: e5 && (e5.message || e5.toString()) || '' }); }
@@ -15362,10 +15438,7 @@
                   if (!stelsAndroidPlayerFixEnabled()) {
                     try { Lampa.Player.playlist([play]); } catch (e4) {}
                   }
-                  if (voiceQualityFixActive && wantedQuality) {
-                    zetflixnetManualQualitySelectAfterVoiceSwitch(play, wantedQuality, voiceName, item);
-                  }
-                }, (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 450 : 180);
+                }, (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 650 : 180);
               }, function (err) {
                 try { Lampa.Player.loading(false); } catch (e3) {}
                 stelsLog('zetflixnet-voice-switch-fail', { voice: voiceName, error: err || '', season: element && element.season || '', episode: element && element.episode || '' });
@@ -25374,7 +25447,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.31: Kinobaza групує серії по сезонах з kinobase.org; ZetflixNet після зміни перекладу один раз повторно запускає попередню якість; фокус у списку джерел рухається разом зі стрілками.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.32: Kinobaza шукає через POST /search і пробує оригінальну/російську назву; ZetflixNet на Tizen більше не робить подвійний play після зміни перекладу, а попередньо вибирає потрібну якість.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
