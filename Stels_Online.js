@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.00';
+    var STELS_ONLINE_VERSION = '1.1.01';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -1594,6 +1594,7 @@
 
       this.destroy = function () {
         stelsStopSafePrecheck();
+        try { stelsShowFloatingSourceButton(false); if (stelsFloatingSourceButton) stelsFloatingSourceButton.remove(); stelsFloatingSourceButton = null; } catch (e) {}
         network.clear();
         extract = null;
       };
@@ -3453,17 +3454,31 @@
         var post = opts.post || false;
         var req_headers = opts.headers || page_headers;
         var req_url = opts.raw ? url : component.proxyLink(url, prox, opts.prox_enc || '', opts.enc || 'enc2t');
-        network.clear();
-        network.timeout(opts.timeout || 18000);
-        network['native'](req_url, function (data) {
+        var timeoutMs = opts.timeout || 18000;
+        var finished = false;
+        function doneOk(data) {
+          if (finished || destroyed) return;
+          finished = true;
+          clearTimeout(watchdog);
           stelsLog('zerx-request-done', { kind: opts.kind || 'request', url: preview(url), length: String(data || '').length, sample: preview(data, 220) });
           success(data || '');
-        }, function (a, c) {
-          var message = '';
-          try { message = network.errorDecode(a, c); } catch (e) {}
+        }
+        function doneFail(a, c, forcedMessage) {
+          if (finished || destroyed) return;
+          finished = true;
+          clearTimeout(watchdog);
+          var message = forcedMessage || '';
+          try { if (!message) message = network.errorDecode(a, c); } catch (e) {}
           stelsLog('zerx-request-fail', { kind: opts.kind || 'request', url: preview(url), status: a && a.status, statusText: a && a.statusText, message: preview(message, 500) });
           if (fail) fail(message || 'request error');
-        }, post, { dataType: opts.dataType || 'text', headers: req_headers, withCredentials: true });
+        }
+        var watchdog = setTimeout(function () {
+          try { network.clear(); } catch (e) {}
+          doneFail({ status: 0, statusText: 'timeout' }, 'timeout', 'timeout:' + (opts.kind || 'request'));
+        }, timeoutMs + 1500);
+        network.clear();
+        network.timeout(timeoutMs);
+        network['native'](req_url, doneOk, function (a, c) { doneFail(a, c); }, post, { dataType: opts.dataType || 'text', headers: req_headers, withCredentials: true });
       }
       function getHash(callback, fail) {
         requestText(ref, function (html) {
@@ -3707,20 +3722,21 @@
           component.append(item);
           component.contextmenu({ item: item, view: view, viewed: viewed, hash_file: hash_file, element: element, file: function (call) { getStream(element, function (element) { call({ file: element.stream, quality: element.qualitys, headers: element.headers || false }); }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); }); }});
         });
+        component.loading(false);
         component.start(true);
       }
       function loadPlayerPage(pageUrl) {
         requestText(pageUrl, function (html) {
           var iframe = extractIframe(html);
           stelsLog('zerx-iframe', { found: !!iframe, iframe: iframe });
-          if (!iframe) { component.emptyForQuery(select_title); return; }
+          if (!iframe) { component.loading(false); component.emptyForQuery(select_title); return; }
           requestText(iframe, function (playerHtml) {
             all_items = parsePlayerHtml(playerHtml, iframe);
-            if (!all_items.length) { component.emptyForQuery(select_title); return; }
+            if (!all_items.length) { component.loading(false); component.emptyForQuery(select_title); return; }
             buildFilters(all_items);
             append(currentItems());
-          }, function () { component.emptyForQuery(select_title); }, { kind: 'player', raw: true, headers: { 'User-Agent': user_agent, 'Referer': pageUrl, 'Accept': 'text/html,*/*' }, timeout: 20000 });
-        }, function () { component.emptyForQuery(select_title); }, { kind: 'page', headers: page_headers, timeout: 18000 });
+          }, function () { component.loading(false); component.emptyForQuery(select_title); }, { kind: 'player', raw: true, headers: { 'User-Agent': user_agent, 'Referer': pageUrl, 'Accept': 'text/html,*/*' }, timeout: 20000 });
+        }, function () { component.loading(false); component.emptyForQuery(select_title); }, { kind: 'page', headers: page_headers, timeout: 18000 });
       }
 
       this.search = function (_object, kinopoisk_id, data) {
@@ -3734,10 +3750,10 @@
           stelsLog('zerx-search-start', { title: select_title, variants: vars, serial: isSerial(), year: yearOf() });
           searchNext(hash, vars, 0, function (results) {
             var best = pickBest(results);
-            if (results.length > 1 && !object.clarification) component.similars(results);
+            if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
             else loadPlayerPage((best || results[0]).url);
-          }, function () { component.emptyForQuery(select_title); });
-        }, function () { component.emptyForQuery(select_title); });
+          }, function () { component.loading(false); component.emptyForQuery(select_title); });
+        }, function () { component.loading(false); component.emptyForQuery(select_title); });
       };
       this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
       this.reset = function () { component.reset(); choice = { season: 0, voice: 0, voice_name: '' }; buildFilters(all_items); append(currentItems()); component.saveChoice(choice); };
@@ -20381,6 +20397,70 @@
         return s.name;
       });
       var stelsSourceStatus = {};
+      var stelsFloatingSourceButton = null;
+      var stelsFloatingSourceVisible = false;
+
+      function stelsUpdateFloatingSourceButton() {
+        try {
+          if (!stelsFloatingSourceButton) return;
+          var title = stelsSourceTitleWithStatus(balanser) || balanser;
+          stelsFloatingSourceButton.find('.stels-online-floating-source-title').text('Джерело: ' + title.replace(/\s*[✅❌⏳]\s*$/g, ''));
+        } catch (e) {}
+      }
+
+      function stelsOpenFloatingSourceMenu() {
+        try { if (_thisActivity()) _thisActivity().loader(false); } catch (e) {}
+        try { stelsUpdateFloatingSourceButton(); } catch (e2) {}
+        try {
+          filter.set('sort', obj_filter_sources.map(function (e) {
+            return { source: e.name, title: stelsSourceTitleWithStatus(e), selected: e.name === balanser };
+          }));
+          filter.show('Джерело', 'sort');
+          stelsPatchOpenSourceSortMenu();
+          setTimeout(stelsPatchOpenSourceSortMenu, 80);
+          setTimeout(stelsPatchOpenSourceSortMenu, 260);
+          stelsLog('floating-source-button-open', { source: balanser });
+        } catch (e3) {
+          stelsLog('floating-source-button-error', { error: e3 && (e3.message || e3.toString()) });
+        }
+      }
+
+      function _thisActivity() {
+        try { return Lampa.Activity.active() && Lampa.Activity.active().activity; } catch (e) { return null; }
+      }
+
+      function stelsEnsureFloatingSourceButton() {
+        try {
+          if (stelsFloatingSourceButton && stelsFloatingSourceButton.length) return;
+          if (!$('#stels-online-floating-source-style').length) {
+            $('head').append('<style id="stels-online-floating-source-style">' +
+              '.stels-online-floating-source{position:fixed;top:1.05em;right:1.25em;z-index:999999;display:none;align-items:center;gap:.55em;padding:.58em .9em;border-radius:.55em;background:rgba(20,20,20,.92);color:#fff;font-size:1.02em;line-height:1;box-shadow:0 .35em 1.2em rgba(0,0,0,.38);border:1px solid rgba(255,255,255,.15)}' +
+              '.stels-online-floating-source.focus,.stels-online-floating-source:hover{background:rgba(46,125,50,.96)}' +
+              '.stels-online-floating-source-icon{width:1.45em;height:1.45em;object-fit:contain;flex-shrink:0}' +
+              '.stels-online-floating-source-title{white-space:nowrap;max-width:42vw;overflow:hidden;text-overflow:ellipsis}' +
+              '</style>');
+          }
+          stelsFloatingSourceButton = $('<div class="selector stels-online-floating-source" tabindex="0"><img class="stels-online-floating-source-icon" src="' + STELS_ICON_URL + '"><span class="stels-online-floating-source-title">Джерело</span></div>');
+          stelsFloatingSourceButton.on('hover:enter click', function (event) {
+            if (event && event.preventDefault) event.preventDefault();
+            stelsOpenFloatingSourceMenu();
+          });
+          $('body').append(stelsFloatingSourceButton);
+          stelsUpdateFloatingSourceButton();
+        } catch (e) {}
+      }
+
+      function stelsShowFloatingSourceButton(show) {
+        try {
+          stelsEnsureFloatingSourceButton();
+          if (!stelsFloatingSourceButton) return;
+          stelsUpdateFloatingSourceButton();
+          stelsFloatingSourceVisible = !!show;
+          if (show) stelsFloatingSourceButton.css('display', 'flex');
+          else stelsFloatingSourceButton.hide();
+        } catch (e) {}
+      }
+
       // 1.0.32: статуси джерел кешуються тільки в поточній сесії відкритої картки.
       // Після перезапуску Lampa вони не підтягуються зі Storage, а precheck запускається заново.
       function stelsSaveSourceStatus() {}
@@ -20446,6 +20526,7 @@
             return { source: e.name, title: stelsSourceTitleWithStatus(e), selected: e.name === balanser };
           }));
           stelsPatchOpenSourceSortMenu();
+          stelsUpdateFloatingSourceButton();
           setTimeout(stelsPatchOpenSourceSortMenu, 120);
         } catch (e) {}
       }
@@ -20680,6 +20761,12 @@
         };
 
         filter.render().find('.filter--sort span').text(Lampa.Lang.translate('stels_online_balanser'));
+        var stelsHeaderSourceButton = $('<div class="simple-button selector stels-online-head-source-button" style="margin-right:.6em">Джерело</div>');
+        stelsHeaderSourceButton.on('hover:enter click', function (event) {
+          if (event && event.preventDefault) event.preventDefault();
+          stelsOpenFloatingSourceMenu();
+        });
+        try { filter.render().prepend(stelsHeaderSourceButton); } catch (e) {}
         files.appendHead(filter.render());
         files.appendFiles(scroll.render());
         this.search();
@@ -20690,6 +20777,7 @@
         stelsLog('change-balanser', { from: balanser, to: balanser_name });
         balanser = balanser_name;
         Lampa.Storage.set('stels_online_balanser', balanser);
+        stelsUpdateFloatingSourceButton();
         last_bls[object.movie.id] = balanser;
 
         if (Lampa.Storage.field('stels_online_save_last_balanser') === true) {
@@ -21439,8 +21527,12 @@
 
 
       this.loading = function (status) {
-        if (status) this.activity.loader(true);else {
+        if (status) {
+          stelsShowFloatingSourceButton(true);
+          this.activity.loader(true);
+        } else {
           this.activity.loader(false);
+          stelsShowFloatingSourceButton(false);
           if (Lampa.Activity.active().activity === this.activity && this.inActivity()) this.activity.toggle();
         }
       };
