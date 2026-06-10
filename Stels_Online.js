@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.17';
+    var STELS_ONLINE_VERSION = '1.1.18';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13292,19 +13292,31 @@
         var key = CryptoJS.PBKDF2(uasPassword, salt, { hasher: CryptoJS.algo.SHA512, keySize: 8, iterations: 999 });
         return CryptoJS.AES.decrypt(obj.ciphertext || '', key, { iv: iv }).toString(CryptoJS.enc.Utf8);
       }
-      function tortugaBase64ToBinary(input) {
+      function tortugaNormalizeBase64(input) {
         var s = String(input || '').replace(/\n|\r|\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
-        if (!s) return '';
-        // Tortuga часто віддає base64 без фінального padding. Browser atob у Lampa
-        // на таких рядках може падати, тому нормалізуємо padding вручну.
         s = s.replace(/=+$/g, '');
         while (s.length % 4) s += '=';
-        try { return atob(s); } catch (e1) {}
+        return s;
+      }
+      function tortugaBase64ToBinary(input, meta) {
+        var s = tortugaNormalizeBase64(input);
+        if (!s) return '';
+        if (meta) meta.normalized_len = s.length;
+        try {
+          var raw = atob(s);
+          if (meta) meta.decoder = 'atob';
+          return raw;
+        } catch (e1) {
+          if (meta) meta.atob_error = e1 && (e1.message || e1.toString()) || 'atob error';
+        }
         try {
           if (typeof CryptoJS !== 'undefined' && CryptoJS.enc && CryptoJS.enc.Base64) {
+            if (meta) meta.decoder = 'cryptojs';
             return CryptoJS.enc.Latin1.stringify(CryptoJS.enc.Base64.parse(s));
           }
-        } catch (e2) {}
+        } catch (e2) {
+          if (meta) meta.cryptojs_error = e2 && (e2.message || e2.toString()) || 'cryptojs error';
+        }
         try {
           var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
           var out = '', buffer = 0, bits = 0;
@@ -13321,31 +13333,48 @@
               out += String.fromCharCode((buffer >> bits) & 255);
             }
           }
+          if (meta) meta.decoder = 'manual';
           return out;
-        } catch (e3) {}
+        } catch (e3) {
+          if (meta) meta.manual_error = e3 && (e3.message || e3.toString()) || 'manual error';
+        }
         return '';
       }
-      function tortugaDecodeOnce(input) {
+      function tortugaXorKey(seed, index) {
+        // Точна формула з tor.core.min.js: #O(seed,index) = (seed + 7*index + 13) % 256
+        return (seed + 7 * index + 13) % 256;
+      }
+      function tortugaDecodeOnce(input, meta) {
         try {
-          var raw = tortugaBase64ToBinary(input);
+          var raw = tortugaBase64ToBinary(input, meta);
+          if (meta) meta.raw_len = raw ? raw.length : 0;
           if (!raw || raw.length < 2) return input;
           var seed = raw.charCodeAt(0);
+          if (meta) meta.seed = seed;
           var out = '';
-          for (var i = 1; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ ((seed + 7 * (i - 1) + 13) % 256));
-          try { return decodeURIComponent(escape(out)); } catch (e) { return out; }
-        } catch (e) { return input; }
+          for (var i = 1; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ tortugaXorKey(seed, i - 1));
+          if (meta) meta.xor_start = out.slice(0, 16);
+          try { return decodeURIComponent(escape(out)); } catch (e) { if (meta) meta.utf8_error = e && (e.message || e.toString()); return out; }
+        } catch (e) {
+          if (meta) meta.decode_error = e && (e.message || e.toString()) || 'decode error';
+          return input;
+        }
       }
       function looksBase64(value) {
         value = String(value || '').trim();
-        return value.length > 16 && /^[A-Za-z0-9+\/=_-]+$/.test(value) && value.indexOf('{') === -1 && value.indexOf('[') === -1;
+        return value.length > 16 && /^[A-Za-z0-9+\/_=-]+$/.test(value) && value.indexOf('{') === -1 && value.indexOf('[') === -1;
       }
       function tortugaDecode(input) {
         var value = String(input || '').trim();
         var chain = [];
         for (var i = 0; i < 4; i++) {
           var before = value;
-          var after = tortugaDecodeOnce(before);
-          chain.push({ step: i + 1, in_len: before.length, out_len: String(after || '').length, out_start: String(after || '').slice(0, 12) });
+          var meta = { step: i + 1, in_len: before.length, in_start: before.slice(0, 12), algo: 'tor.core.#k/#O', formula: '(seed + 7*index + 13) % 256' };
+          var after = tortugaDecodeOnce(before, meta);
+          meta.out_len = String(after || '').length;
+          meta.out_start = String(after || '').slice(0, 32);
+          meta.changed = after !== before;
+          chain.push(meta);
           value = String(after || '');
           var t = value.replace(/^\uFEFF/, '').trim();
           if (t.charAt(0) === '[' || t.charAt(0) === '{') { value = t; break; }
