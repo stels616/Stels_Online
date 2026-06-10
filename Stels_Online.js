@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.12';
+    var STELS_ONLINE_VERSION = '1.1.13';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -185,12 +185,19 @@
       function stelsLooksLikeSourceChooser(el) {
         try {
           if (!el || !el.length) return false;
-          var box = el.closest('.selectbox, .selectbox__content, .selectbox__body, .modal, .modal__content, .source, .sources, .online-source, .online-sources');
-          if (!box.length) return false;
-          var txt = (box.text() || '').replace(/\s+/g, ' ').trim();
-          var sourceLike = /Джерело|Джерела|Онлайн|Трейлери|BwaRC|Z01/i.test(txt);
-          var hasManySourceButtons = box.find('.view--stels_online,.view--online,.view--torrent,.view--trailer,.selectbox-item,.source__item,.full-start__button').length > 1;
-          return sourceLike || hasManySourceButtons;
+          var candidates = [];
+          var box = el.closest('.selectbox, .selectbox__content, .selectbox__body, .modal, .modal__content, .source, .sources, .online-source, .online-sources, .scroll, .items, .content, .activity, .wrap, body');
+          if (box.length) candidates.push(box);
+          var p = el.parent();
+          for (var i = 0; i < 8 && p && p.length; i++) { candidates.push(p); p = p.parent(); }
+          for (var c = 0; c < candidates.length; c++) {
+            var node = candidates[c];
+            var txt = (node.text() || '').replace(/\s+/g, ' ').trim();
+            var sourceLike = /Джерело|Джерела|Онлайн|Трейлери|BwaRC|Z01/i.test(txt);
+            var hasManySourceButtons = node.find('.view--stels_online,.view--online,.view--torrent,.view--trailer,.selectbox-item,.source__item,.full-start__button').length > 1;
+            if (sourceLike || hasManySourceButtons) return true;
+          }
+          return false;
         } catch (e) { return false; }
       }
 
@@ -213,7 +220,7 @@
         if (el.hasClass('view--stels_online')) {
           if (stelsIsMainCardButton(el)) {
             el.removeAttr('data-subtitle');
-            el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under').remove();
+            el.find('.stels-online-version-under').remove();
             return false;
           }
           return true;
@@ -268,7 +275,7 @@
               // джерел/плагінів елемент з таким самим класом повинен мати іконку і назву.
               if (stelsIsMainCardButton(el)) {
                 el.removeAttr('data-subtitle');
-                el.find('.full-start__subtitle,.selector__subtitle,[class*="subtitle"],.stels-online-version-under,span').remove();
+                el.find('.stels-online-version-under').remove();
                 return;
               }
               stelsPatchFlatPluginEntry(el);
@@ -309,7 +316,10 @@
           // порожнім рядком без тексту. Патчимо саме такі клоновані full-start кнопки окремо.
           scope.find('.full-start__button.view--stels_online[data-stels-main-button="1"]').addBack('.full-start__button.view--stels_online[data-stels-main-button="1"]').each(function () {
             var el = $(this);
-            if (stelsLooksLikeSourceChooser(el)) stelsPatchFlatPluginEntry(el);
+            var text = (el.text() || '').replace(/\s+/g, ' ').trim();
+            var isChooser = stelsLooksLikeSourceChooser(el);
+            var inFullCard = !!el.closest('.full-start__buttons, .full-start-new__buttons').length && !isChooser;
+            if (isChooser || (!inFullCard && (!text || text === STELS_ONLINE_VERSION || text === 'SO'))) stelsPatchFlatPluginEntry(el);
           });
           stelsPatchUaFlagIcons(scope);
         } catch (e) {
@@ -3994,15 +4004,29 @@
           out.push({ url: u, reason: reason || 'original' });
         }
         (list || []).forEach(function (u) {
-          add(u, 'page');
           var info = zerxTokenInfo(u);
           if (info.token_movie && info.token) {
+            // У HAR повний fileList відкривається саме на allarknow. Навіть якщо сторінка Zerx
+            // дала stloadi, першим примусово пробуємо allarknow з тим самим token_movie/token.
             ['https://synthezoid-as.allarknow.online', 'https://synthezoid-as.stloadi.live'].forEach(function (origin) {
-              add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token), 'token-normal');
-              add(origin + '/?token=' + encodeURIComponent(info.token) + '&token_movie=' + encodeURIComponent(info.token_movie), 'token-reverse');
+              add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token), origin.indexOf('allarknow') > -1 ? 'token-allarknow' : 'token-stloadi');
               add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token) + '&domain=' + encodeURIComponent(host + '/'), 'token-domain');
+              add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token) + '&domain=' + encodeURIComponent(host), 'token-domain-noslash');
+              add(origin + '/?token=' + encodeURIComponent(info.token) + '&token_movie=' + encodeURIComponent(info.token_movie), 'token-reverse');
             });
           }
+          add(u, 'page');
+        });
+        out.sort(function (a, b) {
+          function rank(v) {
+            var u = String(v.url || ''), r = String(v.reason || '');
+            if (/allarknow/i.test(u) && r === 'token-allarknow') return 0;
+            if (/allarknow/i.test(u)) return 1;
+            if (/stloadi/i.test(u)) return 4;
+            if (/ortified/i.test(u)) return 9;
+            return 5;
+          }
+          return rank(a) - rank(b);
         });
         return out;
       }
@@ -4016,6 +4040,28 @@
           }
         });
         return arr;
+      }
+      function zerxWarmupBrowserIframe(url, done) {
+        try {
+          if (!url || !/synthezoid|allarknow|stloadi/i.test(url)) { done && done(); return; }
+          var id = 'stels-zerx-warmup-' + Math.floor(Math.random() * 1000000);
+          var iframe = document.createElement('iframe');
+          iframe.id = id;
+          iframe.src = url;
+          iframe.style.cssText = 'position:absolute;left:-99999px;top:-99999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+          var finished = false;
+          function finish(reason) {
+            if (finished) return;
+            finished = true;
+            stelsLog('zerx-browser-iframe-warmup', { url: preview(url), reason: reason || 'done' });
+            setTimeout(function () { try { iframe.parentNode && iframe.parentNode.removeChild(iframe); } catch (e) {} }, 2500);
+            done && done();
+          }
+          iframe.onload = function () { setTimeout(function () { finish('load'); }, 700); };
+          iframe.onerror = function () { setTimeout(function () { finish('error'); }, 500); };
+          document.body.appendChild(iframe);
+          setTimeout(function () { finish('timeout'); }, 2200);
+        } catch (e) { done && done(); }
       }
       function parseSeasonEpisodeFromTextZerx(text) {
         text = String(text || '');
@@ -4077,7 +4123,12 @@
         var fileList = parseJsonParseVariable(html, 'fileList');
         if (!fileList) {
           var directFallback = zerxDirectItemsFromHtml(html, iframeUrl, forcedSeason || 0);
-          stelsLog('zerx-filelist-missing', { iframe: iframeUrl, token_movie_len: tokenInfo.token_movie.length, token_len: player_token.length, html_len: String(html || '').length, direct_fallback_count: directFallback.length, sample: preview(html, 900) });
+          var episodeEmbed = /api\.ortified\.ws\/embed\/movie\//i.test(String(iframeUrl || ''));
+          if (episodeEmbed && isSerial() && !forcedSeason) {
+            stelsLog('zerx-episode-embed-skip-for-serial', { iframe: iframeUrl, direct_fallback_count: directFallback.length, reason: 'episode_embed_has_no_fileList' });
+            directFallback = [];
+          }
+          stelsLog('zerx-filelist-missing', { iframe: iframeUrl, token_movie_len: tokenInfo.token_movie.length, token_len: player_token.length, html_len: String(html || '').length, direct_fallback_count: directFallback.length, episode_embed: episodeEmbed, sample: preview(html, 900) });
           return directFallback;
         }
         var items = [];
@@ -4187,10 +4238,16 @@
         var baseOrigin = player_origin || 'https://synthezoid-as.stloadi.live';
         var url = baseOrigin + '/bnsi/movies/' + encodeURIComponent(element.file_id);
         var post = 'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=0&audio=&subtitle=';
-        var headers = {};
-        for (var hkey in player_headers) headers[hkey] = player_headers[hkey];
-        headers.Origin = baseOrigin;
-        headers.Referer = player_referer;
+        var headers = {
+          'User-Agent': player_browser_ua,
+          'Accept': '*/*',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Origin': baseOrigin,
+          'Referer': player_referer,
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin'
+        };
         requestText(url, function (json) {
           var parsed = parseHlsJson(json, element.voice);
           if (!parsed.file) { error && error(); return; }
@@ -4307,16 +4364,20 @@
               opts.prox_enc = playerProxyEnc(iframe);
             }
             stelsLog('zerx-player-try', { pos: pos, total: combos.length, iframe: iframe, reason: combo.reason, attempt: attempt.name, raw: !!attempt.raw, proxy_len: attempt.proxy ? attempt.proxy.length : 0, enc: opts.enc || '' });
-            requestText(iframe, function (playerHtml) {
-              var items = parsePlayerHtml(playerHtml, iframe, forcedSeason || 0);
-              stelsLog('zerx-player-parse-attempt', { iframe: iframe, pos: pos, source: attempt.name, reason: combo.reason, html_len: String(playerHtml || '').length, items: items.length, sample: items.slice(0, 6) });
-              if (items.length) { callback(items); return; }
-              stelsLog('zerx-player-empty', { iframe: iframe, pos: pos, source: attempt.name, reason: combo.reason });
-              tryCombo(pos + 1);
-            }, function (message) {
-              stelsLog('zerx-player-fallback', { iframe: iframe, pos: pos, left: combos.length - pos - 1, source: attempt.name, reason: combo.reason, message: preview(message, 220) });
-              tryCombo(pos + 1);
-            }, opts);
+            function runRequestAfterWarmup() {
+              requestText(iframe, function (playerHtml) {
+                var items = parsePlayerHtml(playerHtml, iframe, forcedSeason || 0);
+                stelsLog('zerx-player-parse-attempt', { iframe: iframe, pos: pos, source: attempt.name, reason: combo.reason, html_len: String(playerHtml || '').length, items: items.length, sample: items.slice(0, 6) });
+                if (items.length) { callback(items); return; }
+                stelsLog('zerx-player-empty', { iframe: iframe, pos: pos, source: attempt.name, reason: combo.reason });
+                tryCombo(pos + 1);
+              }, function (message) {
+                stelsLog('zerx-player-fallback', { iframe: iframe, pos: pos, left: combos.length - pos - 1, source: attempt.name, reason: combo.reason, message: preview(message, 220) });
+                tryCombo(pos + 1);
+              }, opts);
+            }
+            if (attempt.raw && /allarknow/i.test(iframe)) zerxWarmupBrowserIframe(iframe, runRequestAfterWarmup);
+            else runRequestAfterWarmup();
           }
           tryCombo(0);
         }, fail, { kind: 'page', headers: page_headers, timeout: 18000 });
@@ -23431,7 +23492,7 @@
         }
       };
       Lampa.Manifest.plugins = manifest;
-      var button = "<div class=\"full-start__button selector view--stels_online\" data-stels-main-button=\"1\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block;margin:0\" alt=\"Stels_Online\">\n        </div>";
+      var button = "<div class=\"full-start__button selector view--stels_online\" data-stels-main-button=\"1\" data-subtitle=\"" + STELS_ONLINE_VERSION + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
       Lampa.Listener.follow('full', function (e) {
         if (e.type == 'render' || e.type == 'build' || e.type == 'complite') {
           try {
