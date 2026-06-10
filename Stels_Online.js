@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.44';
+    var STELS_ONLINE_VERSION = '1.1.45';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -11143,13 +11143,32 @@
         } catch (e2) {}
         return out;
       }
+      function allohaKnownRuAliases() {
+        var aliases = titleAliases().map(function (t) { return normTitle(t); }).filter(Boolean);
+        var joined = aliases.join('|');
+        var out = [];
+        function add(v) { v = cleanTextLocal(v || ''); if (v && out.indexOf(v) === -1) out.push(v); }
+        if (aliases.indexOf('from') !== -1 || aliases.indexOf('ззовни') !== -1 || aliases.indexOf('ззовні') !== -1) add('Извне');
+        if (aliases.indexOf('the boys') !== -1 || joined.indexOf('хлопаки') !== -1) add('Пацаны');
+        if (aliases.indexOf('stranger things') !== -1 || joined.indexOf('дивни дива') !== -1 || joined.indexOf('дивні дива') !== -1) add('Очень странные дела');
+        if (aliases.indexOf('rick and morty') !== -1) add('Рик и Морти');
+        if (aliases.indexOf('friends') !== -1) add('Друзья');
+        return out;
+      }
+
       function queryVariants() {
         var out = [];
         function add(v) { v = cleanTextLocal(v || ''); if (v && out.indexOf(v) === -1) out.push(v); }
         var y = movieYear();
-        titleAliases().forEach(add);
-        titleAliases().forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
-        return out.slice(0, 8);
+        var aliases = titleAliases();
+        // Kinobaza/Alloha частіше має російські назви, тому спочатку шукаємо російською.
+        allohaKnownRuAliases().forEach(add);
+        aliases.filter(function (t) { return /[а-яё]/i.test(String(t || '')); }).forEach(add);
+        aliases.filter(function (t) { return !/[а-яё]/i.test(String(t || '')) && !/[\u4e00-\u9fff\u3040-\u30ff\u0590-\u05ff\u0600-\u06ff]/.test(String(t || '')); }).forEach(add);
+        allohaKnownRuAliases().forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
+        aliases.filter(function (t) { return /[а-яё]/i.test(String(t || '')); }).forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
+        aliases.filter(function (t) { return !/[а-яё]/i.test(String(t || '')) && !/[\u4e00-\u9fff\u3040-\u30ff\u0590-\u05ff\u0600-\u06ff]/.test(String(t || '')); }).forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
+        return out.slice(0, 14);
       }
 
       function requestText(url, success, fail, opts) {
@@ -11198,14 +11217,17 @@
 
       function scoreSearchItem(item) {
         item = item || {};
-        var title = normTitle(item.title || item.name || item.ru_title || '');
+        var titleRaw = item.title || item.name || item.ru_title || '';
+        var title = normTitle(titleRaw);
         var url = String(item.url || item.link || '').toLowerCase();
+        if (!url || !/\/id-\d+/i.test(url) || /\/id-\d+\/trailer/i.test(url)) return -1000;
         var score = 0;
-        titleAliases().forEach(function (a) {
+        var aliases = titleAliases().concat(allohaKnownRuAliases());
+        aliases.forEach(function (a) {
           a = normTitle(a);
           if (!a) return;
-          if (title === a) score = Math.max(score, 180);
-          else if (title.indexOf(a) >= 0 || (a.indexOf(title) >= 0 && title.length > 2)) score = Math.max(score, 105);
+          if (title === a) score = Math.max(score, 220);
+          else if (title.indexOf(a) >= 0 || (a.indexOf(title) >= 0 && title.length > 2)) score = Math.max(score, 130);
         });
         var y = movieYear();
         var itemYear = parseInt(item.year || 0, 10) || 0;
@@ -11213,11 +11235,16 @@
           var m = String(item.title || item.name || item.info || item.text || '').match(/\b((?:19|20)\d{2})\b/);
           if (m) itemYear = parseInt(m[1], 10);
         }
-        if (y && itemYear) score += itemYear == y ? 45 : -35;
-        if (isSerialObject() && /(?:сериал|серіал|tv|series)/i.test(String(item.text || item.info || item.url || ''))) score += 20;
-        if (/\/id-\d+/i.test(url)) score += 15;
+        if (y && itemYear) {
+          if (itemYear == y) score += 80;
+          else if (Math.abs(itemYear - y) <= 1) score -= 35;
+          else score -= 260;
+        }
+        if (isSerialObject() && /(?:сериал|серіал|tv|series|сезон)/i.test(String(item.text || item.info || item.url || ''))) score += 20;
+        if (/\/id-\d+$/i.test(url)) score += 20;
         return score;
       }
+
 
       function parseSearchJson(obj) {
         var out = [];
@@ -11284,8 +11311,7 @@
         if (index >= variants.length) {
           var best = pickBest(acc);
           log('search-finish', { count: acc.length, best: best && { title: best.title, url: best.url, score: scoreSearchItem(best) } });
-          if (best && scoreSearchItem(best) >= 75) callback(best.url);
-          else if (acc.length) callback((pickBest(acc) || {}).url);
+          if (best && scoreSearchItem(best) >= 95) callback(best.url);
           else fail && fail();
           return;
         }
@@ -11584,6 +11610,13 @@
           'Referer': player_referer,
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
         };
+        var api_prox_enc = '';
+        if (prox2) {
+          api_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+          api_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin + '/')) + '/';
+          if (player_origin) api_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
+          api_prox_enc += 'param/Content-Type=' + encodeURIComponent('application/x-www-form-urlencoded; charset=UTF-8') + '/';
+        }
         requestText(url, function (json) {
           json = safeJsonParse(json) || json;
           if (!(json && json.hlsSource && json.hlsSource.length)) { error && error(); return; }
@@ -11616,7 +11649,7 @@
           element.subtitles = parseSubs(json.tracks || json.subtitles || []);
           element.skipTime = json.skipTime || '';
           call(element);
-        }, error, { kind: 'stream', raw: false, proxy: prox2, prox_enc: player_prox_enc, enc: 'enc2t', post: post, headers: headers, dataType: 'text', timeout: 18000 });
+        }, error, { kind: 'stream', raw: false, proxy: prox2, prox_enc: api_prox_enc, enc: 'enc2t', post: post, headers: headers, dataType: 'text', timeout: 18000 });
       }
 
       function append(items) {
