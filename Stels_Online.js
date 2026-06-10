@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.24';
+    var STELS_ONLINE_VERSION = '1.1.25';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -24754,7 +24754,7 @@
       }
       template += "\n        </div>";
 
-      template += "\n        <div class=\"settings-folder selector stels-online-subsettings-folder\" data-component=\"stels_online_zetflixnet\">\n            <div class=\"settings-folder__icon stels-online-settings-icon\" aria-hidden=\"true\"><img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0\" alt=\"\"></div>\n            <div class=\"settings-folder__name\"><div>Налаштування ZetflixNet</div><div class=\"stels-online-version-under\">Окремі параметри джерела</div></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_zetflixnet_settings\" data-static=\"true\">\n            <div class=\"settings-param__name\">Налаштування ZetflixNet</div>\n            <div class=\"settings-param__descr\">Окремі параметри джерела: плеєр Android та логіка перемикання перекладів</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += `
         <div class="settings-param selector" data-name="stels_online_android_player_fix" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
             <div class="settings-param__name">Правка плеєра Андроїд</div>
@@ -24770,7 +24770,7 @@
 
       Lampa.Template.add('settings_stels_online_zetflixnet', `
         <div>
-          <div class="settings-param" data-name="stels_online_zetflixnet_title">
+          <div class="settings-param">
             <div class="settings-param__name">ZetflixNet</div>
             <div class="settings-param__value">` + STELS_ONLINE_VERSION + `</div>
           </div>
@@ -24794,6 +24794,64 @@
         Lampa.Listener.follow('app', function (e) {
           if (e.type == 'ready') addSettingsOnlineMod();
         });
+      }
+
+      function stelsOpenZetflixNetSettingsPanel(parent_body) {
+        var opened = false;
+        var errors = [];
+        stelsLog('zetflixnet-settings-open-try', { mode: 'side', version: STELS_ONLINE_VERSION });
+
+        function tryOpen(name, fn) {
+          if (opened) return;
+          try {
+            if (fn()) {
+              opened = true;
+              stelsLog('zetflixnet-settings-open-ok', { api: name });
+            }
+          } catch (err) {
+            errors.push(name + ': ' + ((err && (err.message || err.toString())) || 'error'));
+          }
+        }
+
+        // У різних збірках Lampa API відкриття вкладених налаштувань трохи відрізняється.
+        // Пробуємо тільки безпечні варіанти, а кнопку в основному шаблоні робимо data-static,
+        // щоб Lampa.Params.update не падав на settings-folder всередині іншого settings-компонента.
+        tryOpen('Settings.create(component)', function () {
+          if (Lampa.Settings && typeof Lampa.Settings.create === 'function') {
+            Lampa.Settings.create('stels_online_zetflixnet');
+            return true;
+          }
+          return false;
+        });
+
+        tryOpen('Settings.open(component)', function () {
+          if (Lampa.Settings && typeof Lampa.Settings.open === 'function') {
+            Lampa.Settings.open('stels_online_zetflixnet');
+            return true;
+          }
+          return false;
+        });
+
+        tryOpen('Settings.main().create(component)', function () {
+          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().create === 'function') {
+            Lampa.Settings.main().create('stels_online_zetflixnet');
+            return true;
+          }
+          return false;
+        });
+
+        tryOpen('Settings.main().open(component)', function () {
+          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().open === 'function') {
+            Lampa.Settings.main().open('stels_online_zetflixnet');
+            return true;
+          }
+          return false;
+        });
+
+        if (!opened) {
+          stelsLog('zetflixnet-settings-open-fallback-modal', { errors: errors });
+          stelsOpenZetflixNetSettingsModal(parent_body);
+        }
       }
 
       function stelsOpenZetflixNetSettingsModal(parent_body) {
@@ -24868,9 +24926,10 @@
               }
             });
           }
-          // Налаштування ZetflixNet зроблено як settings-folder з data-component=stels_online_zetflixnet.
-          // Не перехоплюємо hover:enter, щоб Lampa відкривала його стандартною правою панеллю налаштувань.
-          
+          var stels_zetflixnet_settings = e.body.find('[data-name="stels_online_zetflixnet_settings"]');
+          stels_zetflixnet_settings.unbind('hover:enter').on('hover:enter', function () {
+            stelsOpenZetflixNetSettingsPanel(e.body);
+          });
         }
         if (e.name == 'stels_online_zetflixnet') {
           try {
@@ -24942,7 +25001,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.24: виправлено падіння налаштувань через вкладений settings-folder ZetflixNet; режим зміни перекладів ZetflixNet додатково перемотує відео на 5 секунд назад.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.25: прибрано вкладений settings-folder, через який Lampa падала при відкритті налаштувань; кнопку ZetflixNet зроблено безпечним data-static з відкриттям окремої панелі/резервного вікна; перемотування -5 секунд для логіки перекладів залишено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
