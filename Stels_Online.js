@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.37';
+    var STELS_ONLINE_VERSION = '1.1.40';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -676,6 +676,9 @@
           '.stels-online-source-row.stels-online-source-disabled{opacity:.48;}' +
           '.stels-online-source-arrows{display:flex;gap:.45em;align-items:center;margin-left:auto;margin-right:.7em}.stels-online-source-arrow{color:#00d36f;font-size:1.25em;font-weight:900;line-height:1;padding:.28em .38em;border-radius:.3em;background:rgba(0,211,111,.10)}.stels-online-source-arrow.focus,.stels-online-source-arrow:hover{background:rgba(0,211,111,.24)}' +
           '.stels-online-advanced-settings{margin-top:.35em;border-top:1px solid rgba(255,255,255,.08);padding-top:.35em;}' +
+          '.online.stels-online-future-episode{opacity:.54!important;filter:grayscale(.45)!important;background:rgba(35,35,35,.72)!important;border-color:rgba(255,255,255,.35)!important;}' +
+          '.online.stels-online-future-episode.focus,.online.stels-online-future-episode.selector:hover{opacity:.72!important;border-color:rgba(255,255,255,.62)!important;background:rgba(45,45,45,.82)!important;}' +
+          '.stels-online-future-badge{position:absolute;right:.55em;bottom:.45em;z-index:4;font-size:.78em;font-weight:700;background:rgba(0,0,0,.58);color:#fff;padding:.25em .55em;border-radius:.3em;}' +
           '</style>');
         stelsLog('image-style-installed', { ok: true });
       } catch (e) {
@@ -15188,6 +15191,132 @@
         return out;
       }
 
+      var zetflixnet_tmdb_season_cache = {};
+
+      function zetflixnetSelectedSeasonNumber() {
+        try {
+          var s = extract && extract.seasons && extract.seasons[choice.season] || null;
+          var n = parseInt(s && s.id || 0, 10) || 0;
+          if (!n && filter_items && filter_items.season && filter_items.season[choice.season]) {
+            var m = String(filter_items.season[choice.season] || '').match(/(\d+)/);
+            if (m) n = parseInt(m[1], 10) || 0;
+          }
+          return n || 0;
+        } catch (e) { return 0; }
+      }
+
+      function zetflixnetFormatEpisodeDate(date) {
+        date = (date == null ? '' : String(date)).trim();
+        var m = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return '';
+        var months = ['', 'Січня', 'Лютого', 'Березня', 'Квітня', 'Травня', 'Червня', 'Липня', 'Серпня', 'Вересня', 'Жовтня', 'Листопада', 'Грудня'];
+        var mi = parseInt(m[2], 10) || 0;
+        return parseInt(m[3], 10) + ' ' + (months[mi] || '') + ' ' + m[1];
+      }
+
+      function zetflixnetLoadTmdbSeason(season, call) {
+        try {
+          var movie = object && object.movie || {};
+          var tmdb_id = movie.tmdb_id || movie.id;
+          if (!movie.name || !tmdb_id || !season || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) {
+            call(null);
+            return;
+          }
+          var key = tmdb_id + ':' + season;
+          if (zetflixnet_tmdb_season_cache[key]) {
+            call(zetflixnet_tmdb_season_cache[key]);
+            return;
+          }
+          Lampa.Api.sources.tmdb.get('tv/' + tmdb_id + '/season/' + season, {}, function (data) {
+            zetflixnet_tmdb_season_cache[key] = data || { episodes: [] };
+            call(zetflixnet_tmdb_season_cache[key]);
+          }, function () {
+            zetflixnet_tmdb_season_cache[key] = { episodes: [] };
+            call(zetflixnet_tmdb_season_cache[key]);
+          });
+        } catch (e) {
+          stelsLog('zetflixnet-future-season-load-error', { season: season || 0, error: e && (e.message || e.toString()) || '' });
+          call(null);
+        }
+      }
+
+      function zetflixnetAppendFutureEpisodeCards(renderedItems) {
+        try {
+          if (!(extract && extract.seasons && extract.seasons.length)) return;
+          var seasonNum = zetflixnetSelectedSeasonNumber();
+          if (!seasonNum) return;
+          var existing = {};
+          var maxExisting = 0;
+          (renderedItems || []).forEach(function (it) {
+            var ep = parseInt(it && it.episode || 0, 10) || 0;
+            if (ep) {
+              existing[ep] = true;
+              if (ep > maxExisting) maxExisting = ep;
+            }
+          });
+          zetflixnetLoadTmdbSeason(seasonNum, function (data) {
+            try {
+              var episodes = data && data.episodes || [];
+              if (!episodes.length) {
+                stelsLog('zetflixnet-future-episodes-skip', { season: seasonNum, reason: 'no-tmdb-episodes' });
+                return;
+              }
+              var future = [];
+              episodes.forEach(function (ep) {
+                var epNum = parseInt(ep && ep.episode_number || 0, 10) || 0;
+                if (!epNum || existing[epNum]) return;
+                // Показуємо саме продовження після останньої доступної серії джерела.
+                // Так якщо в сезоні 9 серій, а в джерелі є 4 — 5..9 будуть затемненими карточками з датою.
+                if (maxExisting && epNum <= maxExisting) return;
+                future.push(ep);
+              });
+              future.sort(function (a, b) { return (parseInt(a.episode_number || 0, 10) || 0) - (parseInt(b.episode_number || 0, 10) || 0); });
+              stelsLog('zetflixnet-future-episodes', {
+                season: seasonNum,
+                existing_count: Object.keys(existing).length,
+                max_existing: maxExisting,
+                tmdb_count: episodes.length,
+                future_count: future.length,
+                sample: future.slice(0, 8).map(function (ep) { return { episode: ep.episode_number, name: ep.name || '', air_date: ep.air_date || '' }; })
+              });
+              future.forEach(function (ep) {
+                var epNum = parseInt(ep.episode_number || 0, 10) || 0;
+                var dateText = zetflixnetFormatEpisodeDate(ep.air_date || '');
+                var element = {
+                  title: component.formatEpisodeTitle(seasonNum, epNum, ep.name || ''),
+                  quality: 'Очікується',
+                  info: dateText ? ' / Вихід: ' + dateText : ' / Дата виходу уточнюється',
+                  season: '' + seasonNum,
+                  episode: epNum,
+                  translate_episode_end: Math.max(maxExisting, epNum),
+                  translate_voice: filter_items.voice && filter_items.voice[choice.voice] || '',
+                  _stels_future_episode: true,
+                  _stels_air_date: ep.air_date || '',
+                  _stels_air_date_text: dateText,
+                  _stels_episode_name: ep.name || ''
+                };
+                var item = Lampa.Template.get('stels_online', element);
+                item.addClass('stels-online-future-episode');
+                item.attr('data-stels-future-episode', '1');
+                item.append('<div class="stels-online-future-badge">' + stelsEscapeHtml(dateText ? 'Вихід: ' + dateText : 'Очікується') + '</div>');
+                item.on('hover:enter click', function () {
+                  Lampa.Noty.show(dateText ? ('Серія ' + epNum + ' вийде: ' + dateText) : ('Серія ' + epNum + ' ще не вийшла'));
+                  return false;
+                });
+                component.append(item);
+              });
+              if (future.length) {
+                try { component.start(true); } catch (e2) {}
+              }
+            } catch (e3) {
+              stelsLog('zetflixnet-future-episodes-render-error', { season: seasonNum, error: e3 && (e3.message || e3.toString()) || '' });
+            }
+          });
+        } catch (e) {
+          stelsLog('zetflixnet-future-episodes-error', { error: e && (e.message || e.toString()) || '' });
+        }
+      }
+
       function extractItems(sources, ctx) {
         if (!sources) return [];
         var items = [];
@@ -16128,6 +16257,7 @@
           });
         });
         component.start(true);
+        zetflixnetAppendFutureEpisodeCards(items);
       }
     }
 
@@ -25935,7 +26065,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.37: збережено виправлення накладання звукових доріжок ZetflixNet; додано примусове оновлення selected-state і видимої галочки перекладу на Tizen після перемикання озвучки.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.40: еталон 1.1.37; додано затемнені карточки майбутніх серій ZetflixNet з датою виходу з TMDB.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
