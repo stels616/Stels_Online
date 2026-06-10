@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.35';
+    var STELS_ONLINE_VERSION = '1.1.36';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -15424,6 +15424,84 @@
         }
       }
 
+      function zetflixnetUpdateVoiceSelectionState(play, voiceName, item) {
+        var result = { voice: voiceName || '', data_id: item && item.data_id || '', choice_updated: false, play_updated: false, current_updated: false, dom_updated: 0, errors: [] };
+        try {
+          voiceName = cleanText(voiceName || '');
+          if (!voiceName) return result;
+          try {
+            var idx = filter_items && filter_items.voice ? filter_items.voice.indexOf(voiceName) : -1;
+            if (idx >= 0) {
+              choice.voice = idx;
+              choice.voice_name = voiceName;
+              try { choice.voice_id = item && item.media && (item.media.translation_id || item.media.id) || choice.voice_id || 0; } catch (eid) {}
+              result.choice_updated = true;
+              try { Lampa.Storage.set('stels_online_filter', choice); } catch (est) {}
+            }
+          } catch (ec) { result.errors.push('choice:' + (ec && (ec.message || ec.toString()) || ec)); }
+          var tracks = zetflixnetVoiceovers(item || {}, voiceName) || [];
+          function applyTo(obj, label) {
+            if (!obj) return false;
+            try {
+              obj.voice_name = voiceName;
+              obj.translate_voice = voiceName;
+              obj.voice = voiceName;
+              obj.voiceovers = tracks;
+              obj.translate = obj.translate || {};
+              obj.translate.tracks = tracks;
+              obj._stels_zetflixnet_selected_voice = voiceName;
+              if (item) {
+                obj._stels_zetflixnet_data_id = item.data_id || obj._stels_zetflixnet_data_id || '';
+                obj.data_id = item.data_id || obj.data_id || '';
+              }
+              return true;
+            } catch (e) {
+              result.errors.push(label + ':' + (e && (e.message || e.toString()) || e));
+              return false;
+            }
+          }
+          result.play_updated = applyTo(play, 'play');
+          try {
+            if (Lampa && Lampa.Player && typeof Lampa.Player.playdata === 'function') {
+              var current = Lampa.Player.playdata() || {};
+              result.current_updated = applyTo(current, 'current');
+              try {
+                if (Lampa.Player.playdata.length > 0) Lampa.Player.playdata(current);
+              } catch (setterErr) { result.errors.push('playdata-setter:' + (setterErr && (setterErr.message || setterErr.toString()) || setterErr)); }
+            }
+          } catch (epd) { result.errors.push('playdata:' + (epd && (epd.message || epd.toString()) || epd)); }
+
+          // Якщо меню перекладів на Tizen лишається відкритим, Lampa не перебудовує його, бо ми не викликаємо Lampa.Player.play().
+          // Тому м'яко оновлюємо видимий стан рядків: прибираємо checked/active зі старого перекладу і ставимо на новий.
+          try {
+            var normWanted = cleanText(voiceName).toLowerCase();
+            var candidates = document.querySelectorAll('.selector, .settings-param, .selectbox-item, .simple-button, .player-panel__button, .menu__item, li, div');
+            for (var i = 0; i < candidates.length; i++) {
+              var el = candidates[i];
+              if (!el || !el.textContent) continue;
+              var text = cleanText(el.textContent).toLowerCase();
+              var isVoiceRow = false;
+              if (filter_items && filter_items.voice) {
+                for (var vi = 0; vi < filter_items.voice.length; vi++) {
+                  var vn = cleanText(filter_items.voice[vi] || '').toLowerCase();
+                  if (vn && text === vn) { isVoiceRow = true; break; }
+                }
+              }
+              if (!isVoiceRow) continue;
+              var selected = text === normWanted;
+              try { el.classList.toggle('active', selected); } catch (c1) {}
+              try { el.classList.toggle('focus', selected); } catch (c2) {}
+              try { el.classList.toggle('selected', selected); } catch (c3) {}
+              try { el.classList.toggle('check', selected); } catch (c4) {}
+              try { el.setAttribute('data-selected', selected ? 'true' : 'false'); } catch (c5) {}
+              result.dom_updated++;
+            }
+          } catch (ed) { result.errors.push('dom:' + (ed && (ed.message || ed.toString()) || ed)); }
+        } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+        stelsLog('zetflixnet-voice-selection-state-updated', result);
+        return result;
+      }
+
       function zetflixnetVoiceQualityFixEnabled() {
         try { return Lampa.Storage.get('stels_online_zetflixnet_voice_quality_fix', false) === true; } catch (e) { return false; }
       }
@@ -15681,6 +15759,7 @@
                     stelsLog('zetflixnet-tizen-hls-voice-preselect', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(hlsFound.url) });
                   }
                 }
+                zetflixnetUpdateVoiceSelectionState(play, voiceName, item);
                 stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], wanted_quality: zetflixnetNormalizeQualityLabel(wantedQuality || ''), quality_preselected: !!play._stels_zetflixnet_voice_quality_preselected, tizen_hls_voice: useHlsVoice });
                 if (isTizenVoice) {
                   play._stels_tizen_voice_switch = true;
@@ -15688,6 +15767,8 @@
                   // На Tizen не можна створювати другий Player поверх першого: міняємо src у поточному video,
                   // а всі інші media-елементи глушимо.
                   zetflixnetTizenReplaceSourceInCurrentVideo(play, voiceName, item, currentTimeBeforeVoiceSwitch);
+                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); }, 350);
+                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); }, 1200);
                 } else {
                   // У Windows/Electron і частині TV-збірок Lampa.Player.play() може залишати старий audio/video живим.
                   // Тому перед запуском нового перекладу повністю зупиняємо попередній потік і НЕ викликаємо playlist([play]).
@@ -25720,7 +25801,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.35: виправлено накладання звукових доріжок ZetflixNet при зміні перекладу; перед запуском нового перекладу старі video/audio примусово зупиняються, playlist([play]) для перемикання перекладу більше не викликається.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.36: збережено виправлення накладання звукових доріжок ZetflixNet; додано оновлення вибраного перекладу в playdata/voiceovers, щоб галочка на Tizen переходила на новий переклад після перемикання.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
