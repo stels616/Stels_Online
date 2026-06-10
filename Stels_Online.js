@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.45';
+    var STELS_ONLINE_VERSION = '1.1.46';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -11153,7 +11153,23 @@
         if (aliases.indexOf('stranger things') !== -1 || joined.indexOf('дивни дива') !== -1 || joined.indexOf('дивні дива') !== -1) add('Очень странные дела');
         if (aliases.indexOf('rick and morty') !== -1) add('Рик и Морти');
         if (aliases.indexOf('friends') !== -1) add('Друзья');
+        if (aliases.indexOf('the lord of the rings: the fellowship of the ring') !== -1 || aliases.indexOf('lord of the rings: the fellowship of the ring') !== -1 || joined.indexOf('хранителі персня') !== -1 || joined.indexOf('хранители персня') !== -1) add('Властелин колец: Братство кольца');
+        if (aliases.indexOf('the lord of the rings: the two towers') !== -1 || aliases.indexOf('lord of the rings: the two towers') !== -1 || joined.indexOf('дві вежі') !== -1 || joined.indexOf('две крепости') !== -1) add('Властелин колец: Две крепости');
+        if (aliases.indexOf('the lord of the rings: the return of the king') !== -1 || aliases.indexOf('lord of the rings: the return of the king') !== -1 || joined.indexOf('повернення короля') !== -1 || joined.indexOf('возвращение короля') !== -1) add('Властелин колец: Возвращение короля');
+        if (aliases.indexOf('the lord of the rings: the rings of power') !== -1 || joined.indexOf('персні влади') !== -1 || joined.indexOf('кольца власти') !== -1) add('Властелин колец: Кольца власти');
         return out;
+      }
+
+      function isUkrainianTitle(value) {
+        return /[іїєґ]/i.test(String(value || ''));
+      }
+      function isRussianTitle(value) {
+        value = String(value || '');
+        return /[а-яё]/i.test(value) && !isUkrainianTitle(value);
+      }
+      function isLatinTitle(value) {
+        value = String(value || '');
+        return /[a-z]/i.test(value) && !/[а-яёіїєґ]/i.test(value) && !/[\u4e00-\u9fff\u3040-\u30ff\u0590-\u05ff\u0600-\u06ff]/.test(value);
       }
 
       function queryVariants() {
@@ -11161,14 +11177,17 @@
         function add(v) { v = cleanTextLocal(v || ''); if (v && out.indexOf(v) === -1) out.push(v); }
         var y = movieYear();
         var aliases = titleAliases();
-        // Kinobaza/Alloha частіше має російські назви, тому спочатку шукаємо російською.
-        allohaKnownRuAliases().forEach(add);
-        aliases.filter(function (t) { return /[а-яё]/i.test(String(t || '')); }).forEach(add);
-        aliases.filter(function (t) { return !/[а-яё]/i.test(String(t || '')) && !/[\u4e00-\u9fff\u3040-\u30ff\u0590-\u05ff\u0600-\u06ff]/.test(String(t || '')); }).forEach(add);
-        allohaKnownRuAliases().forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
-        aliases.filter(function (t) { return /[а-яё]/i.test(String(t || '')); }).forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
-        aliases.filter(function (t) { return !/[а-яё]/i.test(String(t || '')) && !/[\u4e00-\u9fff\u3040-\u30ff\u0590-\u05ff\u0600-\u06ff]/.test(String(t || '')); }).forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
-        return out.slice(0, 14);
+        var ru = allohaKnownRuAliases();
+        // Kinobaza/Alloha в основному має російські назви. Порядок: RU alias -> російські назви -> original/latin -> українські назви -> варіанти з роком.
+        ru.forEach(add);
+        aliases.filter(isRussianTitle).forEach(add);
+        aliases.filter(isLatinTitle).forEach(add);
+        aliases.filter(function (t) { return /[а-яёіїєґ]/i.test(String(t || '')) && !isRussianTitle(t); }).forEach(add);
+        ru.forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
+        aliases.filter(isRussianTitle).forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
+        aliases.filter(isLatinTitle).forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
+        aliases.filter(function (t) { return /[а-яёіїєґ]/i.test(String(t || '')) && !isRussianTitle(t); }).forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) add(t + ' ' + y); });
+        return out.slice(0, 18);
       }
 
       function requestText(url, success, fail, opts) {
@@ -11336,6 +11355,22 @@
         }, function () { searchKinobaza(variants, index + 1, acc, callback, fail); }, { kind: 'search-json', headers: ajax_headers, dataType: 'text' });
       }
 
+      function tryKinopoiskPage(callback, fail) {
+        var kp = object && (object.kinopoisk_id || object.movie && (object.movie.kinopoisk_id || object.movie.kp_id)) || '';
+        kp = String(kp || '').replace(/\D+/g, '');
+        if (!kp) { fail && fail('no kp id'); return; }
+        var pageUrl = host + '/id-' + kp;
+        requestText(pageUrl, function (html) {
+          var plain = cleanTextLocal(html || '');
+          var api = pageApiFromHtml(html, pageUrl);
+          var y = movieYear();
+          var yearOk = !y || plain.indexOf(String(y)) >= 0;
+          log('kp-page-check', { kp: kp, page: pageUrl, has_api: !!api, year_ok: yearOk, sample: preview(plain, 260) });
+          if (api && yearOk) callback(pageUrl);
+          else fail && fail('kp page mismatch');
+        }, fail, { kind: 'kp-page', headers: page_headers, dataType: 'text', timeout: 9000 });
+      }
+
       function pageApiFromHtml(html, pageUrl) {
         var attrs = {};
         var m = String(html || '').match(/<div[^>]+id=["']cinemaplayer["'][^>]*>/i);
@@ -11477,23 +11512,41 @@
           player_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
           player_prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
           if (player_origin) player_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
-          stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
-          stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_origin ? player_origin + '/' : iframe) + '/';
-          if (player_origin) stream_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
         }
-        requestText(iframe, function (html) {
+        stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+        stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_origin ? player_origin + '/' : iframe) + '/';
+        if (player_origin) stream_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
+
+        function consume(html, mode) {
           var fileList = parseJsonParseVariable(html, 'fileList');
           if (!fileList) {
-            log('filelist-missing', { iframe: preview(iframe), html_len: String(html || '').length, sample: preview(html, 800) });
-            fail && fail('fileList not found');
-            return;
+            log('filelist-missing', { mode: mode, iframe: preview(iframe), html_len: String(html || '').length, sample: preview(html, 800) });
+            return false;
           }
           extract.iframe = iframe;
           extract.fileList = fileList;
           extract.items = normalizeFileList(fileList);
-          log('filelist-loaded', { type: fileList.type, items: extract.items.length, origin: player_origin, token_len: player_token.length, sample: extract.items.slice(0, 8) });
+          log('filelist-loaded', { mode: mode, type: fileList.type, items: extract.items.length, origin: player_origin, token_len: player_token.length, sample: extract.items.slice(0, 8) });
           callback(extract.items);
-        }, fail, { kind: 'player', headers: player_headers, proxy: prox2, prox_enc: player_prox_enc, dataType: 'text', timeout: 18000 });
+          return true;
+        }
+
+        function tryRaw() {
+          requestText(iframe, function (html) {
+            if (!consume(html, 'raw')) fail && fail('fileList not found');
+          }, function (message) {
+            log('player-raw-fail', { message: preview(message, 400) });
+            fail && fail(message || 'player raw fail');
+          }, { kind: 'player-raw', headers: player_headers, raw: true, dataType: 'text', timeout: 18000 });
+        }
+
+        requestText(iframe, function (html) {
+          if (!consume(html, prox2 ? 'proxy' : 'direct')) tryRaw();
+        }, function (message) {
+          // На частині платформ proxy для mars.stravers.live повертає 404, хоча прямий iframe доступний.
+          log('player-proxy-fail', { proxy: !!prox2, message: preview(message, 400) });
+          tryRaw();
+        }, { kind: 'player', headers: player_headers, proxy: prox2, prox_enc: player_prox_enc, dataType: 'text', timeout: 18000 });
       }
 
       function normalizeFileList(fileList) {
@@ -11758,14 +11811,17 @@
         component.loading(true);
         var variants = queryVariants();
         log('search-start', { title: select_title, variants: variants, tmdb_id: movieTmdbId(), imdb_id: movieImdbId(), year: movieYear(), serial: isSerialObject() });
-        searchKinobaza(variants, 0, [], function (pageUrl) {
+        function fromPage(pageUrl) {
           getInfoFromPage(pageUrl, successInfo, function (message) {
             log('page-info-fail', { page: pageUrl, message: preview(message, 400) });
             getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
           });
-        }, function () {
-          log('search-no-page', { title: select_title });
-          getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
+        }
+        tryKinopoiskPage(fromPage, function () {
+          searchKinobaza(variants, 0, [], fromPage, function () {
+            log('search-no-page', { title: select_title });
+            getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
+          });
         });
       };
 
@@ -26670,7 +26726,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.44: джерело Alloha переписано під актуальний ланцюжок Kinobaza -> cinemaplayer -> Alloha iframe -> bnsi/movies.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.46: Alloha - прямий fallback для player iframe без proxy, пріоритет RU/KP-пошуку та виправлення підвантаження серій.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
