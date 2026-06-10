@@ -3,8 +3,9 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.07';
-    var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
+    var STELS_ONLINE_VERSION = '1.1.08';
+    var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
+    var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
     var STELS_UA_FLAG_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_UA_FLAG_SVG);
@@ -13,6 +14,7 @@
     var STELS_LOG_MAX = 1200;
 
     var STELS_SOURCES_HIDE_KEY = 'stels_online_sources_hide';
+    var STELS_SOURCES_ORDER_KEY = 'stels_online_sources_order';
     var STELS_WATCH_HISTORY_KEY = 'stels_online_watch_history';
     var STELS_WATCH_HISTORY_MAX = 300;
 
@@ -87,6 +89,36 @@
         Lampa.Storage.set(STELS_SOURCES_HIDE_KEY, out);
         stelsLog('sources-hidden-updated', { hidden_count: out.length, hidden: out });
       } catch (e) {}
+    }
+
+    function stelsGetSourceOrder() {
+      var base = STELS_REQUESTED_SOURCE_NAMES.map(stelsNormalizeSourceKey).filter(Boolean);
+      var stored = [];
+      try { stored = Lampa.Storage.get(STELS_SOURCES_ORDER_KEY, []); } catch (e) { stored = []; }
+      if (!Array.isArray(stored)) stored = [];
+      var out = [];
+      function add(name) {
+        name = stelsNormalizeSourceKey(name);
+        if (name && base.indexOf(name) !== -1 && out.indexOf(name) === -1) out.push(name);
+      }
+      stored.forEach(add);
+      base.forEach(add);
+      return out;
+    }
+
+    function stelsSetSourceOrder(order) {
+      try {
+        var base = STELS_REQUESTED_SOURCE_NAMES.map(stelsNormalizeSourceKey).filter(Boolean);
+        var out = [];
+        (order || []).forEach(function (name) {
+          name = stelsNormalizeSourceKey(name);
+          if (name && base.indexOf(name) !== -1 && out.indexOf(name) === -1) out.push(name);
+        });
+        base.forEach(function (name) { if (out.indexOf(name) === -1) out.push(name); });
+        Lampa.Storage.set(STELS_SOURCES_ORDER_KEY, out);
+        stelsLog('sources-order-updated', { count: out.length, sample: out.slice(0, 20) });
+        return out;
+      } catch (e) { return stelsGetSourceOrder(); }
     }
 
     // ===============================
@@ -164,7 +196,7 @@
           return true;
         }
         if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) return true;
-        if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text)) return true;
+        if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text) || /^Онлайн\s+Z01$/i.test(text) || text === 'Z01') return true;
         return false;
       }
 
@@ -191,7 +223,6 @@
       function stelsPatchFlatPluginEntry(el) {
         try {
           if (!el || !el.length) return;
-          if (el.hasClass('view--stels_online')) return;
           if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
           el.addClass('stels-online-source-entry');
           var display = el.css('display');
@@ -239,7 +270,7 @@
             var el = $(this);
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
             var componentKey = String(el.attr('data-component') || el.data('component') || el.attr('data-name') || el.attr('data-source') || '').toLowerCase();
-            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text) || componentKey === 'stels_online';
+            var flatMatch = text === 'Stels_Online' || /^Stels_Online\s*(?:[-–—vV]?)\s*\d+\.\d+\.\d+(?:\s*\d+\.\d+\.\d+)?$/.test(text) || /^Онлайн\s+Z01$/i.test(text) || text === 'Z01' || componentKey === 'stels_online';
             if (el.hasClass('view--stels_online')) {
               if (el.hasClass('full-start__button')) return;
               stelsPatchFlatPluginEntry(el);
@@ -456,6 +487,7 @@
               var low = k.toLowerCase();
               var protectedKey =
                 low.indexOf('stels_online_sources_hide') !== -1 ||
+                low.indexOf('stels_online_sources_order') !== -1 ||
                 low.indexOf('stels_online_watch_history') !== -1 ||
                 low.indexOf('stels_online_rezka2_cookie') !== -1 ||
                 low.indexOf('stels_online_fancdn_cookie') !== -1 ||
@@ -680,6 +712,7 @@
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
           '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
           '.stels-online-source-row.stels-online-source-disabled{opacity:.48;}' +
+          '.stels-online-source-arrows{display:flex;gap:.45em;align-items:center;margin-left:auto;margin-right:.7em}.stels-online-source-arrow{color:#00d36f;font-size:1.25em;font-weight:900;line-height:1;padding:.28em .38em;border-radius:.3em;background:rgba(0,211,111,.10)}.stels-online-source-arrow.focus,.stels-online-source-arrow:hover{background:rgba(0,211,111,.24)}' +
           '.stels-online-advanced-settings{margin-top:.35em;border-top:1px solid rgba(255,255,255,.08);padding-top:.35em;}' +
           '</style>');
         stelsLog('image-style-installed', { ok: true });
@@ -733,21 +766,25 @@
         var is_active = active === name;
         return '<div class="selector stels-online-source-row" tabindex="0" data-source="' + stelsEscapeHtml(name) + '" ' +
           'style="display:flex;align-items:center;justify-content:space-between;gap:1em;padding:.75em 0;border-bottom:1px solid rgba(255,255,255,.08)">' +
-          '<div style="min-width:0">' +
+          '<div style="min-width:0;flex:1 1 auto">' +
             '<div class="stels-online-source-title" style="font-size:1.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
               '<span class="stels-online-source-check">' + (enabled ? '☑' : '☐') + '</span> ' + stelsSourceTitleHtml(name) +
               (is_active ? ' <span style="font-size:.75em;opacity:.75">АКТИВНЕ</span>' : '') +
             '</div>' +
             '<div style="font-size:.78em;opacity:.55;margin-top:.15em">' + stelsEscapeHtml(name) + '</div>' +
           '</div>' +
-          '<div class="stels-online-source-state" style="opacity:.8;white-space:nowrap">' + (enabled ? 'Увімкнено' : 'Вимкнено') + '</div>' +
+          '<div class="stels-online-source-arrows" aria-label="Порядок джерела">' +
+            '<div class="selector stels-online-source-arrow" data-move="up">▲</div>' +
+            '<div class="selector stels-online-source-arrow" data-move="down">▼</div>' +
+          '</div>' +
+          '<div class="stels-online-source-state" style="opacity:.8;white-space:nowrap;min-width:5.8em;text-align:right">' + (enabled ? 'Увімкнено' : 'Вимкнено') + '</div>' +
         '</div>';
       }
 
       var html = $('<div class="stels-online-sources-modal">' +
-        '<div style="opacity:.75;margin-bottom:.8em">Галочка керує тим, чи буде джерело показуватись у меню «Сортувати». Після зміни позиція списку не скидається.</div>' +
+        '<div style="opacity:.75;margin-bottom:.8em">Галочка керує тим, чи буде джерело показуватись у меню «Сортувати». Зелені стрілки змінюють порядок джерел у списку перегляду.</div>' +
         '<div class="stels-online-sources-list" style="max-height:62vh;overflow-y:auto;padding-right:.3em">' +
-          STELS_REQUESTED_SOURCE_NAMES.map(makeRow).join('') +
+          stelsGetSourceOrder().map(makeRow).join('') +
         '</div>' +
       '</div>');
 
@@ -757,6 +794,28 @@
         row.find('.stels-online-source-check').text(enabled ? '☑' : '☐');
         row.find('.stels-online-source-state').text(enabled ? 'Увімкнено' : 'Вимкнено');
         row.toggleClass('stels-online-source-disabled', !enabled);
+      }
+
+      function saveSourceOrderFromDom() {
+        var order = [];
+        html.find('.stels-online-source-row').each(function () { order.push(stelsNormalizeSourceKey($(this).data('source'))); });
+        stelsSetSourceOrder(order);
+      }
+
+      function moveSourceRow(row, dir) {
+        row = row && row.jquery ? row : $(row);
+        if (!row.length) return;
+        if (dir < 0) {
+          var prev = row.prev('.stels-online-source-row');
+          if (prev.length) row.insertBefore(prev);
+        } else {
+          var next = row.next('.stels-online-source-row');
+          if (next.length) row.insertAfter(next);
+        }
+        saveSourceOrderFromDom();
+        stelsScrollSourceRowIntoView(row);
+        try { Lampa.Controller.collectionSet(html, html.find('.selector')); Lampa.Controller.collectionFocus(row[0], html); } catch (e) {}
+        Lampa.Noty.show('Порядок змінено: ' + stelsSourceTitle(row.data('source')));
       }
 
       var stelsLastSourceToggle = { key: '', time: 0 };
@@ -780,6 +839,15 @@
 
       html.on('hover:focus focus mouseenter', '.stels-online-source-row', function () {
         stelsScrollSourceRowIntoView(this);
+      });
+
+      html.on('hover:enter click', '.stels-online-source-arrow', function (event) {
+        if (event && event.stopPropagation) event.stopPropagation();
+        if (event && event.preventDefault) event.preventDefault();
+        var arrow = $(this);
+        var row = arrow.closest('.stels-online-source-row');
+        moveSourceRow(row, arrow.data('move') === 'up' ? -1 : 1);
+        return false;
       });
 
       html.find('.stels-online-source-row').on('hover:enter click', function (event) {
@@ -822,7 +890,7 @@
         try {
           Lampa.Controller.add('stels_online_sources', {
             toggle: function () {
-              Lampa.Controller.collectionSet(html, html.find('.stels-online-source-row'));
+              Lampa.Controller.collectionSet(html, html.find('.selector'));
               Lampa.Controller.collectionFocus(stelsLastFocusedSourceRow || html.find('.stels-online-source-row')[0], html);
               stelsScrollSourceRowIntoView(stelsLastFocusedSourceRow || html.find('.stels-online-source-row')[0]);
             },
@@ -1428,6 +1496,7 @@
       var host = atob('aHR0cHM6Ly9wLmx1bWV4LnNwYWNl');
       var ref = host + '/';
       var user_agent = Utils.baseUserAgent();
+      var player_browser_ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
       var headers = Lampa.Platform.is('android') ? {
         'Origin': host,
         'Referer': ref,
@@ -3396,6 +3465,7 @@
       var ref = host + '/';
       var prox = component.proxy('zerx');
       var user_agent = Utils.baseUserAgent();
+      var player_browser_ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
       var page_headers = {
         'User-Agent': user_agent,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -3410,14 +3480,14 @@
         'X-Requested-With': 'XMLHttpRequest'
       };
       var player_headers = {
-        'User-Agent': user_agent,
+        'User-Agent': player_browser_ua,
         'Accept': 'application/json,text/plain,*/*',
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'Origin': 'https://synthezoid-as.stloadi.live',
         'X-Requested-With': 'XMLHttpRequest'
       };
       var stream_headers = {
-        'User-Agent': user_agent,
+        'User-Agent': player_browser_ua,
         'Referer': 'https://synthezoid-as.stloadi.live/',
         'Origin': 'https://synthezoid-as.stloadi.live'
       };
@@ -3930,7 +4000,7 @@
           element.stream = parsed.file;
           element.qualitys = parsed.quality;
           element.subtitles = parsed.subtitles || [];
-          element.headers = { 'User-Agent': user_agent, 'Referer': player_referer, 'Origin': baseOrigin };
+          element.headers = { 'User-Agent': player_browser_ua, 'Referer': player_referer, 'Origin': baseOrigin };
           call(element);
         }, error, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 18000 });
       }
@@ -3988,14 +4058,43 @@
           function tryIframe(i) {
             if (i >= iframes.length) { fail && fail(); return; }
             var iframe = iframes[i];
-            requestText(iframe, function (playerHtml) {
+            function playerHeadersFor(currentIframe) {
+              return {
+                'User-Agent': player_browser_ua,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Referer': host + '/',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'iframe',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'cross-site'
+              };
+            }
+            function parsePlayerOrNext(playerHtml, sourceKind) {
               var items = parsePlayerHtml(playerHtml, iframe, forcedSeason || 0);
-              if (!items.length) { stelsLog('zerx-player-empty', { iframe: iframe, index: i }); tryIframe(i + 1); return; }
+              stelsLog('zerx-player-parse-attempt', { iframe: iframe, index: i, source: sourceKind, items: items.length, sample: items.slice(0, 6) });
+              if (!items.length) { stelsLog('zerx-player-empty', { iframe: iframe, index: i, source: sourceKind }); return false; }
               callback(items);
+              return true;
+            }
+            requestText(iframe, function (playerHtml) {
+              if (parsePlayerOrNext(playerHtml, 'direct')) return;
+              requestText(iframe, function (proxiedHtml) {
+                if (parsePlayerOrNext(proxiedHtml, 'proxy')) return;
+                tryIframe(i + 1);
+              }, function () {
+                stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'proxy-empty' });
+                tryIframe(i + 1);
+              }, { kind: 'player_proxy', raw: false, headers: playerHeadersFor(iframe), timeout: 18000 });
             }, function () {
-              stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1 });
-              tryIframe(i + 1);
-            }, { kind: 'player', raw: true, headers: { 'User-Agent': user_agent, 'Referer': pageUrl, 'Accept': 'text/html,*/*' }, timeout: 14000 });
+              stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'direct' });
+              requestText(iframe, function (proxiedHtml) {
+                if (parsePlayerOrNext(proxiedHtml, 'proxy-after-direct-fail')) return;
+                tryIframe(i + 1);
+              }, function () {
+                stelsLog('zerx-player-fallback', { iframe: iframe, index: i, left: iframes.length - i - 1, source: 'proxy' });
+                tryIframe(i + 1);
+              }, { kind: 'player_proxy', raw: false, headers: playerHeadersFor(iframe), timeout: 18000 });
+            }, { kind: 'player', raw: true, headers: playerHeadersFor(iframe), timeout: 18000 });
           }
           tryIframe(0);
         }, fail, { kind: 'page', headers: page_headers, timeout: 18000 });
@@ -20661,7 +20760,7 @@
         imdb: true,
         disabled: true
       }];
-      var stels_force_source_order = STELS_REQUESTED_SOURCE_NAMES.slice(0);
+      var stels_force_source_order = stelsGetSourceOrder();
 
       function stelsBuildFullSourceList(list) {
         var base_by_name = {};
@@ -20708,13 +20807,6 @@
           var internal_key = stelsNormalizeSourceKey(s.name);
           if (internal_key.indexOf('lampaua-') === 0 || internal_key.indexOf('rc-') === 0) return;
           pushDisplaySource(s.name);
-        });
-
-        result.sort(function (a, b) {
-          var au = stelsIsUaPrioritySource(a) ? 1 : 0;
-          var bu = stelsIsUaPrioritySource(b) ? 1 : 0;
-          if (au !== bu) return bu - au;
-          return 0;
         });
 
         stelsLog('sources-hybrid-build', {
