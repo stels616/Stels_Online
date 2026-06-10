@@ -4140,27 +4140,70 @@
             stream_url: iframeUrl
           });
         }
+        // Уніфікована функція обробки об'єкта {tXX: {id, episode, translation, ...}}
+        function processVoicesObj(snum, voices, fallbackEpNum) {
+          if (!voices || typeof voices !== 'object') return;
+          Object.keys(voices).forEach(function (vk) {
+            var v = voices[vk] || {};
+            if (!v.id) return;
+            var epNum = parseInt(v.episode != null ? v.episode : (fallbackEpNum != null ? fallbackEpNum : 0), 10);
+            addItem(parseInt(snum, 10) || 0, epNum, v.translation || '', v.id, v.quality || '');
+          });
+        }
         if (fileList.type == 'serial' && fileList.all) {
           Object.keys(fileList.all).forEach(function (snum) {
             var eps = fileList.all[snum];
             if (Array.isArray(eps)) {
+              // Масив: eps[idx] = {tXX: {...}} де idx може бути 0 (епізод 0 / тизер сезону) — НЕ пропускаємо
               eps.forEach(function (voices, idx) {
-                if (!voices || idx === 0) return;
-                Object.keys(voices).forEach(function (vk) { var v = voices[vk] || {}; addItem(parseInt(snum, 10) || 0, parseInt(v.episode || idx, 10) || idx, v.translation || '', v.id, v.quality || ''); });
+                if (!voices) return; // тільки null/undefined пропускаємо
+                processVoicesObj(snum, voices, idx);
               });
             } else if (eps && typeof eps == 'object') {
+              // Об'єкт: eps[epnum] = {tXX: {...}}
               Object.keys(eps).forEach(function (epnum) {
-                var voices = eps[epnum] || {};
-                Object.keys(voices).forEach(function (vk) { var v = voices[vk] || {}; addItem(parseInt(snum, 10) || 0, parseInt(v.episode || epnum, 10) || parseInt(epnum, 10) || 0, v.translation || '', v.id, v.quality || ''); });
+                processVoicesObj(snum, eps[epnum], parseInt(epnum, 10) || 0);
               });
             }
           });
+        } else if (fileList.all && typeof fileList.all == 'object') {
+          // Фільм або нестандартна структура: all може бути {1: {tXX: {id,...}}} або {tXX: {id,...}}
+          var allKeys = Object.keys(fileList.all);
+          var firstVal = fileList.all[allKeys[0]];
+          if (firstVal && typeof firstVal == 'object' && (firstVal.id || firstVal.translation)) {
+            // Плаский об'єкт {tXX: {id, translation}} — фільм без сезону
+            processVoicesObj(0, fileList.all, 0);
+          } else {
+            // Вкладена структура {snum: {epnum: {tXX: {...}}}} або {snum: [{tXX:{}},...]}
+            Object.keys(fileList.all).forEach(function (snum) {
+              var eps = fileList.all[snum];
+              if (Array.isArray(eps)) {
+                eps.forEach(function (voices, idx) {
+                  if (!voices) return;
+                  processVoicesObj(snum, voices, idx);
+                });
+              } else if (eps && typeof eps == 'object') {
+                var epKeys = Object.keys(eps);
+                var epFirst = eps[epKeys[0]];
+                if (epFirst && typeof epFirst == 'object' && (epFirst.id || epFirst.translation)) {
+                  // {snum: {tXX: {id,...}}} — фільм з "сезонами"-озвучками
+                  processVoicesObj(0, eps, 0);
+                } else {
+                  Object.keys(eps).forEach(function (epnum) {
+                    processVoicesObj(snum, eps[epnum], parseInt(epnum, 10) || 0);
+                  });
+                }
+              }
+            });
+          }
+          // Додатково: взяти active якщо items ще порожні
+          if (!items.length) {
+            var active = fileList.active || {};
+            addItem(0, 0, active.translation || 'Zerx', active.id, active.quality || '');
+          }
         } else {
           var active = fileList.active || {};
           addItem(0, 0, active.translation || 'Zerx', active.id, active.quality || '');
-          if (fileList.all && typeof fileList.all == 'object') {
-            Object.keys(fileList.all).forEach(function (k) { var v = fileList.all[k] || {}; addItem(0, 0, v.translation || k, v.id, v.quality || ''); });
-          }
         }
         if (forcedSeason) {
           var uniq = [];
@@ -4825,10 +4868,11 @@
           var title = cleanText(node.title || '');
           if (node.folder && node.folder.length) {
             var s = parseNum(title, 'season') || season || 0;
-            var v = voice;
-            if (!s && title) v = title;
-            if (s && (!voice || /сезон|season/i.test(voice))) v = voice && !/сезон|season/i.test(voice) ? voice : (v || 'KinoUkr');
-            walk(node.folder, v || title || voice, s || season);
+            // Якщо title містить "сезон/season" — це позначка сезону, голос не змінюємо.
+            // Якщо title не містить "сезон/season" і не порожній — це голос (озвучка).
+            var isSeason = /сезон|season/i.test(title);
+            var v = isSeason ? (voice || 'KinoUkr') : (title || voice || 'KinoUkr');
+            walk(node.folder, v, s || season);
           } else if (node.file) {
             addItem(node, voice, season, index + 1);
           }
@@ -13292,31 +13336,19 @@
         var key = CryptoJS.PBKDF2(uasPassword, salt, { hasher: CryptoJS.algo.SHA512, keySize: 8, iterations: 999 });
         return CryptoJS.AES.decrypt(obj.ciphertext || '', key, { iv: iv }).toString(CryptoJS.enc.Utf8);
       }
-      function tortugaNormalizeBase64(input) {
+      function tortugaBase64ToBinary(input) {
         var s = String(input || '').replace(/\n|\r|\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        if (!s) return '';
+        // Tortuga часто віддає base64 без фінального padding. Browser atob у Lampa
+        // на таких рядках може падати, тому нормалізуємо padding вручну.
         s = s.replace(/=+$/g, '');
         while (s.length % 4) s += '=';
-        return s;
-      }
-      function tortugaBase64ToBinary(input, meta) {
-        var s = tortugaNormalizeBase64(input);
-        if (!s) return '';
-        if (meta) meta.normalized_len = s.length;
-        try {
-          var raw = atob(s);
-          if (meta) meta.decoder = 'atob';
-          return raw;
-        } catch (e1) {
-          if (meta) meta.atob_error = e1 && (e1.message || e1.toString()) || 'atob error';
-        }
+        try { return atob(s); } catch (e1) {}
         try {
           if (typeof CryptoJS !== 'undefined' && CryptoJS.enc && CryptoJS.enc.Base64) {
-            if (meta) meta.decoder = 'cryptojs';
             return CryptoJS.enc.Latin1.stringify(CryptoJS.enc.Base64.parse(s));
           }
-        } catch (e2) {
-          if (meta) meta.cryptojs_error = e2 && (e2.message || e2.toString()) || 'cryptojs error';
-        }
+        } catch (e2) {}
         try {
           var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
           var out = '', buffer = 0, bits = 0;
@@ -13333,48 +13365,31 @@
               out += String.fromCharCode((buffer >> bits) & 255);
             }
           }
-          if (meta) meta.decoder = 'manual';
           return out;
-        } catch (e3) {
-          if (meta) meta.manual_error = e3 && (e3.message || e3.toString()) || 'manual error';
-        }
+        } catch (e3) {}
         return '';
       }
-      function tortugaXorKey(seed, index) {
-        // Точна формула з tor.core.min.js: #O(seed,index) = (seed + 7*index + 13) % 256
-        return (seed + 7 * index + 13) % 256;
-      }
-      function tortugaDecodeOnce(input, meta) {
+      function tortugaDecodeOnce(input) {
         try {
-          var raw = tortugaBase64ToBinary(input, meta);
-          if (meta) meta.raw_len = raw ? raw.length : 0;
+          var raw = tortugaBase64ToBinary(input);
           if (!raw || raw.length < 2) return input;
           var seed = raw.charCodeAt(0);
-          if (meta) meta.seed = seed;
           var out = '';
-          for (var i = 1; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ tortugaXorKey(seed, i - 1));
-          if (meta) meta.xor_start = out.slice(0, 16);
-          try { return decodeURIComponent(escape(out)); } catch (e) { if (meta) meta.utf8_error = e && (e.message || e.toString()); return out; }
-        } catch (e) {
-          if (meta) meta.decode_error = e && (e.message || e.toString()) || 'decode error';
-          return input;
-        }
+          for (var i = 1; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ ((seed + 7 * (i - 1) + 13) % 256));
+          try { return decodeURIComponent(escape(out)); } catch (e) { return out; }
+        } catch (e) { return input; }
       }
       function looksBase64(value) {
         value = String(value || '').trim();
-        return value.length > 16 && /^[A-Za-z0-9+\/_=-]+$/.test(value) && value.indexOf('{') === -1 && value.indexOf('[') === -1;
+        return value.length > 16 && /^[A-Za-z0-9+\/=_-]+$/.test(value) && value.indexOf('{') === -1 && value.indexOf('[') === -1;
       }
       function tortugaDecode(input) {
         var value = String(input || '').trim();
         var chain = [];
         for (var i = 0; i < 4; i++) {
           var before = value;
-          var meta = { step: i + 1, in_len: before.length, in_start: before.slice(0, 12), algo: 'tor.core.#k/#O', formula: '(seed + 7*index + 13) % 256' };
-          var after = tortugaDecodeOnce(before, meta);
-          meta.out_len = String(after || '').length;
-          meta.out_start = String(after || '').slice(0, 32);
-          meta.changed = after !== before;
-          chain.push(meta);
+          var after = tortugaDecodeOnce(before);
+          chain.push({ step: i + 1, in_len: before.length, out_len: String(after || '').length, out_start: String(after || '').slice(0, 12) });
           value = String(after || '');
           var t = value.replace(/^\uFEFF/, '').trim();
           if (t.charAt(0) === '[' || t.charAt(0) === '{') { value = t; break; }
