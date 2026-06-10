@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.23';
+    var STELS_ONLINE_VERSION = '1.1.24';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -14823,6 +14823,78 @@
         }
         return found;
       }
+      function zetflixnetGetCurrentTimeSafe() {
+        var out = 0;
+        try {
+          var v = null;
+          if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') v = Lampa.Player.video();
+          if (v && isFinite(v.currentTime || 0) && (v.currentTime || 0) > 0) out = v.currentTime || 0;
+        } catch (e) {}
+        if (!out) {
+          try {
+            var nodes = document.querySelectorAll('video');
+            for (var i = 0; i < nodes.length; i++) {
+              var t = nodes[i] && nodes[i].currentTime || 0;
+              if (isFinite(t) && t > 0) { out = t; break; }
+            }
+          } catch (e2) {}
+        }
+        if (!out) {
+          try {
+            var pd = Lampa.Player && Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+            var t2 = pd.time || pd.currentTime || pd.position || pd.timeline && (pd.timeline.time || pd.timeline.position) || 0;
+            if (isFinite(t2) && t2 > 0) out = t2;
+          } catch (e3) {}
+        }
+        return Math.max(0, Number(out) || 0);
+      }
+      function zetflixnetSeekBackAfterVoiceSwitch(baseTime, seconds, voiceName) {
+        baseTime = Number(baseTime) || 0;
+        seconds = Number(seconds) || 5;
+        if (!baseTime || baseTime <= 1) {
+          stelsLog('zetflixnet-voice-rewind-skip', { voice: voiceName || '', base_time: baseTime });
+          return;
+        }
+        var target = Math.max(0, baseTime - seconds);
+        var attempts = [350, 800, 1400, 2300, 3600];
+        stelsLog('zetflixnet-voice-rewind-plan', { voice: voiceName || '', base_time: baseTime, target: target, seconds: seconds });
+        attempts.forEach(function (delay) {
+          setTimeout(function () {
+            var ok = false;
+            var method = '';
+            try {
+              if (Lampa && Lampa.Player) {
+                if (typeof Lampa.Player.seek === 'function') {
+                  Lampa.Player.seek(target);
+                  ok = true;
+                  method = 'Lampa.Player.seek';
+                } else if (typeof Lampa.Player.video === 'function') {
+                  var v = Lampa.Player.video();
+                  if (v && isFinite(v.duration || 0)) {
+                    v.currentTime = target;
+                    ok = true;
+                    method = 'Lampa.Player.video.currentTime';
+                  }
+                }
+              }
+            } catch (e) { stelsLog('zetflixnet-voice-rewind-player-error', { voice: voiceName || '', delay: delay, error: e && (e.message || e.toString()) || '' }); }
+            if (!ok) {
+              try {
+                var nodes = document.querySelectorAll('video');
+                for (var i = 0; i < nodes.length; i++) {
+                  if (nodes[i]) {
+                    nodes[i].currentTime = target;
+                    ok = true;
+                    method = 'html-video.currentTime';
+                    break;
+                  }
+                }
+              } catch (e2) { stelsLog('zetflixnet-voice-rewind-html-error', { voice: voiceName || '', delay: delay, error: e2 && (e2.message || e2.toString()) || '' }); }
+            }
+            stelsLog('zetflixnet-voice-rewind-attempt', { voice: voiceName || '', delay: delay, target: target, ok: ok, method: method });
+          }, delay);
+        });
+      }
       function zetflixnetApplyWantedQuality(play, wantedLabel, voiceName, item) {
         if (!play || !wantedLabel || !play.quality) return false;
         var q = play.quality || {};
@@ -14866,7 +14938,9 @@
               getStream(target, function (item) {
                 try { Lampa.Player.loading(false); } catch (e2) {}
                 var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-                var wantedQuality = zetflixnetVoiceQualityFixEnabled() ? zetflixnetDetectCurrentQualityLabel(current) : '';
+                var voiceQualityFixActive = zetflixnetVoiceQualityFixEnabled();
+                var wantedQuality = voiceQualityFixActive ? zetflixnetDetectCurrentQualityLabel(current) : '';
+                var currentTimeBeforeVoiceSwitch = voiceQualityFixActive ? zetflixnetGetCurrentTimeSafe() : 0;
                 var play = zetflixnetBuildPlayable(item, {
                   timeline: current.timeline || item.timeline || element.timeline,
                   poster: current.poster || item.poster || element.poster || '',
@@ -14902,7 +14976,10 @@
                   if (!stelsAndroidPlayerFixEnabled()) {
                     try { Lampa.Player.playlist([play]); } catch (e4) {}
                   }
-                  if (zetflixnetVoiceQualityFixEnabled() && wantedQuality) {
+                  if (voiceQualityFixActive && currentTimeBeforeVoiceSwitch) {
+                    zetflixnetSeekBackAfterVoiceSwitch(currentTimeBeforeVoiceSwitch, 5, voiceName);
+                  }
+                  if (voiceQualityFixActive && wantedQuality) {
                     setTimeout(function () {
                       try {
                         var pd = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
@@ -24677,7 +24754,7 @@
       }
       template += "\n        </div>";
 
-      template += "\n        <div class=\"settings-folder selector stels-online-subsettings-folder\" data-component=\"stels_online_zetflixnet\" data-name=\"stels_online_zetflixnet_settings_toggle\">\n            <div class=\"settings-folder__icon stels-online-settings-icon\" aria-hidden=\"true\"><img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0\" alt=\"\"></div>\n            <div class=\"settings-folder__name\"><div>Налаштування ZetflixNet</div><div class=\"stels-online-version-under\">Окремі параметри джерела</div></div>\n        </div>";
+      template += "\n        <div class=\"settings-folder selector stels-online-subsettings-folder\" data-component=\"stels_online_zetflixnet\">\n            <div class=\"settings-folder__icon stels-online-settings-icon\" aria-hidden=\"true\"><img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0\" alt=\"\"></div>\n            <div class=\"settings-folder__name\"><div>Налаштування ZetflixNet</div><div class=\"stels-online-version-under\">Окремі параметри джерела</div></div>\n        </div>";
       template += `
         <div class="settings-param selector" data-name="stels_online_android_player_fix" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
             <div class="settings-param__name">Правка плеєра Андроїд</div>
@@ -24687,7 +24764,7 @@
       template += `
         <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
             <div class="settings-param__name">Зміна логіки Перекладів</div>
-            <div class="settings-param__descr">Після зміни перекладу ZetflixNet плагін повторно вибирає ту саму якість, яка була активна до зміни перекладу. Рекомендовано для Tizen.</div>
+            <div class="settings-param__descr">Після зміни перекладу ZetflixNet плагін повторно вибирає ту саму якість, яка була активна до зміни перекладу, і перемотує відео на 5 секунд назад. Рекомендовано для Tizen.</div>
             <div class="settings-param__value"></div>
         </div>`;
 
@@ -24704,7 +24781,7 @@
           </div>
           <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle">
               <div class="settings-param__name">Зміна логіки Перекладів</div>
-              <div class="settings-param__descr">Після зміни перекладу ZetflixNet повторно вибирається якість, яка була активна до зміни перекладу.</div>
+              <div class="settings-param__descr">Після зміни перекладу ZetflixNet повторно вибирається якість, яка була активна до зміни перекладу, і відео перемотується на 5 секунд назад.</div>
               <div class="settings-param__value"></div>
           </div>
         </div>`);
@@ -24865,7 +24942,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.23: UASerials більше не підміняє /usp на зовнішній iframe; якщо native-запит Tortuga блокується, повертається оригінальний UASerials/Tortuga iframe. Налаштування ZetflixNet відкриваються окремою правою панеллю.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.24: виправлено падіння налаштувань через вкладений settings-folder ZetflixNet; режим зміни перекладів ZetflixNet додатково перемотує відео на 5 секунд назад.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
