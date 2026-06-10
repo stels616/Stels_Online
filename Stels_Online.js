@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.39';
+    var STELS_ONLINE_VERSION = '1.1.37';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -15457,19 +15457,15 @@
           var st = document.createElement('style');
           st.id = 'stels-zetflixnet-voice-check-style';
           st.textContent = '' +
-            '.stels-zetflixnet-voice-row{position:relative!important;pointer-events:auto!important;opacity:1!important;}' +
-            '.stels-zetflixnet-voice-row:before{content:""!important;display:block!important;position:absolute!important;right:1.35em!important;top:50%!important;transform:translateY(-50%)!important;font-size:1.25em!important;line-height:1!important;z-index:10!important;color:#fff!important;text-shadow:0 0 4px rgba(0,0,0,.9)!important;pointer-events:none!important;}' +
-            '.stels-zetflixnet-voice-row.stels-zetflixnet-voice-current:before{content:"✓"!important;}' +
-            '.stels-zetflixnet-voice-row .stels-zetflixnet-voice-check{position:absolute!important;right:1.35em!important;top:50%!important;transform:translateY(-50%)!important;font-size:1.25em!important;line-height:1!important;z-index:11!important;color:#fff!important;text-shadow:0 0 4px rgba(0,0,0,.9)!important;pointer-events:none!important;}' +
-            '.stels-zetflixnet-voice-row:not(.stels-zetflixnet-voice-current) .stels-zetflixnet-voice-check{display:none!important;}' +
-            '.stels-online-future-episode{opacity:.72!important;}' +
-            '.stels-online-future-episode .online__title:after{content:"  ⏳";opacity:.85;}';
+            '.stels-zetflixnet-voice-row{position:relative!important;}' +
+            '.stels-zetflixnet-voice-row .stels-zetflixnet-voice-check{position:absolute!important;right:1.35em!important;top:50%!important;transform:translateY(-50%)!important;font-size:1.25em!important;line-height:1!important;z-index:9!important;color:#fff!important;text-shadow:0 0 4px rgba(0,0,0,.9)!important;pointer-events:none!important;}' +
+            '.stels-zetflixnet-voice-row.stels-zetflixnet-voice-current .stels-zetflixnet-voice-check{display:block!important;}';
           (document.head || document.documentElement).appendChild(st);
         } catch (e) {}
       }
 
       function zetflixnetRefreshVisibleVoiceCheckmark(voiceName, reason) {
-        var result = { voice: voiceName || '', reason: reason || '', rows: 0, target_rows: 0, removed: 0, enabled_rows: 0, errors: [] };
+        var result = { voice: voiceName || '', reason: reason || '', rows: 0, target_rows: 0, removed: 0, errors: [] };
         try {
           voiceName = cleanText(voiceName || '');
           if (!voiceName) return result;
@@ -15484,74 +15480,41 @@
               }
             }
           } catch (ev) {}
-          function voiceInText(text) {
+          var selector = '.selectbox-item,.selectbox__item,.selector,.selector__item,.menu__item,.simple-button,.player-panel__button,.settings-param';
+          var nodes = [];
+          try { nodes = Array.prototype.slice.call(document.querySelectorAll(selector)); } catch (eq) { nodes = []; }
+          function rowVoice(text) {
             var found = '';
             if (!text) return found;
-            text = cleanText(text).toLowerCase().replace(/[✓✔●•]/g, '').replace(/\s+/g, ' ').trim();
             for (var i = 0; i < voiceNames.length; i++) {
               var vn = voiceNames[i];
               if (!vn) continue;
               if (text === vn || text.indexOf(vn) >= 0) {
-                if (found && found !== vn) return ''; // контейнер зі всіма перекладами, не рядок
+                if (found && found !== vn) return ''; // це, ймовірно, контейнер зі всіма перекладами, не рядок
                 found = vn;
               }
             }
             return found;
           }
-          function isLeafVoiceRow(el) {
-            if (!el || !el.textContent) return '';
-            var txt = cleanText(el.textContent || '');
-            if (!txt || txt.length > 220) return '';
-            var own = voiceInText(txt);
-            if (!own) return '';
-            try {
-              var children = el.children || [];
-              var childVoiceCount = 0;
-              for (var ci = 0; ci < children.length; ci++) {
-                var cv = voiceInText(children[ci].textContent || '');
-                if (cv) childVoiceCount++;
-              }
-              // Якщо всередині багато дочірніх voice-рядків — це контейнер, а не сам рядок.
-              if (childVoiceCount > 1) return '';
-            } catch (ec) {}
-            return own;
-          }
-          var selectors = [
-            '.selectbox-item', '.selectbox__item', '.selectbox__body > div', '.selectbox__content > div',
-            '.selector', '.selector__item', '.menu__item', '.simple-button', '.player-panel__button',
-            '.player-panel__item', '.player-panel div', '.player-panel li', '[data-index]', '[data-action]', 'li'
-          ];
-          var nodes = [];
-          try {
-            var seen = [];
-            selectors.forEach(function (sel) {
-              try {
-                Array.prototype.slice.call(document.querySelectorAll(sel)).forEach(function (n) {
-                  if (seen.indexOf(n) === -1) { seen.push(n); nodes.push(n); }
-                });
-              } catch (eSel) {}
-            });
-          } catch (eq) { nodes = []; }
           for (var i = 0; i < nodes.length; i++) {
             var el = nodes[i];
-            var rv = isLeafVoiceRow(el);
+            if (!el || !el.textContent) continue;
+            var text = cleanText(el.textContent).toLowerCase();
+            if (!text || text.length > 160) continue;
+            var rv = rowVoice(text);
             if (!rv) continue;
             result.rows++;
             var selected = rv === wanted;
             try { el.classList.add('stels-zetflixnet-voice-row'); } catch (c0) {}
             try { el.classList.toggle('stels-zetflixnet-voice-current', selected); } catch (c1) {}
-            // Знімаємо усі відомі selected/checked класи з рядків перекладів, потім ставимо їх тільки на актуальний.
-            ['active','selected','focus','checked','current','selector--active','selector--selected','selectbox-item--active','selectbox__item--active','selectbox-item--checked','selectbox__item--checked'].forEach(function (cls) {
-              try { el.classList.toggle(cls, selected); } catch (cx) {}
-            });
-            ['disabled','disable','selector--disabled','selectbox-item--disabled','selectbox__item--disabled'].forEach(function (cls) {
-              try { el.classList.remove(cls); } catch (cd) {}
-            });
-            try { el.removeAttribute('disabled'); } catch (ad0) {}
-            try { el.removeAttribute('aria-disabled'); } catch (ad1) {}
-            try { el.setAttribute('aria-selected', selected ? 'true' : 'false'); } catch (ad2) {}
-            try { el.setAttribute('data-selected', selected ? 'true' : 'false'); } catch (ad3) {}
-            try { el.style.pointerEvents = 'auto'; el.style.opacity = ''; result.enabled_rows++; } catch (st) {}
+            try { el.classList.toggle('active', selected); } catch (c2) {}
+            try { el.classList.toggle('selected', selected); } catch (c3) {}
+            try { el.classList.toggle('focus', selected); } catch (c4) {}
+            try { el.classList.toggle('selector--active', selected); } catch (c5) {}
+            try { el.classList.toggle('selector--selected', selected); } catch (c6) {}
+            try { el.classList.toggle('selectbox-item--active', selected); } catch (c7) {}
+            try { el.classList.toggle('selectbox__item--active', selected); } catch (c8) {}
+            try { el.setAttribute('data-selected', selected ? 'true' : 'false'); } catch (c9) {}
             try {
               var old = el.querySelectorAll ? el.querySelectorAll('.stels-zetflixnet-voice-check') : [];
               for (var oi = 0; oi < old.length; oi++) { try { old[oi].parentNode.removeChild(old[oi]); result.removed++; } catch (or) {} }
@@ -15870,18 +15833,7 @@
             current: voiceName === selectedVoice,
             enabled: true,
             onSelect: function () {
-              var actualSelectedVoice = '';
-              try {
-                actualSelectedVoice = cleanText((element && (element._stels_zetflixnet_selected_voice || element.voice_name || element.translate_voice || element.voice)) || '');
-                if (!actualSelectedVoice && Lampa && Lampa.Player && typeof Lampa.Player.playdata === 'function') {
-                  var pdVoice = Lampa.Player.playdata() || {};
-                  actualSelectedVoice = cleanText(pdVoice._stels_zetflixnet_selected_voice || pdVoice.voice_name || pdVoice.translate_voice || pdVoice.voice || '');
-                }
-              } catch (eActual) {}
-              if (cleanText(voiceName || '') === actualSelectedVoice) {
-                zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'onselect-current-refresh');
-                return;
-              }
+              if (voiceName === selectedVoice) return;
               var target = zetflixnetFindAlt(element, voiceName);
               if (!target || !target.data_id) {
                 stelsLog('zetflixnet-voice-switch-missing', { voice: voiceName, season: element && element.season || '', episode: element && element.episode || '', current: element && element.data_id || '' });
@@ -15895,7 +15847,6 @@
                   element.voice_name = voiceName;
                   element.translate_voice = voiceName;
                   element.voice = voiceName;
-                  element._stels_zetflixnet_selected_voice = voiceName;
                   element.data_id = target.data_id || element.data_id || '';
                   element.voiceovers = trackList;
                   element.translate = element.translate || {};
@@ -16091,74 +16042,6 @@
         });
       }
 
-      function zetflixnetAppendFutureEpisodesForSeason(currentItems) {
-        try {
-          if (!(object && object.movie && (object.movie.name || object.method === 'tv' || object.type === 'tv'))) return;
-          if (!currentItems || !currentItems.length || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) return;
-          var movie = object.movie || {};
-          var tmdb_id = movie.tmdb_id || movie.id;
-          if (!tmdb_id) return;
-          var selectedSeason = 0;
-          try { selectedSeason = parseInt(filter_items.season && filter_items.season[choice.season] || currentItems[0].season || 0, 10) || 0; } catch (e0) {}
-          if (!selectedSeason) return;
-          var existing = {};
-          currentItems.forEach(function (it) {
-            var s = parseInt(it && it.season || 0, 10) || 0;
-            var e = parseInt(it && it.episode || 0, 10) || 0;
-            if (s === selectedSeason && e) existing[e] = true;
-          });
-          var today = new Date();
-          today.setHours(0, 0, 0, 0);
-          var cache_key = tmdb_id + ':' + selectedSeason;
-          function render(data) {
-            try {
-              var episodes = data && data.episodes || [];
-              var added = 0;
-              episodes.forEach(function (ep) {
-                var num = parseInt(ep && ep.episode_number || 0, 10) || 0;
-                if (!num || existing[num]) return;
-                var air = String(ep.air_date || '').trim();
-                if (!air) return;
-                var date = new Date(air + 'T00:00:00');
-                if (!(date instanceof Date) || isNaN(date.getTime())) return;
-                if (date < today) return;
-                var formatted = stelsFormatUkrDate(air) || air;
-                var title = 'Сезон ' + selectedSeason + ' / Серія ' + num;
-                var epName = stelsSafeDecodeHtml(ep.name || '').replace(/\s+/g, ' ').trim();
-                var element = {
-                  title: title,
-                  quality: 'Очікується',
-                  info: ' / вихід: ' + formatted,
-                  season: '' + selectedSeason,
-                  episode: num,
-                  translate_voice: 'Дата виходу',
-                  voice_name: 'Дата виходу',
-                  timeline: null,
-                  stels_future_episode: true
-                };
-                var item = Lampa.Template.get('stels_online', element);
-                item.addClass('stels-online-future-episode');
-                try { item.find('.online__title').text(title + (epName ? ' — ' + epName : '')); } catch (et) {}
-                try { item.find('.online__quality').text('Вихід: ' + formatted); } catch (eq) {}
-                item.on('hover:enter', function () { Lampa.Noty.show('Серія ще не вийшла. Дата виходу: ' + formatted); });
-                component.append(item);
-                added++;
-              });
-              stelsLog('zetflixnet-future-episodes-render', { season: selectedSeason, added: added, total_tmdb: episodes.length });
-            } catch (er) { stelsLog('zetflixnet-future-episodes-render-error', { error: er && (er.message || er.toString()) || '' }); }
-          }
-          var cached = stels_tmdb_season_cache[cache_key];
-          if (cached) { render(cached); return; }
-          Lampa.Api.sources.tmdb.get('tv/' + tmdb_id + '/season/' + selectedSeason, {}, function (data) {
-            stels_tmdb_season_cache[cache_key] = data || { episodes: [] };
-            render(stels_tmdb_season_cache[cache_key]);
-          }, function () {
-            stels_tmdb_season_cache[cache_key] = { episodes: [] };
-            stelsLog('zetflixnet-future-episodes-load-error', { tmdb_id: tmdb_id, season: selectedSeason });
-          });
-        } catch (e) { stelsLog('zetflixnet-future-episodes-error', { error: e && (e.message || e.toString()) || '' }); }
-      }
-
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
@@ -16244,7 +16127,6 @@
             }
           });
         });
-        zetflixnetAppendFutureEpisodesForSeason(items);
         component.start(true);
       }
     }
@@ -26053,7 +25935,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.39: повернення на стабільну базу 1.1.37; без зламаного DOM-handler з 1.1.38; посилено оновлення галочки перекладу ZetflixNet на Tizen і додано показ майбутніх серій з датою виходу.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.37: збережено виправлення накладання звукових доріжок ZetflixNet; додано примусове оновлення selected-state і видимої галочки перекладу на Tizen після перемикання озвучки.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
