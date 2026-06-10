@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.05';
+    var STELS_ONLINE_VERSION = '1.1.06';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -3414,6 +3414,7 @@
       var all_items = [];
       var player_token = '';
       var player_referer = 'https://synthezoid-as.stloadi.live/';
+      var player_origin = 'https://synthezoid-as.stloadi.live';
 
       function preview(v, n) { v = String(v || ''); return v.length > (n || 180) ? v.slice(0, n || 180) + '...' : v; }
       function abs(url, base) {
@@ -3530,7 +3531,7 @@
         return list[0];
       }
       function filterGoodResults(list) {
-        return (list || []).filter(function (item) { return scoreResult(item) >= 55; });
+        return (list || []).filter(function (item) { return scoreResult(item) >= 80; });
       }
       function requestText(url, success, fail, opts) {
         opts = opts || {};
@@ -3724,12 +3725,23 @@
         (results || []).forEach(function (r) { if (isSeasonResult(r)) seasonCount++; });
         return seasonCount >= 2 || (seasonCount >= 1 && (results || []).length <= 3);
       }
+      function normalizePlayerUrl(url) {
+        url = abs(component.decodeHtml(url || ''), ref);
+        if (!url) return '';
+        // Zerx зараз часто вставляє synthezoid-as.allarknow.online, але у HAR робочий
+        // плеєр і /bnsi/movies/* йдуть через synthezoid-as.stloadi.live. allarknow дає 404.
+        url = url.replace(/^https?:\/\/synthezoid-as\.allarknow\.online\//i, 'https://synthezoid-as.stloadi.live/');
+        url = url.replace(/^https?:\/\/synthezoid-as\.allarknow\.online$/i, 'https://synthezoid-as.stloadi.live');
+        return url;
+      }
       function extractIframes(html) {
         var list = [];
         function add(url) {
-          url = abs(component.decodeHtml(url || ''), ref);
-          if (!url || !/(synthezoid|stloadi|ortified)/i.test(url)) return;
-          if (list.indexOf(url) == -1) list.push(url);
+          var raw = abs(component.decodeHtml(url || ''), ref);
+          if (!raw || !/(synthezoid|stloadi|allarknow|ortified)/i.test(raw)) return;
+          var normalized = normalizePlayerUrl(raw);
+          if (normalized && list.indexOf(normalized) == -1) list.push(normalized);
+          if (!/allarknow/i.test(raw) && raw !== normalized && list.indexOf(raw) == -1) list.push(raw);
         }
         String(html || '').replace(/data-videoframe=["']([^"']+)["']/gi, function (all, url) { add(url); return all; });
         String(html || '').replace(/<iframe[^>]+src=["']([^"']+)["']/gi, function (all, url) { add(url); return all; });
@@ -3749,17 +3761,45 @@
         var list = extractIframes(html);
         return list[0] || '';
       }
+      function readQuotedJsString(str, start) {
+        str = String(str || '');
+        var quote = str.charAt(start);
+        if (quote !== '"' && quote !== "'") return '';
+        var out = '';
+        var esc = false;
+        for (var i = start + 1; i < str.length; i++) {
+          var ch = str.charAt(i);
+          if (esc) { out += '\\' + ch; esc = false; continue; }
+          if (ch === '\\') { esc = true; continue; }
+          if (ch === quote) break;
+          out += ch;
+        }
+        return out;
+      }
+      function jsStringToText(raw) {
+        raw = String(raw || '');
+        try { return JSON.parse('"' + raw.replace(/"/g, '\\"') + '"'); } catch (e) {}
+        return raw.replace(/\\u([0-9a-fA-F]{4})/g, function (_, h) { return String.fromCharCode(parseInt(h, 16)); })
+          .replace(/\\x([0-9a-fA-F]{2})/g, function (_, h) { return String.fromCharCode(parseInt(h, 16)); })
+          .replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')
+          .replace(/\\\//g, '/').replace(/\\'/g, "'").replace(/\\\"/g, '"').replace(/\\\\/g, '\\');
+      }
       function parseJsonParseVariable(html, varName) {
-        var re = new RegExp('const\\s+' + varName + '\\s*=\\s*JSON\\.parse\\(\\\'([\\s\\S]*?)\\\'\\);');
-        var m = String(html || '').match(re);
+        html = String(html || '');
+        var re = new RegExp('(?:const|let|var)\\s+' + varName + '\\s*=\\s*JSON\\.parse\\(\\s*(["\\\'])', 'i');
+        var m = re.exec(html);
         if (!m) return null;
-        var raw = m[1];
-        try { return JSON.parse(raw.replace(/\\\//g, '/').replace(/\\'/g, "'")); } catch (e) {}
-        try { return JSON.parse(component.decodeHtml(raw).replace(/\\\//g, '/').replace(/\\'/g, "'")); } catch (e2) {}
+        var raw = readQuotedJsString(html, m.index + m[0].length - 1);
+        var candidates = [raw, component.decodeHtml(raw), jsStringToText(raw), jsStringToText(component.decodeHtml(raw))];
+        for (var i = 0; i < candidates.length; i++) {
+          var c = String(candidates[i] || '').replace(/\\\//g, '/');
+          try { return JSON.parse(c); } catch (e) {}
+        }
         return null;
       }
       function parsePlayerHtml(html, iframeUrl, forcedSeason) {
-        player_referer = iframeUrl || player_referer;
+        player_referer = normalizePlayerUrl(iframeUrl || player_referer);
+        try { var om = String(player_referer || '').match(/^(https?:\/\/[^\/]+)/i); if (om) player_origin = om[1]; } catch (e) {}
         var mtoken = String(html || '').match(/token:\s*['"]([^'"]+)/i) || String(iframeUrl || '').match(/[?&]token=([^&]+)/i);
         player_token = mtoken ? decodeURIComponent(mtoken[1]) : '';
         var fileList = parseJsonParseVariable(html, 'fileList');
@@ -3769,6 +3809,7 @@
         }
         var items = [];
         var seen = {};
+        stelsLog('zerx-filelist-shape', { type: fileList && fileList.type, all_keys: fileList && fileList.all ? Object.keys(fileList.all).slice(0, 12) : [], translations_count: fileList && fileList.translationList ? Object.keys(fileList.translationList).length : 0 });
         function addItem(season, episode, voice, id, quality) {
           id = id || '';
           if (!id || seen[[season, episode, voice, id].join('|')]) return;
@@ -3861,10 +3902,12 @@
       function getStream(element, call, error) {
         if (element.stream) return call(element);
         if (!element.file_id || !player_token) return error && error();
-        var url = 'https://synthezoid-as.stloadi.live/bnsi/movies/' + encodeURIComponent(element.file_id);
-        var post = 'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=0';
+        var baseOrigin = player_origin || 'https://synthezoid-as.stloadi.live';
+        var url = baseOrigin + '/bnsi/movies/' + encodeURIComponent(element.file_id);
+        var post = 'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=0&audio=&subtitle=';
         var headers = {};
         for (var hkey in player_headers) headers[hkey] = player_headers[hkey];
+        headers.Origin = baseOrigin;
         headers.Referer = player_referer;
         requestText(url, function (json) {
           var parsed = parseHlsJson(json, element.voice);
@@ -3872,7 +3915,7 @@
           element.stream = parsed.file;
           element.qualitys = parsed.quality;
           element.subtitles = parsed.subtitles || [];
-          element.headers = stream_headers;
+          element.headers = { 'User-Agent': user_agent, 'Referer': player_referer, 'Origin': baseOrigin };
           call(element);
         }, error, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 18000 });
       }
@@ -4016,11 +4059,10 @@
             finishOnce(function () {
               var best = pickBest(results);
               stelsLog('zerx-search-final', { count: results.length, season_group: sameSeasonSeriesResults(results), best: best && { title: best.title, url: best.url, score: scoreResult(best) }, sample: results.slice(0, 8) });
-              // У 1.1.03/1.1.04 автоматичний merge сезонних сторінок ламав джерело:
-              // якщо один сезонний player давав 404/timeout, увесь Zerx показував "нічого не знайдено".
-              // Повертаємо безпечну поведінку 1.1.02: коли є кілька знайдених сторінок,
-              // показуємо користувачу результати, а не відкриваємо сезонні сторінки автоматично.
-              if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
+              // Для серіалів Zerx правильна структура лежить у player fileList, а не в результатах пошуку.
+              // Тому сезонну сторінку відкриваємо автоматично і будуємо фільтри сезон/озвучка/серія з fileList.
+              if (sameSeasonSeriesResults(results)) loadPlayerPage((best || results[0]).url, 0);
+              else if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
               else loadPlayerPage((best || results[0]).url, seasonOfResult(best || results[0]) || 0);
             });
           }, function () { finishOnce(function () { component.loading(false); component.emptyForQuery(select_title); }); });
