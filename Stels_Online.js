@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.34';
+    var STELS_ONLINE_VERSION = '1.1.30';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -507,7 +507,6 @@
         'stels_online_log_enabled',
         'stels_online_android_player_fix',
         'stels_online_zetflixnet_voice_quality_fix',
-        'stels_online_zetflixnet_tizen_hls_voice',
         'stels_online_filter',
         'stels_online_sources_hide',
         'stels_online_watch_history'
@@ -672,7 +671,7 @@
           '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*=\"subtitle\"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
-          '.stels-online-source-row.focus,.stels-online-source-row.stels-online-source-focused,.stels-online-source-row:hover{background:rgba(255,255,255,.12);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
+          '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
           '.stels-online-source-row.stels-online-source-disabled{opacity:.48;}' +
           '.stels-online-source-arrows{display:flex;gap:.45em;align-items:center;margin-left:auto;margin-right:.7em}.stels-online-source-arrow{color:#00d36f;font-size:1.25em;font-weight:900;line-height:1;padding:.28em .38em;border-radius:.3em;background:rgba(0,211,111,.10)}.stels-online-source-arrow.focus,.stels-online-source-arrow:hover{background:rgba(0,211,111,.24)}' +
           '.stels-online-advanced-settings{margin-top:.35em;border-top:1px solid rgba(255,255,255,.08);padding-top:.35em;}' +
@@ -778,14 +777,14 @@
           var el = row && row.jquery ? row[0] : row;
           if (!el) return;
           stelsLastFocusedSourceRow = el;
+          if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
           var list = html.find('.stels-online-sources-list')[0];
           if (list) {
             var r = el.getBoundingClientRect();
             var lr = list.getBoundingClientRect();
-            var margin = Math.max(18, Math.round(lr.height * 0.18));
-            if (r.top < lr.top + margin) list.scrollTop -= (lr.top + margin - r.top);
-            else if (r.bottom > lr.bottom - margin) list.scrollTop += (r.bottom - (lr.bottom - margin));
-          } else if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            if (r.top < lr.top) list.scrollTop -= (lr.top - r.top + 12);
+            if (r.bottom > lr.bottom) list.scrollTop += (r.bottom - lr.bottom + 12);
+          }
         } catch (e) {}
       }
 
@@ -798,8 +797,6 @@
         stelsMoveStartedAt = Date.now();
         stelsSuppressSourceToggleUntil = stelsMoveStartedAt + 950;
         stelsSuppressSourceToggleKey = stelsNormalizeSourceKey(row.data('source'));
-        html.find('.stels-online-source-row').removeClass('stels-online-source-focused');
-        row.addClass('stels-online-source-focused');
         row.addClass('stels-online-source-moving');
         row.find('.stels-online-source-move-hint').text('Рух ↑↓');
         stelsScrollSourceRowIntoView(row);
@@ -837,8 +834,6 @@
       }
 
       html.on('hover:focus focus mouseenter', '.stels-online-source-row', function () {
-        html.find('.stels-online-source-row').removeClass('stels-online-source-focused');
-        $(this).addClass('stels-online-source-focused');
         stelsScrollSourceRowIntoView(this);
       });
 
@@ -853,7 +848,7 @@
       html.on('keydown', function (event) {
         var code = event && (event.keyCode || event.which) || 0;
         var key = event && event.key || '';
-        var current = html.find('.stels-online-source-row.stels-online-source-focused, .stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
+        var current = html.find('.stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
         if (!current.length) current = html.find('.stels-online-source-row:focus').first();
         if (!current.length && document.activeElement) current = $(document.activeElement).closest('.stels-online-source-row');
         if (movingMode) {
@@ -878,7 +873,7 @@
       });
 
       function stelsCurrentSourceRowForRemote() {
-        var current = html.find('.stels-online-source-row.stels-online-source-focused, .stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
+        var current = html.find('.stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
         if (!current.length) current = html.find('.stels-online-source-row:focus').first();
         if (!current.length && document.activeElement) current = $(document.activeElement).closest('.stels-online-source-row');
         if (!current.length && stelsLastFocusedSourceRow) current = $(stelsLastFocusedSourceRow).closest('.stels-online-source-row');
@@ -898,8 +893,6 @@
         var next = dir < 0 ? current.prev('.stels-online-source-row') : current.next('.stels-online-source-row');
         if (!next.length) next = current;
         stelsLastFocusedSourceRow = next[0];
-        html.find('.stels-online-source-row').removeClass('stels-online-source-focused');
-        next.addClass('stels-online-source-focused');
         try { next.attr('tabindex', '0').focus(); } catch (e) {}
         try { Lampa.Controller.collectionSet(html, html.find('.selector')); Lampa.Controller.collectionFocus(next[0], html); } catch (e2) {}
         stelsScrollSourceRowIntoView(next);
@@ -5506,52 +5499,6 @@
         season: 0,
         voice: 0
       };
-      function kinobaseCleanSearchTitle(v) {
-        return component.cleanTitle(String(v || '')).replace(/\s+/g, ' ').trim();
-      }
-      function kinobaseSearchTitleVariants(preferred) {
-        var arr = [];
-        function add(v) {
-          v = kinobaseCleanSearchTitle(v);
-          if (v && arr.indexOf(v) === -1) arr.push(v);
-        }
-        var movie = object && object.movie || {};
-        add(preferred);
-        add(select_title);
-        add(movie.title);
-        add(movie.name);
-        add(movie.original_title);
-        add(movie.original_name);
-        try {
-          var alt = movie.alternative_titles || movie.alt_titles || movie.titles || [];
-          if (Array.isArray(alt)) alt.forEach(function (x) { add(typeof x === 'string' ? x : (x && (x.title || x.name))); });
-        } catch (e) {}
-        var joined = arr.join(' | ').toLowerCase();
-        if (joined.indexOf('from') !== -1 || joined.indexOf('ззов') !== -1 || joined.indexOf('іззов') !== -1 || joined.indexOf('извне') !== -1) add('Извне');
-        if (joined.indexOf('cars') !== -1 || joined.indexOf('тач') !== -1) add('Тачки');
-        return arr;
-      }
-      function kinobasePreferredSearchQuery() {
-        var movie = object && object.movie || {};
-        var variants = kinobaseSearchTitleVariants('');
-        // Для kinobase.org російська назва часто дає точніший результат, ніж українська назва з TMDB.
-        for (var i = 0; i < variants.length; i++) {
-          if (/^извне$/i.test(variants[i])) return variants[i];
-          if (/^тачки$/i.test(variants[i])) return variants[i];
-        }
-        return kinobaseCleanSearchTitle(movie.original_title || movie.original_name || select_title || movie.title || movie.name || '') || kinobaseCleanSearchTitle(select_title);
-      }
-      function kinobaseTitleMatchesAny(title, variants) {
-        title = kinobaseCleanSearchTitle(title);
-        if (!title) return false;
-        for (var i = 0; i < variants.length; i++) {
-          var v = variants[i];
-          if (!v) continue;
-          if (component.equalTitle(title, v) || component.containsTitle(title, v) || component.containsTitle(v, title)) return true;
-        }
-        return false;
-      }
-
       /**
        * Поиск
        * @param {Object} _object
@@ -5564,21 +5511,14 @@
         object = _object;
         select_title = object.search || object.movie.title;
         if (this.wait_similars && data && data[0].is_similars) return getPage(data[0].link);
-        var query = kinobasePreferredSearchQuery();
-        var titleVariants = kinobaseSearchTitleVariants(query);
-        var url = embed + 'search';
-        var post = 'query=' + encodeURIComponent(query);
+        var url = embed + 'search?query=' + encodeURIComponent(component.cleanTitle(select_title));
         var cookie = check_cookie;
-        var headers = {
+        var headers = Lampa.Platform.is('android') ? {
           'Origin': host,
           'Referer': ref,
           'User-Agent': user_agent,
-          'Accept': 'text/html, */*; q=0.01',
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'X-Requested-With': 'XMLHttpRequest',
           'Cookie': cookie
-        };
-        stelsLog('kinobase-search-post', { query: query, variants: titleVariants, url: url });
+        } : {};
         var prox_enc_page = '';
 
         if (prox) {
@@ -5592,74 +5532,10 @@
         network.clear();
         network.timeout(1000 * 10);
         network["native"](component.proxyLink(url, prox, prox_enc_page), function (str) {
-          stelsLog('kinobase-search-response', { query: query, length: String(str || '').length, sample: String(str || '').slice(0, 280) });
           str = (str || '').replace(/\n/g, '');
           var links = object.movie.number_of_seasons ? str.match(/<div class="title"><a href="\/(serial|tv_show)\/([^"]*)"[^>]*>(.*?)<\/a><\/div>/g) : str.match(/<div class="title"><a href="\/film\/([^"]*)"[^>]*>(.*?)<\/a><\/div>/g);
-          if (!links) links = object.movie.number_of_seasons ? str.match(/<a[^>]+href=["']\/(serial|tv_show)\/[^"']+["'][^>]*>[\s\S]*?<\/a>/g) : str.match(/<a[^>]+href=["']\/film\/[^"']+["'][^>]*>[\s\S]*?<\/a>/g);
           var search_date = object.search_date || !object.clarification && (object.movie.release_date || object.movie.first_air_date || object.movie.last_air_date) || '0000';
           var search_year = parseInt((search_date + '').slice(0, 4));
-
-          var json_cards = [];
-          if (!links) {
-            try {
-              var parsedSearch = typeof str === 'string' ? JSON.parse(str) : str;
-              var suggestions = parsedSearch && parsedSearch.suggestions || [];
-              if (Array.isArray(suggestions) && suggestions.length) {
-                suggestions.forEach(function (sg) {
-                  if (!sg) return;
-                  var lnk = sg.url || sg.link || sg.href || '';
-                  var tit = sg.value || sg.title || sg.name || '';
-                  var y = parseInt(sg.year || 0, 10) || undefined;
-                  if (!lnk || !tit) return;
-                  if (object.movie.number_of_seasons) {
-                    if (!/\/(?:serial|tv_show)\//i.test(lnk)) return;
-                  } else {
-                    if (!/\/film\//i.test(lnk)) return;
-                  }
-                  json_cards.push({ year: y, title: tit, link: lnk, type: sg.type || '', rating: sg.rating || 0, is_sure: true });
-                });
-              }
-              stelsLog('kinobase-search-json-cards', { query: query, count: json_cards.length, sample: json_cards.slice(0, 5).map(function (c) { return [c.title, c.year, c.link].join('|'); }) });
-            } catch (jsonErr) {
-              stelsLog('kinobase-search-json-error', { query: query, error: jsonErr && (jsonErr.message || jsonErr.toString()) || '' });
-            }
-          }
-
-          if (json_cards.length) {
-            var is_sure_json = false;
-            var items_json = json_cards;
-            var cards_json = items_json.slice(0);
-
-            if (cards_json.length) {
-              if (titleVariants && titleVariants.length) {
-                var tmp_json = cards_json.filter(function (c) { return kinobaseTitleMatchesAny(c.title, titleVariants); });
-                if (tmp_json.length) { cards_json = tmp_json; is_sure_json = true; }
-              }
-
-              if (cards_json.length > 1 && search_year) {
-                var tmp_year_json = cards_json.filter(function (c) { return c.year == search_year; });
-                if (!tmp_year_json.length) tmp_year_json = cards_json.filter(function (c) { return c.year && c.year > search_year - 2 && c.year < search_year + 2; });
-                if (tmp_year_json.length) cards_json = tmp_year_json;
-              }
-
-              if (object.movie.number_of_seasons && cards_json.length > 1) {
-                var serial_json = cards_json.filter(function (c) { return /\/(?:serial|tv_show)\//i.test(c.link || ''); });
-                if (serial_json.length) cards_json = serial_json;
-              }
-            }
-
-            if (cards_json.length == 1 && (is_sure_json || (search_year && cards_json[0].year == search_year))) {
-              stelsLog('kinobase-search-json-selected', { query: query, title: cards_json[0].title, year: cards_json[0].year, link: cards_json[0].link });
-              getPage(cards_json[0].link);
-            } else if (items_json.length) {
-              _this.wait_similars = true;
-              items_json.forEach(function (c) { c.is_similars = true; });
-              stelsLog('kinobase-search-json-similars', { query: query, count: items_json.length, filtered_count: cards_json.length, sample: items_json.slice(0, 6).map(function (c) { return [c.title, c.year, c.link].join('|'); }) });
-              component.similars(items_json);
-              component.loading(false);
-            } else component.emptyForQuery(select_title);
-            return;
-          }
 
           if (links) {
             var is_sure = false;
@@ -5684,9 +5560,9 @@
             var cards = items;
 
             if (cards.length) {
-              if (titleVariants && titleVariants.length) {
+              if (select_title) {
                 var tmp = cards.filter(function (c) {
-                  return kinobaseTitleMatchesAny(c.title, titleVariants);
+                  return component.containsTitle(c.title, select_title);
                 });
 
                 if (tmp.length) {
@@ -5715,8 +5591,8 @@
               if (is_sure) {
                 is_sure = false;
 
-                if (titleVariants && titleVariants.length) {
-                  is_sure |= kinobaseTitleMatchesAny(cards[0].title, titleVariants);
+                if (select_title) {
+                  is_sure |= component.equalTitle(cards[0].title, select_title);
                 }
               }
             }
@@ -5737,9 +5613,8 @@
             }
           } else component.emptyForQuery(select_title);
         }, function (a, c) {
-          stelsLog('kinobase-search-error', { query: query, status: a && a.status, message: network.errorDecode(a, c) });
           component.empty(network.errorDecode(a, c));
-        }, post, {
+        }, false, {
           dataType: 'text',
           withCredentials: logged_in,
           headers: headers
@@ -5901,46 +5776,6 @@
         });
         return subtitles.length ? subtitles : false;
       }
-      function kinobaseParseSeasonEpisodeTitle(title) {
-        title = String(title || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        var m = title.match(/(?:^|\D)(\d{1,2})\s*(?:сезон|season|s)\D{0,18}(\d{1,3})\s*(?:сер(?:ия|ії|ія|и[яи])?|episode|e)/i);
-        if (!m) m = title.match(/s\s*(\d{1,2})\s*e\s*(\d{1,3})/i);
-        if (!m) m = title.match(/(\d{1,2})\s*[xх]\s*(\d{1,3})/i);
-        if (!m) return null;
-        return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
-      }
-
-      function kinobaseNormalizePlaylistStructure(list) {
-        if (!Array.isArray(list) || !list.length) return list;
-        var already = list.some(function (x) { return x && (x.playlist || x.folder); });
-        if (already) return list;
-        var groups = {};
-        var parsedCount = 0;
-        list.forEach(function (item, index) {
-          var title = item && (item.title || item.comment || item.name) || '';
-          var se = kinobaseParseSeasonEpisodeTitle(title);
-          if (!se || !se.season || !se.episode) return;
-          parsedCount++;
-          if (!groups[se.season]) groups[se.season] = [];
-          var copy = {};
-          for (var k in item) copy[k] = item[k];
-          copy.title = 'Серія ' + se.episode;
-          copy.comment = copy.title;
-          copy.episode = se.episode;
-          copy.number = se.episode;
-          copy._stels_original_title = title;
-          copy._stels_order = index;
-          groups[se.season].push(copy);
-        });
-        if (parsedCount < 2) return list;
-        var out = Object.keys(groups).map(function (seasonKey) {
-          var season = parseInt(seasonKey, 10) || 1;
-          groups[seasonKey].sort(function (a, b) { return (a.episode || 0) - (b.episode || 0) || (a._stels_order || 0) - (b._stels_order || 0); });
-          return { title: season + ' сезон', comment: season + ' сезон', number: season, folder: groups[seasonKey] };
-        }).sort(function (a, b) { return (a.number || 0) - (b.number || 0); });
-        return out.length ? out : list;
-      }
-
       /**
        * Получить данные о фильме
        * @param {String} str
@@ -5953,7 +5788,6 @@
         quality_type = quality_match ? quality_match[1].trim() : '';
         translation = translation_match ? translation_match[1].trim() : '';
         var pl = vod && vod.file && Lampa.Arrays.decodeJson(vod.file, []) || [];
-        pl = kinobaseNormalizePlaylistStructure(pl);
 
         if (pl.length) {
           extract = pl;
@@ -15253,7 +15087,7 @@
       }
 
       function zetflixnetStopCurrentPlayback(reason) {
-        var stopped = { reason: reason || '', player_pause: false, player_stop: false, player_video: false, html_media: 0, removed_sources: 0, errors: [] };
+        var stopped = { reason: reason || '', player_pause: false, player_video: false, html_media: 0, errors: [] };
         try {
           if (Lampa && Lampa.Player && typeof Lampa.Player.pause === 'function') {
             Lampa.Player.pause();
@@ -15261,24 +15095,12 @@
           }
         } catch (e) { stopped.errors.push('player_pause:' + (e && (e.message || e.toString()) || e)); }
         try {
-          if (Lampa && Lampa.Player && typeof Lampa.Player.stop === 'function') {
-            Lampa.Player.stop();
-            stopped.player_stop = true;
-          }
-        } catch (e0) { stopped.errors.push('player_stop:' + (e0 && (e0.message || e0.toString()) || e0)); }
-        try {
           var pv = null;
           if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') pv = Lampa.Player.video();
           if (pv && pv.pause) {
             pv.pause();
-            try { pv.muted = true; pv.volume = 0; } catch (em) {}
             try { pv.removeAttribute('src'); } catch (e1) {}
             try { pv.src = ''; } catch (e2) {}
-            try { pv.srcObject = null; } catch (e2b) {}
-            try {
-              var srcs = pv.querySelectorAll ? pv.querySelectorAll('source') : [];
-              for (var si = 0; si < srcs.length; si++) { try { srcs[si].removeAttribute('src'); stopped.removed_sources++; } catch (es) {} }
-            } catch (es2) {}
             try { pv.load(); } catch (e3) {}
             stopped.player_video = true;
           }
@@ -15288,14 +15110,8 @@
           for (var i = 0; i < nodes.length; i++) {
             var m = nodes[i];
             try { m.pause(); } catch (e5) {}
-            try { m.muted = true; m.volume = 0; } catch (e5b) {}
             try { m.removeAttribute('src'); } catch (e6) {}
             try { m.src = ''; } catch (e7) {}
-            try { m.srcObject = null; } catch (e7b) {}
-            try {
-              var children = m.querySelectorAll ? m.querySelectorAll('source') : [];
-              for (var j = 0; j < children.length; j++) { try { children[j].removeAttribute('src'); stopped.removed_sources++; } catch (ecs) {} }
-            } catch (ecs2) {}
             try { m.load(); } catch (e8) {}
             stopped.html_media++;
           }
@@ -15303,131 +15119,9 @@
         stelsLog('zetflixnet-player-stop-before-switch', stopped);
       }
 
-      function zetflixnetKeepCurrentMediaOnly(reason) {
-        var result = { reason: reason || '', total: 0, keep: false, stopped: 0, errors: [] };
-        try {
-          var keep = null;
-          try { if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') keep = Lampa.Player.video(); } catch (e0) {}
-          var nodes = document.querySelectorAll('video,audio');
-          result.total = nodes.length;
-          if (!keep && nodes.length) keep = nodes[nodes.length - 1];
-          result.keep = !!keep;
-          for (var i = 0; i < nodes.length; i++) {
-            var m = nodes[i];
-            if (!m || m === keep) continue;
-            try { m.pause(); } catch (e1) {}
-            try { m.muted = true; m.volume = 0; } catch (e2) {}
-            try { m.removeAttribute('src'); } catch (e3) {}
-            try { m.src = ''; } catch (e4) {}
-            try { m.srcObject = null; } catch (e5) {}
-            try { m.load(); } catch (e6) {}
-            result.stopped++;
-          }
-          try { if (keep) { keep.muted = false; if (keep.volume === 0) keep.volume = 1; } } catch (e7) {}
-        } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
-        stelsLog('zetflixnet-media-keep-current', result);
-      }
-
-
-      function zetflixnetTizenReplaceSourceInCurrentVideo(play, voiceName, item, previousTime) {
-        var result = { voice: voiceName || '', data_id: item && item.data_id || '', url: zlogUrlInfo(play && play.url || ''), previous_time: previousTime || 0, video_total: 0, audio_total: 0, stopped_other: 0, current_found: false, fallback_player_play: false, errors: [] };
-        try {
-          if (!play || !play.url) throw new Error('empty play url');
-          var video = null;
-          try { if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') video = Lampa.Player.video(); } catch (e0) { result.errors.push('player_video:' + (e0 && (e0.message || e0.toString()) || e0)); }
-          var videos = [];
-          try { videos = Array.prototype.slice.call(document.querySelectorAll('video')); } catch (e1) { videos = []; result.errors.push('query_video:' + (e1 && (e1.message || e1.toString()) || e1)); }
-          if (!video) {
-            for (var vi = videos.length - 1; vi >= 0; vi--) {
-              if (videos[vi] && videos[vi].parentNode) { video = videos[vi]; break; }
-            }
-          }
-          result.video_total = videos.length;
-          try { result.audio_total = document.querySelectorAll('audio').length; } catch (ea0) {}
-          if (!video) {
-            result.fallback_player_play = true;
-            stelsLog('zetflixnet-tizen-inplace-no-video', result);
-            try { Lampa.Player.play(play); } catch (ep) { result.errors.push('fallback_play:' + (ep && (ep.message || ep.toString()) || ep)); }
-            return false;
-          }
-          result.current_found = true;
-
-          // Головне для Tizen: не створювати другий Lampa.Player/video.
-          // Усі старі audio/video, крім поточного video, повністю глушимо та відчіпляємо від потоку.
-          try {
-            var media = Array.prototype.slice.call(document.querySelectorAll('video,audio'));
-            media.forEach(function (m) {
-              if (!m || m === video) return;
-              try { m.pause(); } catch (x1) {}
-              try { m.muted = true; m.volume = 0; } catch (x2) {}
-              try { m.removeAttribute('src'); } catch (x3) {}
-              try { m.src = ''; } catch (x4) {}
-              try { m.srcObject = null; } catch (x5) {}
-              try {
-                var srcs = m.querySelectorAll ? m.querySelectorAll('source') : [];
-                for (var si = 0; si < srcs.length; si++) { try { srcs[si].removeAttribute('src'); } catch (xs) {} }
-              } catch (x6) {}
-              try { m.load(); } catch (x7) {}
-              result.stopped_other++;
-            });
-          } catch (e2) { result.errors.push('stop_other:' + (e2 && (e2.message || e2.toString()) || e2)); }
-
-          try { video.pause(); } catch (p0) {}
-          try { video.muted = false; if (video.volume === 0) video.volume = 1; } catch (p1) {}
-          try { video.removeAttribute('src'); } catch (p2) {}
-          try { video.src = ''; } catch (p3) {}
-          try { video.srcObject = null; } catch (p4) {}
-          try {
-            var children = video.querySelectorAll ? video.querySelectorAll('source') : [];
-            for (var ci = children.length - 1; ci >= 0; ci--) {
-              try { children[ci].removeAttribute('src'); } catch (pc0) {}
-              try { if (children[ci].parentNode) children[ci].parentNode.removeChild(children[ci]); } catch (pc1) {}
-            }
-          } catch (p5) {}
-          try { video.load(); } catch (p6) {}
-
-          var target = play.url;
-          var restoreTime = Math.max(0, Number(previousTime || 0) || 0);
-          var applied = false;
-          var applyTimeAndPlay = function (tag) {
-            try {
-              if (restoreTime > 1 && isFinite(video.duration || 0)) {
-                try { video.currentTime = Math.min(restoreTime, Math.max(0, (video.duration || restoreTime) - 1)); } catch (st) {}
-              } else if (restoreTime > 1) {
-                try { video.currentTime = restoreTime; } catch (st2) {}
-              }
-            } catch (ignoreTime) {}
-            try {
-              var pr = video.play && video.play();
-              if (pr && pr.catch) pr.catch(function (err) { stelsLog('zetflixnet-tizen-inplace-play-promise-error', { tag: tag || '', error: err && (err.message || err.toString()) || '' }); });
-            } catch (pe) { stelsLog('zetflixnet-tizen-inplace-play-error', { tag: tag || '', error: pe && (pe.message || pe.toString()) || '' }); }
-          };
-          var onceReady = function (tag) {
-            if (applied) return;
-            applied = true;
-            applyTimeAndPlay(tag || 'ready');
-          };
-          try { video.addEventListener('loadedmetadata', function () { onceReady('loadedmetadata'); }, { once: true }); } catch (ev1) {}
-          try { video.addEventListener('canplay', function () { onceReady('canplay'); }, { once: true }); } catch (ev2) {}
-          try { video.src = target; } catch (s0) { result.errors.push('set_src:' + (s0 && (s0.message || s0.toString()) || s0)); }
-          try { video.load(); } catch (l0) { result.errors.push('load_new:' + (l0 && (l0.message || l0.toString()) || l0)); }
-          setTimeout(function () { onceReady('timeout-700'); }, 700);
-          setTimeout(function () { zetflixnetKeepCurrentMediaOnly('tizen-inplace-after:' + (voiceName || '')); }, 1600);
-          stelsLog('zetflixnet-tizen-inplace-source-switch', result);
-          return true;
-        } catch (e) {
-          result.errors.push(e && (e.message || e.toString()) || '');
-          stelsLog('zetflixnet-tizen-inplace-source-switch-error', result);
-          try { Lampa.Player.play(play); result.fallback_player_play = true; } catch (e2) {}
-          return false;
-        }
-      }
 
       function zetflixnetVoiceQualityFixEnabled() {
         try { return Lampa.Storage.get('stels_online_zetflixnet_voice_quality_fix', false) === true; } catch (e) { return false; }
-      }
-      function zetflixnetTizenHlsVoiceEnabled() {
-        try { return Lampa.Storage.get('stels_online_zetflixnet_tizen_hls_voice', false) === true; } catch (e) { return false; }
       }
       function zetflixnetUrlCleanForCompare(url) {
         return String(url || '').split('#')[0].replace(/[?&](?:token|expires|e|hash|h|sig|sign|signature|hdnts|Policy|Key-Pair-Id|Signature)=[^&]+/ig, '').replace(/[?&]$/,'');
@@ -15452,24 +15146,6 @@
         } catch (e) {}
         return out;
       }
-      function zetflixnetPreselectQualityInPlay(play, wantedLabel, voiceName, item) {
-        if (!play || !wantedLabel || !play.quality) return play;
-        var found = zetflixnetFindQualityByLabel(play.quality, wantedLabel);
-        if (!found.url) {
-          stelsLog('zetflixnet-voice-quality-preselect-skip', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), data_id: item && item.data_id || '', quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [] });
-          return play;
-        }
-        play.url = found.url;
-        play.file = found.url;
-        play.stream = found.url;
-        play._quality = found.label || wantedLabel;
-        play.quality_name = found.label || wantedLabel;
-        play.qualityLabel = found.label || wantedLabel;
-        play._stels_zetflixnet_voice_quality_preselected = true;
-        stelsLog('zetflixnet-voice-quality-preselect', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), resolved_quality: zetflixnetNormalizeQualityLabel(found.label || wantedLabel), data_id: item && item.data_id || '', url: zlogUrlInfo(found.url) });
-        return play;
-      }
-
       function zetflixnetCurrentVideoUrlSafe() {
         var url = '';
         try {
@@ -15546,32 +15222,57 @@
       }
       function zetflixnetManualQualitySelectAfterVoiceSwitch(play, wantedLabel, voiceName, item) {
         if (!play || !wantedLabel || !play.quality) {
-          stelsLog('zetflixnet-voice-quality-select-skip', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), reason: !play ? 'no-play' : !wantedLabel ? 'no-quality' : 'no-map' });
+          stelsLog('zetflixnet-voice-quality-manual-skip', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), reason: !play ? 'no-play' : !wantedLabel ? 'no-quality' : 'no-map' });
           return;
         }
         var found = zetflixnetFindQualityByLabel(play.quality, wantedLabel);
         var target = found.url || '';
         var resolvedLabel = found.label || wantedLabel;
         var delay = (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 2200 : 1800;
-        stelsLog('zetflixnet-voice-quality-select-plan', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), resolved_quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), data_id: item && item.data_id || '', delay: delay, quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], target: zlogUrlInfo(target) });
+        stelsLog('zetflixnet-voice-quality-manual-plan', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), resolved_quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), data_id: item && item.data_id || '', delay: delay, quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], target: zlogUrlInfo(target) });
         if (!target) return;
         setTimeout(function () {
           try {
-            var qplay = {};
-            for (var k in play) qplay[k] = play[k];
-            qplay.url = target;
-            qplay.file = target;
-            qplay.stream = target;
-            qplay._quality = resolvedLabel;
-            qplay.quality_name = resolvedLabel;
-            qplay.qualityLabel = resolvedLabel;
-            qplay._stels_zetflixnet_manual_quality_select = true;
-            qplay._stels_zetflixnet_voice_quality_data_id = item && item.data_id || '';
-            stelsLog('zetflixnet-voice-quality-select-play', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), delay: delay, url: zlogUrlInfo(target), data_id: item && item.data_id || '' });
-            Lampa.Player.play(qplay);
-            try { Lampa.Player.playlist([qplay]); } catch (e1) {}
+            var video = null;
+            try { if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') video = Lampa.Player.video(); } catch (ve) {}
+            if (!video) {
+              try { video = document.querySelector('video'); } catch (ve2) {}
+            }
+            var pd = {};
+            try { pd = Lampa.Player && Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {}; } catch (pde) { pd = {}; }
+            try {
+              if (pd) {
+                pd.url = target;
+                pd.file = target;
+                pd.stream = target;
+                pd._quality = resolvedLabel;
+                pd.quality_name = resolvedLabel;
+                pd.qualityLabel = resolvedLabel;
+                pd._stels_zetflixnet_manual_quality_select = true;
+              }
+            } catch (pdErr) {}
+            play.url = target;
+            play.file = target;
+            play.stream = target;
+            play._quality = resolvedLabel;
+            play.quality_name = resolvedLabel;
+            play.qualityLabel = resolvedLabel;
+            if (video) {
+              var wasPaused = true;
+              var pos = 0;
+              try { wasPaused = !!video.paused; } catch (e1) {}
+              try { pos = Number(video.currentTime || 0) || 0; } catch (e2) {}
+              try { video.pause(); } catch (e3) {}
+              try { video.src = target; } catch (e4) { if (video.setAttribute) video.setAttribute('src', target); }
+              try { video.load(); } catch (e5) {}
+              if (pos > 1) setTimeout(function () { try { video.currentTime = Math.max(0, pos - 0.25); } catch (e6) {} }, 180);
+              if (!wasPaused) setTimeout(function () { try { var p = video.play && video.play(); if (p && p.catch) p.catch(function () {}); } catch (e7) {} }, 260);
+              stelsLog('zetflixnet-voice-quality-manual-apply', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), delay: delay, url: zlogUrlInfo(target), data_id: item && item.data_id || '', video: true, restore_time: pos });
+            } else {
+              stelsLog('zetflixnet-voice-quality-manual-no-video', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), delay: delay, url: zlogUrlInfo(target), data_id: item && item.data_id || '' });
+            }
           } catch (e) {
-            stelsLog('zetflixnet-voice-quality-select-error', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), delay: delay, error: e && (e.message || e.toString()) || '' });
+            stelsLog('zetflixnet-voice-quality-manual-error', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), delay: delay, error: e && (e.message || e.toString()) || '' });
           }
         }, delay);
       }
@@ -15595,15 +15296,13 @@
                 Lampa.Noty.show('Не вдалося знайти переклад: ' + voiceName);
                 return;
               }
-              var voiceQualityFixActive = zetflixnetVoiceQualityFixEnabled();
-              var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-              var currentTimeBeforeVoiceSwitch = zetflixnetGetCurrentTimeSafe();
-              var wantedQuality = voiceQualityFixActive ? zetflixnetDetectCurrentQualityLabel(current) : '';
               try { Lampa.Player.loading(true); } catch (e) {}
-              stelsLog('zetflixnet-voice-switch-start', { voice: voiceName, data_id: target.data_id, season: target.season || '', episode: target.episode || '', title: target.title || '', voice_quality_fix: voiceQualityFixActive, wanted_quality_before_request: zetflixnetNormalizeQualityLabel(wantedQuality || '') });
+              stelsLog('zetflixnet-voice-switch-start', { voice: voiceName, data_id: target.data_id, season: target.season || '', episode: target.episode || '', title: target.title || '' });
               getStream(target, function (item) {
                 try { Lampa.Player.loading(false); } catch (e2) {}
-                current = Lampa.Player.playdata ? (Lampa.Player.playdata() || current || {}) : (current || {});
+                var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+                var voiceQualityFixActive = zetflixnetVoiceQualityFixEnabled();
+                var wantedQuality = voiceQualityFixActive ? zetflixnetDetectCurrentQualityLabel(current) : '';
                 var play = zetflixnetBuildPlayable(item, {
                   timeline: current.timeline || item.timeline || element.timeline,
                   poster: current.poster || item.poster || element.poster || '',
@@ -15614,36 +15313,36 @@
                   translate: { tracks: zetflixnetVoiceovers(item, voiceName) || [] },
                   voiceovers: zetflixnetVoiceovers(item, voiceName)
                 }, 'zetflixnet-voice-switch');
-                var isTizenVoice = !!(Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen'));
-                var useHlsVoice = isTizenVoice && voiceQualityFixActive && zetflixnetTizenHlsVoiceEnabled();
-                if (voiceQualityFixActive && wantedQuality && !useHlsVoice) {
-                  play = zetflixnetPreselectQualityInPlay(play, wantedQuality, voiceName, item);
-                }
-                if (useHlsVoice && play.quality) {
-                  var hlsFound = zetflixnetFindQualityByLabel(play.quality, 'HLS');
-                  if (hlsFound && hlsFound.url) {
-                    play.url = hlsFound.url;
-                    play.file = hlsFound.url;
-                    play.stream = hlsFound.url;
-                    play._quality = hlsFound.label || 'HLS';
-                    play.quality_name = hlsFound.label || 'HLS';
-                    play.qualityLabel = hlsFound.label || 'HLS';
-                    stelsLog('zetflixnet-tizen-hls-voice-preselect', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(hlsFound.url) });
+                // Нова логіка: не підміняємо URL до старту перекладу.
+                // Спочатку даємо плеєру переключити переклад, потім окремо виконуємо ручний вибір попередньої якості.
+                stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], wanted_quality: zetflixnetNormalizeQualityLabel(wantedQuality || ''), quality_manual_select_planned: !!(voiceQualityFixActive && wantedQuality) });
+                zetflixnetStopCurrentPlayback('voice-switch:' + voiceName);
+                setTimeout(function () {
+                  if (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) {
+                    try {
+                      if (!zetflixnetVoiceQualityFixEnabled()) {
+                        var tizenUrl = component.getDefaultQuality(play.quality, play.url) || play.url;
+                        play.url = tizenUrl;
+                        play.file = tizenUrl;
+                        play.stream = tizenUrl;
+                        play.url_reserve = '';
+                        play.quality = false;
+                        stelsLog('zetflixnet-tizen-voice-single-url', { voice: voiceName, url: zlogUrlInfo(tizenUrl), data_id: item.data_id || '' });
+                      } else {
+                        play._stels_tizen_voice_quality_reselect = wantedQuality || '';
+                        stelsLog('zetflixnet-tizen-voice-quality-mode', { voice: voiceName, wanted_quality: wantedQuality || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality) : [] });
+                      }
+                      play._stels_tizen_voice_switch = true;
+                    } catch (e5) { stelsLog('zetflixnet-tizen-voice-single-url-error', { voice: voiceName, error: e5 && (e5.message || e5.toString()) || '' }); }
                   }
-                }
-                stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], wanted_quality: zetflixnetNormalizeQualityLabel(wantedQuality || ''), quality_preselected: !!play._stels_zetflixnet_voice_quality_preselected, tizen_hls_voice: useHlsVoice });
-                if (isTizenVoice) {
-                  play._stels_tizen_voice_switch = true;
-                  play._stels_tizen_single_player = true;
-                  zetflixnetTizenReplaceSourceInCurrentVideo(play, voiceName, item, currentTimeBeforeVoiceSwitch);
-                } else {
-                  setTimeout(function () {
-                    Lampa.Player.play(play);
-                    if (!stelsAndroidPlayerFixEnabled()) {
-                      try { Lampa.Player.playlist([play]); } catch (e4) {}
-                    }
-                  }, 180);
-                }
+                  Lampa.Player.play(play);
+                  if (!stelsAndroidPlayerFixEnabled()) {
+                    try { Lampa.Player.playlist([play]); } catch (e4) {}
+                  }
+                  if (voiceQualityFixActive && wantedQuality) {
+                    zetflixnetManualQualitySelectAfterVoiceSwitch(play, wantedQuality, voiceName, item);
+                  }
+                }, (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 450 : 180);
               }, function (err) {
                 try { Lampa.Player.loading(false); } catch (e3) {}
                 stelsLog('zetflixnet-voice-switch-fail', { voice: voiceName, error: err || '', season: element && element.season || '', episode: element && element.episode || '' });
@@ -24005,7 +23704,6 @@
       Lampa.Params.trigger('stels_online_log_enabled', true);
       Lampa.Params.trigger('stels_online_android_player_fix', false);
       Lampa.Params.trigger('stels_online_zetflixnet_voice_quality_fix', false);
-      Lampa.Params.trigger('stels_online_zetflixnet_tizen_hls_voice', false);
       Lampa.Params.trigger('stels_online_rezka2_fix_stream', false);
       Lampa.Params.select('stels_online_kinobase_mirror', '', '');
       Lampa.Params.select('stels_online_kinobase_cookie', '', '');
@@ -25416,12 +25114,7 @@
       template += `
         <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
             <div class="settings-param__name">Зміна логіки Перекладів</div>
-            <div class="settings-param__descr">Після зміни перекладу ZetflixNet плагін запускає новий переклад з тією самою якістю. На Tizen потік замінюється у поточному video без створення другого audio/video.</div>
-            <div class="settings-param__value"></div>
-        </div>
-        <div class="settings-param selector" data-name="stels_online_zetflixnet_tizen_hls_voice" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
-            <div class="settings-param__name">Tizen: HLS при зміні перекладу</div>
-            <div class="settings-param__descr">Експериментально: при зміні перекладу на Tizen замість попередньої якості запускати HLS-потік, якщо він є у ZetflixNet.</div>
+            <div class="settings-param__descr">Після зміни перекладу ZetflixNet плагін із паузою приблизно 2 секунди повторно застосовує ту саму якість, яка була активна до зміни перекладу. Рекомендовано для Tizen.</div>
             <div class="settings-param__value"></div>
         </div>`;
 
@@ -25438,12 +25131,7 @@
           </div>
           <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle">
               <div class="settings-param__name">Зміна логіки Перекладів</div>
-              <div class="settings-param__descr">Після зміни перекладу ZetflixNet запускає новий переклад з тією самою якістю. На Tizen потік замінюється у поточному video без створення другого audio/video.</div>
-              <div class="settings-param__value"></div>
-          </div>
-          <div class="settings-param selector" data-name="stels_online_zetflixnet_tizen_hls_voice" data-type="toggle">
-              <div class="settings-param__name">Tizen: HLS при зміні перекладу</div>
-              <div class="settings-param__descr">Експериментально: при зміні перекладу на Tizen запускати HLS-потік, якщо він є у ZetflixNet.</div>
+              <div class="settings-param__descr">Після зміни перекладу ZetflixNet із паузою приблизно 2 секунди повторно застосовується якість, яка була активна до зміни перекладу.</div>
               <div class="settings-param__value"></div>
           </div>
         </div>`);
@@ -25595,7 +25283,7 @@
         }
         if (e.name == 'stels_online_zetflixnet') {
           try {
-            e.body.find('[data-name="stels_online_android_player_fix"], [data-name="stels_online_zetflixnet_voice_quality_fix"], [data-name="stels_online_zetflixnet_tizen_hls_voice"]').each(function () {
+            e.body.find('[data-name="stels_online_android_player_fix"], [data-name="stels_online_zetflixnet_voice_quality_fix"]').each(function () {
               Lampa.Params.update($(this), [], e.body);
             });
             stelsLog('zetflixnet-settings-side-open', { version: STELS_ONLINE_VERSION });
@@ -25663,7 +25351,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.34: ZetflixNet на Tizen більше не створює новий video при зміні перекладу; потік замінюється у поточному video, а зайві audio/video примусово глушаться.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.30: Kinobaza переведено на kinobase.org; ZetflixNet після зміни перекладу виконує ручний вибір попередньої якості; стрілки в списку джерел листають як клавіатура.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
