@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.0.97';
+    var STELS_ONLINE_VERSION = '1.0.98';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -3384,21 +3384,26 @@
       var destroyed = false;
       var prox = component.proxy('kinoukr');
       var user_agent = Utils.baseUserAgent();
-      var headers = Lampa.Platform.is('android') ? {
+      // KinoUkr/Cloudflare дуже чутливий до "порожніх" Electron/Native запитів.
+      // Тому відправляємо браузерні заголовки на всіх платформах, а не тільки на Android.
+      var headers = {
         'User-Agent': user_agent,
+        'Accept': '*/*',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'Referer': ref,
         'Origin': host,
         'X-Requested-With': 'XMLHttpRequest'
-      } : {};
-      var page_headers = Lampa.Platform.is('android') ? {
+      };
+      var page_headers = {
         'User-Agent': user_agent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Referer': ref
-      } : {};
-      var stream_headers = Lampa.Platform.is('android') ? {
+      };
+      var stream_headers = {
         'User-Agent': user_agent,
-        'Referer': host + '/',
-        'Origin': host
-      } : false;
+        'Referer': 'https://ashdi.vip/',
+        'Origin': 'https://ashdi.vip'
+      };
 
       function preview(value, len) {
         value = value == null ? '' : String(value);
@@ -3447,7 +3452,8 @@
             if (fail) fail(message);
           }, post, {
             dataType: 'text',
-            withCredentials: false,
+            // Важливо для Cloudflare/DLE: після успішного GET /home/ наступний AJAX має йти з тією ж cookie-сесією.
+            withCredentials: true,
             headers: req_headers
           });
         } catch (e) {
@@ -3528,17 +3534,86 @@
         return best || results[0];
       }
 
+      function isCloudflareChallenge(html) {
+        html = String(html || '');
+        return html.indexOf('Just a moment') !== -1 || html.indexOf('/cdn-cgi/challenge-platform/') !== -1 || html.indexOf('cf_chl') !== -1;
+      }
+
       function searchByAjax(hash, callback, fail) {
         var url = host + '/engine/lazydev/dle_search/ajax.php';
         var post = 'story=' + encodeURIComponent(select_title) + '&dle_hash=' + encodeURIComponent(hash || '') + '&thisUrl=%2Fhome%2F';
         requestText(url, function (html) {
+          if (isCloudflareChallenge(html)) {
+            stelsLog('kinoukr-cloudflare-challenge', { kind: 'search_ajax', title: select_title });
+            if (fail) fail('cloudflare');
+            return;
+          }
           callback(parseCards(html));
         }, fail, { kind: 'search_ajax', post: post, headers: headers, timeout: 15000 });
       }
 
       function searchByDle(callback, fail) {
         var url = host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(select_title);
-        requestText(url, function (html) { callback(parseCards(html)); }, fail, { kind: 'search_dle', timeout: 15000 });
+        requestText(url, function (html) {
+          if (isCloudflareChallenge(html)) {
+            stelsLog('kinoukr-cloudflare-challenge', { kind: 'search_dle', title: select_title });
+            if (fail) fail('cloudflare');
+            return;
+          }
+          callback(parseCards(html));
+        }, fail, { kind: 'search_dle', timeout: 15000, headers: page_headers });
+      }
+
+
+      function searchKnownFromLampaua(callback, fail) {
+        // Фолбек тільки для пошуку сторінки: якщо Cloudflare блокує search endpoints KinoUkr,
+        // беремо з lampaua вже знайдений href KinoUkr і далі відкриваємо саму сторінку/iframe напряму.
+        try {
+          var year = parseInt((object.search_date || (object.movie && (object.movie.release_date || object.movie.first_air_date || object.movie.last_air_date)) || '').slice(0, 4), 10) || '';
+          var cub_id = encodeURIComponent(btoa((Lampa.Storage.get('account', '{}').email || 'none')));
+          var api = 'http://lampaua.mooo.com/lite/kinoukr';
+          api = Lampa.Utils.addUrlComponent(api, 'id=' + encodeURIComponent(object.movie && object.movie.id || ''));
+          api = Lampa.Utils.addUrlComponent(api, 'imdb_id=' + encodeURIComponent(object.movie && object.movie.imdb_id || ''));
+          api = Lampa.Utils.addUrlComponent(api, 'kinopoisk_id=' + encodeURIComponent(object.movie && object.movie.kinopoisk_id || ''));
+          api = Lampa.Utils.addUrlComponent(api, 'title=' + encodeURIComponent(object.movie && (object.movie.original_title || object.movie.original_name) || select_title));
+          api = Lampa.Utils.addUrlComponent(api, 'original_title=' + encodeURIComponent(object.movie && (object.movie.original_title || object.movie.original_name) || ''));
+          api = Lampa.Utils.addUrlComponent(api, 'serial=' + encodeURIComponent(object.movie && (object.movie.number_of_seasons || object.movie.name) ? '1' : '0'));
+          if (year) api = Lampa.Utils.addUrlComponent(api, 'year=' + encodeURIComponent(year));
+          api = Lampa.Utils.addUrlComponent(api, 'source=tmdb');
+          api = Lampa.Utils.addUrlComponent(api, 'clarification=1');
+          api = Lampa.Utils.addUrlComponent(api, 'similar=false');
+          api = Lampa.Utils.addUrlComponent(api, 'rchtype=web');
+          api = Lampa.Utils.addUrlComponent(api, 'cub_id=' + cub_id);
+          requestText(api, function (html) {
+            var results = [];
+            var str = String(html || '');
+            var seen = {};
+            str.replace(/href=(?:\"|"|')([^"']*kinoukr\.tv[^"']+\.html|https?%3a%2f%2fkinoukr\.tv[^"']+\.html)(?:\"|"|')/gi, function (all, href) {
+              href = decodeURIComponent(String(href).replace(/\\//g, '/'));
+              href = abs(href, host + '/');
+              if (!seen[href]) {
+                seen[href] = true;
+                results.push({ title: select_title, ru_title: select_title, url: href, id: href, year: year || '', start_date: year || '' });
+              }
+              return all;
+            });
+            // Часто відповідь lampaua одразу містить посилання на play/сезони, але в query href є оригінальна сторінка.
+            str.replace(/[?&]href=([^&"']+)/gi, function (all, href) {
+              try { href = decodeURIComponent(href); } catch (e) {}
+              href = abs(href, host + '/');
+              if (/kinoukr\.tv\/[^\s"']+\.html/i.test(href) && !seen[href]) {
+                seen[href] = true;
+                results.push({ title: select_title, ru_title: select_title, url: href, id: href, year: year || '', start_date: year || '' });
+              }
+              return all;
+            });
+            stelsLog('kinoukr-lampaua-fallback', { count: results.length, sample: results.slice(0, 3) });
+            if (results.length) callback(results);
+            else if (fail) fail('empty');
+          }, fail, { kind: 'lampaua_fallback', raw: true, timeout: 15000, headers: { 'User-Agent': user_agent, 'Accept': 'text/html,*/*' } });
+        } catch (e) {
+          if (fail) fail(e && (e.message || e.toString()) || 'fallback error');
+        }
       }
 
       function extractIframes(html) {
@@ -3851,10 +3926,19 @@
           searchByAjax(hash, function (results) {
             if (!results.length) {
               searchByDle(function (results2) {
-                if (!results2.length) { component.emptyForQuery(select_title); return; }
+                if (!results2.length) {
+                  searchKnownFromLampaua(function (fallback) {
+                    loadPlayerFromPage((pickBest(fallback) || fallback[0]).url);
+                  }, function () { component.emptyForQuery(select_title); });
+                  return;
+                }
                 if (results2.length > 1 && !object.clarification) component.similars(results2);
                 else loadPlayerFromPage((pickBest(results2) || results2[0]).url);
-              }, function () { component.emptyForQuery(select_title); });
+              }, function () {
+                searchKnownFromLampaua(function (fallback) {
+                  loadPlayerFromPage((pickBest(fallback) || fallback[0]).url);
+                }, function () { component.emptyForQuery(select_title); });
+              });
               return;
             }
             var best = pickBest(results);
@@ -3862,10 +3946,19 @@
             else loadPlayerFromPage(best.url);
           }, function () {
             searchByDle(function (results) {
-              if (!results.length) { component.emptyForQuery(select_title); return; }
+              if (!results.length) {
+                searchKnownFromLampaua(function (fallback) {
+                  loadPlayerFromPage((pickBest(fallback) || fallback[0]).url);
+                }, function () { component.emptyForQuery(select_title); });
+                return;
+              }
               if (results.length > 1 && !object.clarification) component.similars(results);
               else loadPlayerFromPage((pickBest(results) || results[0]).url);
-            }, function () { component.emptyForQuery(select_title); });
+            }, function () {
+              searchKnownFromLampaua(function (fallback) {
+                loadPlayerFromPage((pickBest(fallback) || fallback[0]).url);
+              }, function () { component.emptyForQuery(select_title); });
+            });
           });
         });
       };
