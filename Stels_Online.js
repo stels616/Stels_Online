@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.01';
+    var STELS_ONLINE_VERSION = '1.1.02';
     var STELS_ICON_URL = 'https://stels616.github.io/Stels_Online/icon.svg';
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
     var STELS_UA_FLAG_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="40" fill="#005BBB"/><rect y="40" width="120" height="40" fill="#FFD500"/></svg>';
@@ -3430,24 +3430,74 @@
         var y = parseInt(String(d).slice(0, 4), 10);
         return y || 0;
       }
+      function norm(value) {
+        return component.cleanTitle(String(value || '').toLowerCase().replace(/ё/g, 'е').replace(/[’'`"]/g, '').replace(/[\-‐-―⸺⸻﹘﹣－]+/g, ' '));
+      }
+      function pushUnique(list, value) {
+        value = clean(value || '');
+        if (value && list.indexOf(value) === -1) list.push(value);
+      }
+      function zerxKnownAliases() {
+        var movie = object && object.movie || {};
+        var original = norm(movie.original_title || movie.original_name || '');
+        var out = [];
+        if (original === 'from') ['Извне', 'Ззовні', 'From'].forEach(function (t) { pushUnique(out, t); });
+        if (original === 'the boys') ['Пацаны', 'Хлопаки', 'The Boys'].forEach(function (t) { pushUnique(out, t); });
+        if (original === 'friends') ['Друзья', 'Друзі', 'Friends'].forEach(function (t) { pushUnique(out, t); });
+        if (original === 'rick and morty') ['Рик и Морти', 'Рік та Морті', 'Rick and Morty'].forEach(function (t) { pushUnique(out, t); });
+        return out;
+      }
+      function collectTitleAliases() {
+        var movie = object && object.movie || {};
+        var out = [];
+        [object && object.search, movie.title, movie.name, movie.original_title, movie.original_name, select_title, component.cleanTitle(select_title)].forEach(function (t) { pushUnique(out, t); });
+        try {
+          var alts = movie.alternative_titles && movie.alternative_titles.results || movie.titles && movie.titles.results || [];
+          if (Array.isArray(alts)) alts.forEach(function (a) { pushUnique(out, a && (a.title || a.name)); });
+        } catch (e) {}
+        try {
+          var trs = movie.translations && (movie.translations.translations || movie.translations.results) || [];
+          if (Array.isArray(trs)) trs.forEach(function (tr) { var d = tr && (tr.data || tr) || {}; pushUnique(out, d.title || d.name || d.original_title || d.original_name); });
+        } catch (e2) {}
+        zerxKnownAliases().forEach(function (t) { pushUnique(out, t); });
+        return out;
+      }
+      function aliasSlug(value) {
+        var n = norm(value || '');
+        var known = { 'извне': 'izvne', 'ззовни': 'zzovni', 'ззовні': 'zzovni', 'пацаны': 'pacany', 'хлопаки': 'pacany', 'друзья': 'druzja', 'друзі': 'druzi', 'рик и морти': 'rik-i-morti' };
+        return known[n] || '';
+      }
+      function looksServiceUrl(url) {
+        url = String(url || '').toLowerCase();
+        return !url || /\/(?:feedback|rules|index\.php|xfsearch|year|country|actors|director|tags|page)/i.test(url) || /\/(?:serials|films|multfilms|anime|novosti)(?:\/|$)/i.test(url);
+      }
       function scoreResult(item) {
-        var q = component.cleanTitle(select_title || '').toLowerCase();
-        var ot = component.cleanTitle(object && object.movie && (object.movie.original_title || object.movie.original_name) || '').toLowerCase();
-        var t = component.cleanTitle(item.title || '').toLowerCase();
+        var aliases = collectTitleAliases();
+        var title = norm(item && item.title || item && item.ru_title || '');
+        var url = String(item && (item.url || item.link) || '').toLowerCase();
+        if (!title && looksServiceUrl(url)) return -1000;
         var score = 0;
-        if (q && t == q) score += 120;
-        if (q && t.indexOf(q) >= 0) score += 60;
-        if (ot && t == ot) score += 80;
-        if (ot && t.indexOf(ot) >= 0) score += 30;
-        if (isSerial() && /(сезон|серіал|сериал|serial)/i.test(item.title || item.url || '')) score += 25;
+        aliases.forEach(function (alias) {
+          var a = norm(alias);
+          if (!a) return;
+          if (title === a) score = Math.max(score, 160);
+          else if (title.indexOf(a) >= 0 || a.indexOf(title) >= 0 && title.length > 2) score = Math.max(score, 90);
+          var slug = aliasSlug(alias);
+          if (slug && url.indexOf(slug) >= 0) score = Math.max(score, 95);
+        });
+        if (isSerial() && /(сезон|серіал|сериал|serial|season)/i.test((item && item.title || '') + ' ' + url)) score += 25;
         var y = yearOf();
-        if (y && String(item.title || item.url || '').indexOf(String(y)) >= 0) score += 20;
+        if (y && ((item && item.title || '').indexOf(String(y)) >= 0 || url.indexOf(String(y)) >= 0)) score += 25;
+        if (looksServiceUrl(url)) score -= 80;
         return score;
       }
       function pickBest(list) {
         list = list || [];
         list.sort(function (a, b) { return scoreResult(b) - scoreResult(a); });
         return list[0];
+      }
+      function filterGoodResults(list) {
+        return (list || []).filter(function (item) { return scoreResult(item) >= 55; });
       }
       function requestText(url, success, fail, opts) {
         opts = opts || {};
@@ -3492,20 +3542,41 @@
         var out = [];
         var seen = {};
         html = String(html || '');
-        html.replace(/<a[^>]+href=["']([^"']+\.html)["'][^>]*>([\s\S]*?)<\/a>/gi, function (all, href, body) {
+        try {
+          var j = JSON.parse(html);
+          if (j && j.content) html = String(j.content || '');
+        } catch (e) {}
+        function add(href, title, extra) {
           href = abs(href, ref);
-          var title = clean(body) || clean(all);
-          if (!href || seen[href]) return all;
+          title = clean(title || '');
+          if (!href || seen[href] || looksServiceUrl(href)) return;
           seen[href] = true;
-          out.push({ title: title, ru_title: title, url: href, link: href, id: href });
+          out.push({ title: title, ru_title: title, url: href, link: href, id: href, quality: extra || '----', info: '' });
+        }
+        // Основна структура Zerx у результатах/каталогах: картки o-card із назвою у .o-card__title.
+        html.replace(/<a[^>]+href=["']([^"']+\.html)["'][^>]*class=["'][^"']*o-card__title[^"']*["'][^>]*>[\s\S]*?<span[^>]*itemprop=["']name["'][^>]*>([\s\S]*?)<\/span>[\s\S]*?<\/a>/gi, function (all, href, title) {
+          add(href, title);
           return all;
         });
-        html.replace(/href=["']([^"']+\.html)["'][\s\S]{0,600}?(?:class=["'][^"']*(?:title|heading|name)[^"']*["'][^>]*>|<h[1-4][^>]*>|<span[^>]*>)([\s\S]{1,160}?)(?:<\/h[1-4]>|<\/span>)/gi, function (all, href, title) {
-          href = abs(href, ref); title = clean(title);
-          if (href && title && !seen[href]) { seen[href] = true; out.push({ title: title, ru_title: title, url: href, link: href, id: href }); }
+        html.replace(/<a[^>]+class=["'][^"']*o-card__title[^"']*["'][^>]+href=["']([^"']+\.html)["'][^>]*>([\s\S]*?)<\/a>/gi, function (all, href, title) {
+          add(href, title);
           return all;
         });
-        return out;
+        html.replace(/<a[^>]+href=["']([^"']+\.html)["'][^>]+class=["'][^"']*o-card__title[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi, function (all, href, title) {
+          add(href, title);
+          return all;
+        });
+        // LazyDev ajax іноді повертає компактні рядки з searchheading.
+        html.replace(/<a[^>]+href=["']([^"']+\.html)["'][^>]*>[\s\S]{0,400}?(?:class=["'][^"']*(?:searchheading|title|heading|name)[^"']*["'][^>]*>|<h[1-4][^>]*>|<span[^>]*itemprop=["']name["'][^>]*>)([\s\S]{1,180}?)(?:<\/h[1-4]>|<\/span>)/gi, function (all, href, title) {
+          add(href, title);
+          return all;
+        });
+        // Останній резерв: img alt у картці.
+        html.replace(/<img[^>]+alt=["']([^"']+)["'][\s\S]{0,800}?<a[^>]+href=["']([^"']+\.html)["'][^>]*class=["'][^"']*movie-link/gi, function (all, title, href) {
+          add(href, title);
+          return all;
+        });
+        return filterGoodResults(out);
       }
       function searchAjax(hash, query, callback, fail) {
         var post = 'story=' + encodeURIComponent(query) + '&dle_hash=' + encodeURIComponent(hash || '') + '&thisUrl=%2F';
@@ -3525,23 +3596,27 @@
       }
       function queryVariants() {
         var arr = [];
-        function add(v) { v = String(v || '').trim(); if (v && arr.indexOf(v) == -1) arr.push(v); }
-        add(object.search);
-        add(object.movie && object.movie.title);
-        add(object.movie && object.movie.name);
-        add(object.movie && object.movie.original_title);
-        add(object.movie && object.movie.original_name);
-        add(component.cleanTitle(select_title));
-        return arr.filter(Boolean);
+        function add(v) { v = clean(v || ''); if (v && arr.indexOf(v) == -1) arr.push(v); }
+        // Для Zerx важливі російські назви/aliases: сайт часто не знаходить українську назву,
+        // наприклад "Ззовні" потрібно шукати як "Извне".
+        collectTitleAliases().forEach(add);
+        zerxKnownAliases().forEach(add);
+        return arr.filter(Boolean).slice(0, 12);
       }
       function searchNext(hash, variants, index, callback, fail) {
         if (index >= variants.length) { fail && fail(); return; }
         var q = variants[index];
-        searchAjax(hash, q, function (list) {
+        function acceptOrNext(list, source) {
+          list = filterGoodResults(list || []);
+          stelsLog('zerx-search-filtered', { query: q, source: source, count: list.length, best_score: list[0] ? scoreResult(list[0]) : 0, sample: list.slice(0, 4) });
           if (list.length) callback(list);
-          else searchDle(q, function (list2) { if (list2.length) callback(list2); else searchNext(hash, variants, index + 1, callback, fail); }, function () { searchNext(hash, variants, index + 1, callback, fail); });
+          else searchNext(hash, variants, index + 1, callback, fail);
+        }
+        searchAjax(hash, q, function (list) {
+          if (filterGoodResults(list).length) acceptOrNext(list, 'ajax');
+          else searchDle(q, function (list2) { acceptOrNext(list2, 'dle'); }, function () { searchNext(hash, variants, index + 1, callback, fail); });
         }, function () {
-          searchDle(q, function (list2) { if (list2.length) callback(list2); else searchNext(hash, variants, index + 1, callback, fail); }, function () { searchNext(hash, variants, index + 1, callback, fail); });
+          searchDle(q, function (list2) { acceptOrNext(list2, 'dle'); }, function () { searchNext(hash, variants, index + 1, callback, fail); });
         });
       }
       function extractIframe(html) {
@@ -20434,7 +20509,7 @@
           if (stelsFloatingSourceButton && stelsFloatingSourceButton.length) return;
           if (!$('#stels-online-floating-source-style').length) {
             $('head').append('<style id="stels-online-floating-source-style">' +
-              '.stels-online-floating-source{position:fixed;top:1.05em;right:1.25em;z-index:999999;display:none;align-items:center;gap:.55em;padding:.58em .9em;border-radius:.55em;background:rgba(20,20,20,.92);color:#fff;font-size:1.02em;line-height:1;box-shadow:0 .35em 1.2em rgba(0,0,0,.38);border:1px solid rgba(255,255,255,.15)}' +
+              '.stels-online-floating-source{position:fixed;top:4.15em;right:1.25em;z-index:999999;display:none;align-items:center;gap:.55em;padding:.58em .9em;border-radius:.55em;background:rgba(20,20,20,.92);color:#fff;font-size:1.02em;line-height:1;box-shadow:0 .35em 1.2em rgba(0,0,0,.38);border:1px solid rgba(255,255,255,.15)}' +
               '.stels-online-floating-source.focus,.stels-online-floating-source:hover{background:rgba(46,125,50,.96)}' +
               '.stels-online-floating-source-icon{width:1.45em;height:1.45em;object-fit:contain;flex-shrink:0}' +
               '.stels-online-floating-source-title{white-space:nowrap;max-width:42vw;overflow:hidden;text-overflow:ellipsis}' +
