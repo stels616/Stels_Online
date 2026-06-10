@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.22';
+    var STELS_ONLINE_VERSION = '1.1.23';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13587,7 +13587,9 @@
             });
             seasons.push(season);
           } else if (node.file || node.url) {
-            movie.push({ title: node.title || select_title, files: parseFileEntries(node.file || node.url || ''), poster: node.poster || '', subtitles: parseSubtitleEntries(node.subtitle || '') });
+            var mfiles = parseFileEntries(node.file || node.url || '');
+            if (node._stels_uaserials_site_iframe) mfiles.forEach(function (f) { f._stels_uaserials_site_iframe = true; });
+            movie.push({ title: node.title || select_title, files: mfiles, poster: node.poster || '', subtitles: parseSubtitleEntries(node.subtitle || ''), _stels_uaserials_site_iframe: !!node._stels_uaserials_site_iframe });
           }
         });
         seasons.sort(function (a, b) { return a.num - b.num; });
@@ -13623,11 +13625,11 @@
           if (season) season.episodes.forEach(function (ep) {
             ep.files.forEach(function (f) {
               if (voice && f.voice !== voice) return;
-              items.push({ title: component.formatEpisodeTitle(ep.season, ep.episode), quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', season: ep.season, episode: ep.episode, voice: f.voice || '', stream: f.url, poster: absolute(ep.poster || '', tortugaHost + '/'), subtitles: ep.subtitles || false, headers: playHeaders });
+              items.push({ title: component.formatEpisodeTitle(ep.season, ep.episode), quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', season: ep.season, episode: ep.episode, voice: f.voice || '', stream: f.url, poster: absolute(ep.poster || '', tortugaHost + '/'), subtitles: ep.subtitles || false, headers: playHeaders, iframe: !!(f._stels_uaserials_site_iframe || ep._stels_uaserials_site_iframe) });
             });
           });
         } else {
-          extract.movie.forEach(function (m) { m.files.forEach(function (f) { if (!voice || f.voice === voice) items.push({ title: m.title || f.voice || select_title, quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', voice: f.voice || '', stream: f.url, poster: absolute(m.poster || '', tortugaHost + '/'), subtitles: m.subtitles || false, headers: playHeaders }); }); });
+          extract.movie.forEach(function (m) { m.files.forEach(function (f) { if (!voice || f.voice === voice) items.push({ title: m.title || f.voice || select_title, quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', voice: f.voice || '', stream: f.url, poster: absolute(m.poster || '', tortugaHost + '/'), subtitles: m.subtitles || false, headers: playHeaders, iframe: !!(f._stels_uaserials_site_iframe || m._stels_uaserials_site_iframe) }); }); });
         }
         return items;
       }
@@ -13649,18 +13651,18 @@
           if (viewed.indexOf(hash_file) !== -1) row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
           row.on('hover:enter', function () {
             if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
-            var first = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title), poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: element.subtitles || false, quality: false }, 'uaserials');
+            var first = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title), poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: element.subtitles || false, quality: false, iframe: element.iframe || false, method: element.iframe ? 'iframe' : undefined }, 'uaserials');
             Lampa.Player.play(first);
             var playlist = [];
             if (element.season && Lampa.Platform.version) {
-              items.forEach(function (el) { playlist.push(stelsSanitizeAndroidPlayable({ url: el.stream, title: el.title, poster: el.poster || '', timeline: el.timeline, headers: el.headers || false, subtitles: el.subtitles || false, quality: false }, 'uaserials')); });
+              items.forEach(function (el) { playlist.push(stelsSanitizeAndroidPlayable({ url: el.stream, title: el.title, poster: el.poster || '', timeline: el.timeline, headers: el.headers || false, subtitles: el.subtitles || false, quality: false, iframe: el.iframe || false, method: el.iframe ? 'iframe' : undefined }, 'uaserials')); });
             } else playlist.push(first);
             Lampa.Player.playlist(playlist);
             if (viewed.indexOf(hash_file) === -1) { viewed.push(hash_file); row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>'); Lampa.Storage.set('online_view', viewed); }
             try { stelsSaveWatchHistory(object.movie, 'uaserials', 'UASerials', element, { title: element.title }); } catch (e) {}
           });
           component.append(row);
-          component.contextmenu({ item: row, view: view, viewed: viewed, hash_file: hash_file, element: element, file: function (call) { call({ file: element.stream, quality: false, headers: element.headers || false, subtitles: element.subtitles || false }); } });
+          component.contextmenu({ item: row, view: view, viewed: viewed, hash_file: hash_file, element: element, file: function (call) { call({ file: element.stream, quality: false, headers: element.headers || false, subtitles: element.subtitles || false, iframe: element.iframe || false, method: element.iframe ? 'iframe' : undefined }); } });
         });
         component.start(true);
       }
@@ -13680,12 +13682,20 @@
         function tryCandidate(pos, lastErr) {
           if (destroyed) return;
           if (pos >= candidates.length) {
-            var hm = String(embedUrl || '').match(/(?:tortuga\.tw\/usp\/|tortuga\.tw\/embed\/)(\d+)/i);
-            if (hm && hm[1]) {
-              var hdvb = 'https://hdvbua.pro/vid/' + hm[1];
-              var directData = [{ title: select_title || 'UASerials', poster: pageItem && pageItem.poster || '', file: hdvb, files: [{ title: 'UASerials / HDVB', url: hdvb }], subtitles: false }];
-              stelsLog('uaserials-hdvb-fallback', { from: embedUrl, hdvb: hdvb, reason: lastErr || 'tortuga file missing' });
-              normalizeTortugaData(directData);
+            // Для /usp сайт UASerials сам відкриває Tortuga у браузерному iframe. Native-запит Lampa
+            // може отримувати 403, тому не підміняємо джерело на hdvb/інший балансер, а повертаємо
+            // саме URL з UASerials як iframe-плеєр сайту.
+            if (/tortuga\.tw\/usp\//i.test(String(embedUrl || ''))) {
+              var siteData = [{
+                title: select_title || 'UASerials',
+                poster: pageItem && pageItem.poster || '',
+                file: embedUrl,
+                files: [{ title: 'UASerials / Tortuga', url: embedUrl }],
+                subtitles: false,
+                _stels_uaserials_site_iframe: true
+              }];
+              stelsLog('uaserials-site-iframe-fallback', { url: embedUrl, reason: lastErr || 'native tortuga request blocked', note: 'original UASerials player URL, no external source replacement' });
+              normalizeTortugaData(siteData);
               buildFilters();
               append(currentItems());
               component.loading(false);
@@ -24667,7 +24677,7 @@
       }
       template += "\n        </div>";
 
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_zetflixnet_settings_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Налаштування ZetflixNet</div>\n            <div class=\"settings-param__descr\">Окремі параметри для джерела ZetflixNet</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-folder selector stels-online-subsettings-folder\" data-component=\"stels_online_zetflixnet\" data-name=\"stels_online_zetflixnet_settings_toggle\">\n            <div class=\"settings-folder__icon stels-online-settings-icon\" aria-hidden=\"true\"><img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.05em;height:2.05em;object-fit:contain;display:block;flex-shrink:0\" alt=\"\"></div>\n            <div class=\"settings-folder__name\"><div>Налаштування ZetflixNet</div><div class=\"stels-online-version-under\">Окремі параметри джерела</div></div>\n        </div>";
       template += `
         <div class="settings-param selector" data-name="stels_online_android_player_fix" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
             <div class="settings-param__name">Правка плеєра Андроїд</div>
@@ -24680,6 +24690,24 @@
             <div class="settings-param__descr">Після зміни перекладу ZetflixNet плагін повторно вибирає ту саму якість, яка була активна до зміни перекладу. Рекомендовано для Tizen.</div>
             <div class="settings-param__value"></div>
         </div>`;
+
+      Lampa.Template.add('settings_stels_online_zetflixnet', `
+        <div>
+          <div class="settings-param" data-name="stels_online_zetflixnet_title">
+            <div class="settings-param__name">ZetflixNet</div>
+            <div class="settings-param__value">` + STELS_ONLINE_VERSION + `</div>
+          </div>
+          <div class="settings-param selector" data-name="stels_online_android_player_fix" data-type="toggle">
+              <div class="settings-param__name">Правка плеєра Андроїд</div>
+              <div class="settings-param__descr">Для Android вмикає окремий режим ZetflixNet: один прямий MP4/OKCDN потік без карти якостей, без playlist, без reserve-url і без custom headers.</div>
+              <div class="settings-param__value"></div>
+          </div>
+          <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle">
+              <div class="settings-param__name">Зміна логіки Перекладів</div>
+              <div class="settings-param__descr">Після зміни перекладу ZetflixNet повторно вибирається якість, яка була активна до зміни перекладу.</div>
+              <div class="settings-param__value"></div>
+          </div>
+        </div>`);
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
@@ -24763,12 +24791,19 @@
               }
             });
           }
-          var stels_zetflixnet_toggle = e.body.find('[data-name="stels_online_zetflixnet_settings_toggle"]');
-          if (stels_zetflixnet_toggle.length) {
-            stels_zetflixnet_toggle.unbind('hover:enter').on('hover:enter', function () {
-              stelsOpenZetflixNetSettingsModal(e.body);
+          // Налаштування ZetflixNet зроблено як settings-folder з data-component=stels_online_zetflixnet.
+          // Не перехоплюємо hover:enter, щоб Lampa відкривала його стандартною правою панеллю налаштувань.
+          
+        }
+        if (e.name == 'stels_online_zetflixnet') {
+          try {
+            e.body.find('[data-name="stels_online_android_player_fix"], [data-name="stels_online_zetflixnet_voice_quality_fix"]').each(function () {
+              Lampa.Params.update($(this), [], e.body);
             });
-          }
+            stelsLog('zetflixnet-settings-side-open', { version: STELS_ONLINE_VERSION });
+          } catch (errz) { stelsLog('zetflixnet-settings-side-error', { error: errz && (errz.message || errz.toString()) || '' }); }
+        }
+        if (e.name == 'stels_online') {
           var clear_last_balanser = e.body.find('[data-name="stels_online_clear_last_balanser"]');
           clear_last_balanser.unbind('hover:enter').on('hover:enter', function () {
             Lampa.Storage.set('online_last_balanser', {});
@@ -24830,7 +24865,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.22: ZetflixNet отримав окреме вікно налаштувань і режим повторного вибору якості після зміни перекладу; UASerials має HDVB fallback для фільмів з Tortuga /usp 403.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.23: UASerials більше не підміняє /usp на зовнішній iframe; якщо native-запит Tortuga блокується, повертається оригінальний UASerials/Tortuga iframe. Налаштування ZetflixNet відкриваються окремою правою панеллю.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
