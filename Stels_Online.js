@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.30';
+    var STELS_ONLINE_VERSION = '1.1.31';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -671,7 +671,7 @@
           '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*=\"subtitle\"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
           '.stels-online-sources-list{scroll-behavior:smooth;}' +
-          '.stels-online-source-row.focus,.stels-online-source-row:hover{background:rgba(255,255,255,.08);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
+          '.stels-online-source-row.focus,.stels-online-source-row.stels-online-source-focused,.stels-online-source-row:hover{background:rgba(255,255,255,.12);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
           '.stels-online-source-row.stels-online-source-disabled{opacity:.48;}' +
           '.stels-online-source-arrows{display:flex;gap:.45em;align-items:center;margin-left:auto;margin-right:.7em}.stels-online-source-arrow{color:#00d36f;font-size:1.25em;font-weight:900;line-height:1;padding:.28em .38em;border-radius:.3em;background:rgba(0,211,111,.10)}.stels-online-source-arrow.focus,.stels-online-source-arrow:hover{background:rgba(0,211,111,.24)}' +
           '.stels-online-advanced-settings{margin-top:.35em;border-top:1px solid rgba(255,255,255,.08);padding-top:.35em;}' +
@@ -777,14 +777,14 @@
           var el = row && row.jquery ? row[0] : row;
           if (!el) return;
           stelsLastFocusedSourceRow = el;
-          if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
           var list = html.find('.stels-online-sources-list')[0];
           if (list) {
             var r = el.getBoundingClientRect();
             var lr = list.getBoundingClientRect();
-            if (r.top < lr.top) list.scrollTop -= (lr.top - r.top + 12);
-            if (r.bottom > lr.bottom) list.scrollTop += (r.bottom - lr.bottom + 12);
-          }
+            var margin = Math.max(18, Math.round(lr.height * 0.18));
+            if (r.top < lr.top + margin) list.scrollTop -= (lr.top + margin - r.top);
+            else if (r.bottom > lr.bottom - margin) list.scrollTop += (r.bottom - (lr.bottom - margin));
+          } else if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         } catch (e) {}
       }
 
@@ -797,6 +797,8 @@
         stelsMoveStartedAt = Date.now();
         stelsSuppressSourceToggleUntil = stelsMoveStartedAt + 950;
         stelsSuppressSourceToggleKey = stelsNormalizeSourceKey(row.data('source'));
+        html.find('.stels-online-source-row').removeClass('stels-online-source-focused');
+        row.addClass('stels-online-source-focused');
         row.addClass('stels-online-source-moving');
         row.find('.stels-online-source-move-hint').text('Рух ↑↓');
         stelsScrollSourceRowIntoView(row);
@@ -834,6 +836,8 @@
       }
 
       html.on('hover:focus focus mouseenter', '.stels-online-source-row', function () {
+        html.find('.stels-online-source-row').removeClass('stels-online-source-focused');
+        $(this).addClass('stels-online-source-focused');
         stelsScrollSourceRowIntoView(this);
       });
 
@@ -848,7 +852,7 @@
       html.on('keydown', function (event) {
         var code = event && (event.keyCode || event.which) || 0;
         var key = event && event.key || '';
-        var current = html.find('.stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
+        var current = html.find('.stels-online-source-row.stels-online-source-focused, .stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
         if (!current.length) current = html.find('.stels-online-source-row:focus').first();
         if (!current.length && document.activeElement) current = $(document.activeElement).closest('.stels-online-source-row');
         if (movingMode) {
@@ -873,7 +877,7 @@
       });
 
       function stelsCurrentSourceRowForRemote() {
-        var current = html.find('.stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
+        var current = html.find('.stels-online-source-row.stels-online-source-focused, .stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
         if (!current.length) current = html.find('.stels-online-source-row:focus').first();
         if (!current.length && document.activeElement) current = $(document.activeElement).closest('.stels-online-source-row');
         if (!current.length && stelsLastFocusedSourceRow) current = $(stelsLastFocusedSourceRow).closest('.stels-online-source-row');
@@ -893,6 +897,8 @@
         var next = dir < 0 ? current.prev('.stels-online-source-row') : current.next('.stels-online-source-row');
         if (!next.length) next = current;
         stelsLastFocusedSourceRow = next[0];
+        html.find('.stels-online-source-row').removeClass('stels-online-source-focused');
+        next.addClass('stels-online-source-focused');
         try { next.attr('tabindex', '0').focus(); } catch (e) {}
         try { Lampa.Controller.collectionSet(html, html.find('.selector')); Lampa.Controller.collectionFocus(next[0], html); } catch (e2) {}
         stelsScrollSourceRowIntoView(next);
@@ -5776,6 +5782,46 @@
         });
         return subtitles.length ? subtitles : false;
       }
+      function kinobaseParseSeasonEpisodeTitle(title) {
+        title = String(title || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        var m = title.match(/(?:^|\D)(\d{1,2})\s*(?:сезон|season|s)\D{0,18}(\d{1,3})\s*(?:сер(?:ия|ії|ія|и[яи])?|episode|e)/i);
+        if (!m) m = title.match(/s\s*(\d{1,2})\s*e\s*(\d{1,3})/i);
+        if (!m) m = title.match(/(\d{1,2})\s*[xх]\s*(\d{1,3})/i);
+        if (!m) return null;
+        return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
+      }
+
+      function kinobaseNormalizePlaylistStructure(list) {
+        if (!Array.isArray(list) || !list.length) return list;
+        var already = list.some(function (x) { return x && (x.playlist || x.folder); });
+        if (already) return list;
+        var groups = {};
+        var parsedCount = 0;
+        list.forEach(function (item, index) {
+          var title = item && (item.title || item.comment || item.name) || '';
+          var se = kinobaseParseSeasonEpisodeTitle(title);
+          if (!se || !se.season || !se.episode) return;
+          parsedCount++;
+          if (!groups[se.season]) groups[se.season] = [];
+          var copy = {};
+          for (var k in item) copy[k] = item[k];
+          copy.title = 'Серія ' + se.episode;
+          copy.comment = copy.title;
+          copy.episode = se.episode;
+          copy.number = se.episode;
+          copy._stels_original_title = title;
+          copy._stels_order = index;
+          groups[se.season].push(copy);
+        });
+        if (parsedCount < 2) return list;
+        var out = Object.keys(groups).map(function (seasonKey) {
+          var season = parseInt(seasonKey, 10) || 1;
+          groups[seasonKey].sort(function (a, b) { return (a.episode || 0) - (b.episode || 0) || (a._stels_order || 0) - (b._stels_order || 0); });
+          return { title: season + ' сезон', comment: season + ' сезон', number: season, folder: groups[seasonKey] };
+        }).sort(function (a, b) { return (a.number || 0) - (b.number || 0); });
+        return out.length ? out : list;
+      }
+
       /**
        * Получить данные о фильме
        * @param {String} str
@@ -5788,6 +5834,7 @@
         quality_type = quality_match ? quality_match[1].trim() : '';
         translation = translation_match ? translation_match[1].trim() : '';
         var pl = vod && vod.file && Lampa.Arrays.decodeJson(vod.file, []) || [];
+        pl = kinobaseNormalizePlaylistStructure(pl);
 
         if (pl.length) {
           extract = pl;
@@ -15222,57 +15269,32 @@
       }
       function zetflixnetManualQualitySelectAfterVoiceSwitch(play, wantedLabel, voiceName, item) {
         if (!play || !wantedLabel || !play.quality) {
-          stelsLog('zetflixnet-voice-quality-manual-skip', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), reason: !play ? 'no-play' : !wantedLabel ? 'no-quality' : 'no-map' });
+          stelsLog('zetflixnet-voice-quality-select-skip', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), reason: !play ? 'no-play' : !wantedLabel ? 'no-quality' : 'no-map' });
           return;
         }
         var found = zetflixnetFindQualityByLabel(play.quality, wantedLabel);
         var target = found.url || '';
         var resolvedLabel = found.label || wantedLabel;
         var delay = (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 2200 : 1800;
-        stelsLog('zetflixnet-voice-quality-manual-plan', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), resolved_quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), data_id: item && item.data_id || '', delay: delay, quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], target: zlogUrlInfo(target) });
+        stelsLog('zetflixnet-voice-quality-select-plan', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), resolved_quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), data_id: item && item.data_id || '', delay: delay, quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], target: zlogUrlInfo(target) });
         if (!target) return;
         setTimeout(function () {
           try {
-            var video = null;
-            try { if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') video = Lampa.Player.video(); } catch (ve) {}
-            if (!video) {
-              try { video = document.querySelector('video'); } catch (ve2) {}
-            }
-            var pd = {};
-            try { pd = Lampa.Player && Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {}; } catch (pde) { pd = {}; }
-            try {
-              if (pd) {
-                pd.url = target;
-                pd.file = target;
-                pd.stream = target;
-                pd._quality = resolvedLabel;
-                pd.quality_name = resolvedLabel;
-                pd.qualityLabel = resolvedLabel;
-                pd._stels_zetflixnet_manual_quality_select = true;
-              }
-            } catch (pdErr) {}
-            play.url = target;
-            play.file = target;
-            play.stream = target;
-            play._quality = resolvedLabel;
-            play.quality_name = resolvedLabel;
-            play.qualityLabel = resolvedLabel;
-            if (video) {
-              var wasPaused = true;
-              var pos = 0;
-              try { wasPaused = !!video.paused; } catch (e1) {}
-              try { pos = Number(video.currentTime || 0) || 0; } catch (e2) {}
-              try { video.pause(); } catch (e3) {}
-              try { video.src = target; } catch (e4) { if (video.setAttribute) video.setAttribute('src', target); }
-              try { video.load(); } catch (e5) {}
-              if (pos > 1) setTimeout(function () { try { video.currentTime = Math.max(0, pos - 0.25); } catch (e6) {} }, 180);
-              if (!wasPaused) setTimeout(function () { try { var p = video.play && video.play(); if (p && p.catch) p.catch(function () {}); } catch (e7) {} }, 260);
-              stelsLog('zetflixnet-voice-quality-manual-apply', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), delay: delay, url: zlogUrlInfo(target), data_id: item && item.data_id || '', video: true, restore_time: pos });
-            } else {
-              stelsLog('zetflixnet-voice-quality-manual-no-video', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), delay: delay, url: zlogUrlInfo(target), data_id: item && item.data_id || '' });
-            }
+            var qplay = {};
+            for (var k in play) qplay[k] = play[k];
+            qplay.url = target;
+            qplay.file = target;
+            qplay.stream = target;
+            qplay._quality = resolvedLabel;
+            qplay.quality_name = resolvedLabel;
+            qplay.qualityLabel = resolvedLabel;
+            qplay._stels_zetflixnet_manual_quality_select = true;
+            qplay._stels_zetflixnet_voice_quality_data_id = item && item.data_id || '';
+            stelsLog('zetflixnet-voice-quality-select-play', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), delay: delay, url: zlogUrlInfo(target), data_id: item && item.data_id || '' });
+            Lampa.Player.play(qplay);
+            try { Lampa.Player.playlist([qplay]); } catch (e1) {}
           } catch (e) {
-            stelsLog('zetflixnet-voice-quality-manual-error', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), delay: delay, error: e && (e.message || e.toString()) || '' });
+            stelsLog('zetflixnet-voice-quality-select-error', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), delay: delay, error: e && (e.message || e.toString()) || '' });
           }
         }, delay);
       }
@@ -15296,13 +15318,14 @@
                 Lampa.Noty.show('Не вдалося знайти переклад: ' + voiceName);
                 return;
               }
+              var voiceQualityFixActive = zetflixnetVoiceQualityFixEnabled();
+              var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+              var wantedQuality = voiceQualityFixActive ? zetflixnetDetectCurrentQualityLabel(current) : '';
               try { Lampa.Player.loading(true); } catch (e) {}
-              stelsLog('zetflixnet-voice-switch-start', { voice: voiceName, data_id: target.data_id, season: target.season || '', episode: target.episode || '', title: target.title || '' });
+              stelsLog('zetflixnet-voice-switch-start', { voice: voiceName, data_id: target.data_id, season: target.season || '', episode: target.episode || '', title: target.title || '', voice_quality_fix: voiceQualityFixActive, wanted_quality_before_request: zetflixnetNormalizeQualityLabel(wantedQuality || '') });
               getStream(target, function (item) {
                 try { Lampa.Player.loading(false); } catch (e2) {}
-                var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-                var voiceQualityFixActive = zetflixnetVoiceQualityFixEnabled();
-                var wantedQuality = voiceQualityFixActive ? zetflixnetDetectCurrentQualityLabel(current) : '';
+                current = Lampa.Player.playdata ? (Lampa.Player.playdata() || current || {}) : (current || {});
                 var play = zetflixnetBuildPlayable(item, {
                   timeline: current.timeline || item.timeline || element.timeline,
                   poster: current.poster || item.poster || element.poster || '',
@@ -25351,7 +25374,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.30: Kinobaza переведено на kinobase.org; ZetflixNet після зміни перекладу виконує ручний вибір попередньої якості; стрілки в списку джерел листають як клавіатура.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.31: Kinobaza групує серії по сезонах з kinobase.org; ZetflixNet після зміни перекладу один раз повторно запускає попередню якість; фокус у списку джерел рухається разом зі стрілками.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
