@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.13';
+    var STELS_ONLINE_VERSION = '1.1.14';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -194,8 +194,9 @@
             var node = candidates[c];
             var txt = (node.text() || '').replace(/\s+/g, ' ').trim();
             var sourceLike = /Джерело|Джерела|Онлайн|Трейлери|BwaRC|Z01/i.test(txt);
-            var hasManySourceButtons = node.find('.view--stels_online,.view--online,.view--torrent,.view--trailer,.selectbox-item,.source__item,.full-start__button').length > 1;
-            if (sourceLike || hasManySourceButtons) return true;
+            var hasRealSourceList = node.find('.selectbox-item,.selectbox__item,.source__item,.online-source,.online-sources').length > 1;
+            var hasSourceButtonsInChooser = sourceLike && node.find('.view--stels_online,.view--online,.view--torrent,.view--trailer,.full-start__button').length > 1;
+            if (sourceLike || hasRealSourceList || hasSourceButtonsInChooser) return true;
           }
           return false;
         } catch (e) { return false; }
@@ -832,6 +833,9 @@
       var stelsMoveStartedAt = 0;
       var stelsSuppressSourceToggleUntil = 0;
       var stelsSuppressSourceToggleKey = '';
+      var touchMovingSource = false;
+      var touchMoveRaf = 0;
+      var touchLastY = 0;
 
       function updateRow(row, key) {
         hidden = stelsGetHiddenSources();
@@ -918,13 +922,80 @@
         return false;
       });
 
-      html.on('mousedown touchstart', '.stels-online-source-row', function () {
+      function stopTouchAutoScroll() {
+        touchMovingSource = false;
+        if (touchMoveRaf) cancelAnimationFrame(touchMoveRaf);
+        touchMoveRaf = 0;
+      }
+      function touchAutoScrollLoop() {
+        if (!touchMovingSource || !movingMode || !movingRow || !movingRow.length) { touchMoveRaf = 0; return; }
+        try {
+          var list = html.find('.stels-online-sources-list')[0];
+          if (list) {
+            var lr = list.getBoundingClientRect();
+            var zone = Math.max(48, lr.height * 0.18);
+            var speed = 0;
+            if (touchLastY < lr.top + zone) speed = -Math.max(3, Math.round((lr.top + zone - touchLastY) / 5));
+            else if (touchLastY > lr.bottom - zone) speed = Math.max(3, Math.round((touchLastY - (lr.bottom - zone)) / 5));
+            if (speed) list.scrollTop += speed;
+          }
+        } catch (e) {}
+        touchMoveRaf = requestAnimationFrame(touchAutoScrollLoop);
+      }
+      function reorderMovingRowByY(y) {
+        if (!movingMode || !movingRow || !movingRow.length) return;
+        try {
+          var r = movingRow[0].getBoundingClientRect();
+          var prev = movingRow.prev('.stels-online-source-row');
+          var next = movingRow.next('.stels-online-source-row');
+          if (prev.length) {
+            var pr = prev[0].getBoundingClientRect();
+            if (y < pr.top + pr.height * 0.55) { movingRow.insertBefore(prev); stelsScrollSourceRowIntoView(movingRow); return; }
+          }
+          if (next.length) {
+            var nr = next[0].getBoundingClientRect();
+            if (y > nr.bottom - nr.height * 0.55) { movingRow.insertAfter(next); stelsScrollSourceRowIntoView(movingRow); return; }
+          }
+          if (y < r.top) moveSelectedRow(-1);
+          else if (y > r.bottom) moveSelectedRow(1);
+        } catch (e) {}
+      }
+      html.on('mousedown touchstart', '.stels-online-source-row', function (event) {
         var row = this;
         clearTimeout(holdTimer);
-        holdTimer = setTimeout(function () { beginMove(row); }, 650);
+        var oe = event && event.originalEvent || event || {};
+        if (oe.touches && oe.touches[0]) touchLastY = oe.touches[0].clientY;
+        holdTimer = setTimeout(function () {
+          beginMove(row);
+          if (oe.touches && oe.touches[0]) {
+            touchMovingSource = true;
+            touchLastY = oe.touches[0].clientY;
+            if (!touchMoveRaf) touchMoveRaf = requestAnimationFrame(touchAutoScrollLoop);
+          }
+        }, 650);
       });
-      html.on('mouseup mouseleave touchend touchcancel', '.stels-online-source-row', function () {
+      html.on('touchmove', '.stels-online-source-row', function (event) {
+        var oe = event && event.originalEvent || event || {};
+        if (!(oe.touches && oe.touches[0])) return;
+        touchLastY = oe.touches[0].clientY;
+        if (movingMode) {
+          if (event && event.preventDefault) event.preventDefault();
+          reorderMovingRowByY(touchLastY);
+        }
+      });
+      html.on('mouseup mouseleave', '.stels-online-source-row', function () {
         clearTimeout(holdTimer);
+      });
+      html.on('touchend touchcancel', '.stels-online-source-row', function (event) {
+        clearTimeout(holdTimer);
+        if (movingMode) {
+          commitMove();
+          stopTouchAutoScroll();
+          if (event && event.preventDefault) event.preventDefault();
+          if (event && event.stopPropagation) event.stopPropagation();
+          return false;
+        }
+        stopTouchAutoScroll();
       });
 
       html.find('.stels-online-source-row').on('hover:enter click', function (event) {
@@ -13218,13 +13289,26 @@
       var network = new Lampa.Reguest();
       var object = _object || {};
       var host = 'https://uaserials.com';
+      var tortugaHost = 'https://tortuga.tw';
       var select_title = '';
       var destroyed = false;
+      var extract = { seasons: [], movie: [] };
+      var filter_items = { season: [], season_num: [], voice: [] };
+      var choice = { season: 0, voice: 0, voice_name: '' };
+      var cryptoReady = false;
+      var cryptoLoading = false;
+      var cryptoQueue = [];
+      var uasPassword = '297796CCB81D25512';
       var headers = {
         'User-Agent': Utils.baseUserAgent(),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'uk-UA,uk;q=0.9,ru-RU;q=0.8,ru;q=0.7,en-US;q=0.6,en;q=0.5',
         'Referer': host + '/'
+      };
+      var playHeaders = {
+        'User-Agent': Utils.baseUserAgent(),
+        'Referer': tortugaHost + '/',
+        'Origin': tortugaHost
       };
 
       function cleanText(value) {
@@ -13243,24 +13327,60 @@
       function normalizeForCompare(value) {
         return component.cleanTitle(String(value || '').toLowerCase().replace(/[’'`"]/g, '').replace(/[\-\u2010-\u2015:]+/g, ' '));
       }
-      function preview(value, max) {
-        value = String(value == null ? '' : value);
-        max = max || 260;
-        return value.length > max ? value.slice(0, max) + '...' : value;
-      }
       function requestText(url, success, fail, options) {
         options = options || {};
         try {
           network.clear();
-          network.timeout(options.timeout || 9000);
+          network.timeout(options.timeout || 12000);
           network["native"](url, function (html) { success(html || ''); }, function (a, c) {
             var message = '';
             try { message = network.errorDecode(a, c); } catch (e) {}
+            stelsLog('uaserials-request-fail', { url: url, status: a && a.status, statusText: a && a.statusText, message: message || c || '' });
             if (fail) fail(message || (a && (a.statusText || a.status) || c || 'request error') + '');
-          }, options.postdata || false, { dataType: 'text', withCredentials: false, headers: headers });
+          }, options.postdata || false, { dataType: 'text', withCredentials: false, headers: options.headers || headers });
         } catch (e) {
           if (fail) fail(e && (e.message || e.toString()) || 'request error');
         }
+      }
+      function ensureCrypto(call, fail) {
+        try {
+          if (window.CryptoJS && CryptoJS.AES && CryptoJS.PBKDF2) { cryptoReady = true; call(); return; }
+          cryptoQueue.push({ call: call, fail: fail });
+          if (cryptoLoading) return;
+          cryptoLoading = true;
+          var url = 'https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.min.js';
+          var n = new Lampa.Reguest();
+          n.timeout(15000);
+          n["native"](url, function (js) {
+            try { (0, eval)(js || ''); } catch (e) {}
+            cryptoReady = !!(window.CryptoJS && CryptoJS.AES && CryptoJS.PBKDF2);
+            cryptoLoading = false;
+            var q = cryptoQueue.slice(); cryptoQueue = [];
+            stelsLog('uaserials-crypto-loaded', { ok: cryptoReady, length: String(js || '').length });
+            q.forEach(function (x) { if (cryptoReady) x.call(); else if (x.fail) x.fail('CryptoJS не завантажився'); });
+          }, function (a, c) {
+            cryptoLoading = false;
+            var q = cryptoQueue.slice(); cryptoQueue = [];
+            q.forEach(function (x) { if (x.fail) x.fail('Не вдалося завантажити CryptoJS'); });
+          }, false, { dataType: 'text' });
+        } catch (e) { if (fail) fail(e && (e.message || e.toString()) || 'crypto error'); }
+      }
+      function decryptUasTag(tagText) {
+        var obj = typeof tagText === 'string' ? JSON.parse(component.decodeHtml(tagText)) : tagText;
+        var salt = CryptoJS.enc.Hex.parse(obj.salt || '');
+        var iv = CryptoJS.enc.Hex.parse(obj.iv || '');
+        var key = CryptoJS.PBKDF2(uasPassword, salt, { hasher: CryptoJS.algo.SHA512, keySize: 8, iterations: 999 });
+        return CryptoJS.AES.decrypt(obj.ciphertext || '', key, { iv: iv }).toString(CryptoJS.enc.Utf8);
+      }
+      function tortugaDecode(input) {
+        try {
+          var raw = atob(String(input || ''));
+          if (!raw || raw.length < 2) return input;
+          var seed = raw.charCodeAt(0);
+          var out = '';
+          for (var i = 1; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ ((seed + 7 * (i - 1) + 13) % 256));
+          try { return decodeURIComponent(escape(out)); } catch (e) { return out; }
+        } catch (e) { return input; }
       }
       function movieTitles() {
         var movie = object.movie || {};
@@ -13271,107 +13391,17 @@
         });
         var orig = normalizeForCompare(movie.original_title || movie.original_name || '');
         var title = normalizeForCompare(movie.title || movie.name || select_title || '');
-        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') {
-          ['Пацаны', 'Пацани', 'Хлопаки', 'Хлопці', 'The Boys'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
-        }
-        if (orig === 'from' || title === 'ззовні' || title === 'извне') {
-          ['Извне', 'Ззовні', 'From', 'FROM'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
-        }
+        if (orig === 'the boys' || title === 'хлопаки' || title === 'пацаны') ['Пацаны', 'Пацани', 'Хлопаки', 'Хлопці', 'The Boys'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
+        if (orig === 'from' || title === 'ззовні' || title === 'извне') ['Ззовні', 'Іззовні', 'Извне', 'From', 'FROM'].forEach(function (t) { if (out.indexOf(t) === -1) out.push(t); });
         return out;
-      }
-      function variants() {
-        var out = [];
-        var movie = object.movie || {};
-        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || movie.last_air_date || '').slice(0, 4), 10) || 0;
-        function push(c) { c = cleanText(c || ''); if (c && out.indexOf(c) === -1) out.push(c); }
-        movieTitles().forEach(function (t) {
-          var c = cleanText(t || '');
-          if (!c) return;
-          if (year && !/(?:^|\D)(19|20)\d{2}(?:\D|$)/.test(c)) push(c + ' ' + year);
-          push(c);
-        });
-        stelsLog('uaserials-variant-order', { year: year, result: out.slice(0, 8) });
-        return out.slice(0, 8);
-      }
-      function stelsEscapeRegExp(value) {
-        return String(value == null ? '' : value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      }
-      function compareTokens(value) {
-        value = normalizeForCompare(value || '');
-        if (!value) return [];
-        return value.split(/\s+/).filter(function (t) { return t && t.length > 1; });
-      }
-      function overlapScore(title, needle) {
-        var a = compareTokens(title), b = compareTokens(needle);
-        if (!a.length || !b.length) return 0;
-        var map = {};
-        a.forEach(function (t) { map[t] = true; });
-        var m = 0;
-        b.forEach(function (t) { if (map[t]) m++; });
-        return m / b.length;
-      }
-      function titleHasWholeNeedle(title, needle) {
-        var t = normalizeForCompare(title || ''), n = normalizeForCompare(needle || '');
-        if (!t || !n) return false;
-        if (t === n) return true;
-        if (n.length < 4) return false;
-        return new RegExp('(^|\\s)' + stelsEscapeRegExp(n) + '($|\\s)').test(t);
-      }
-      function titleSeasonNumber(title) {
-        var m = normalizeForCompare(title || '').match(/(?:^|\s)(\d{1,2})\s*(?:сезон|season)(?:\s|$)/i);
-        return m ? parseInt(m[1], 10) || 0 : 0;
-      }
-      function expectedSeasonNumber() {
-        var movie = object.movie || {};
-        var s = parseInt(object.season || object.s || movie.season_number || 0, 10) || 0;
-        if (!s && object.search) s = titleSeasonNumber(object.search);
-        return s;
       }
       function isRelevantTitle(title) {
         var t = normalizeForCompare(title || '');
         if (!t) return false;
         return movieTitles().some(function (x) {
           var n = normalizeForCompare(x || '');
-          return n && (t === n || titleHasWholeNeedle(t, n) || overlapScore(t, n) >= 0.75);
+          return n && (t === n || t.indexOf(n) !== -1 || n.indexOf(t) !== -1);
         });
-      }
-      function searchScore(item, query) {
-        var title = (item && item.title) || '';
-        var t = normalizeForCompare(title);
-        var q = normalizeForCompare(query || '');
-        var score = 0;
-        if (q && t === q) score += 120;
-        else if (q && titleHasWholeNeedle(t, q)) score += 70;
-        else if (q) score += Math.round(overlapScore(t, q) * 60);
-        movieTitles().forEach(function (mt) {
-          var n = normalizeForCompare(mt || '');
-          if (!n) return;
-          if (t === n) score += 110;
-          else if (titleHasWholeNeedle(t, n)) score += 65;
-          else score += Math.round(overlapScore(t, n) * 45);
-        });
-        var movie = object.movie || {};
-        var year = parseInt((object.search_date || movie.release_date || movie.first_air_date || '').slice(0, 4), 10) || 0;
-        if (year && item.year && Math.abs(parseInt(item.year, 10) - year) <= 1) score += 30;
-        var isSerial = !!(object.serial || object.movie && (object.movie.number_of_seasons || object.movie.first_air_date));
-        var url = String(item.link || '').toLowerCase();
-        if (isSerial && /(serial|serialy|sezon|season|сезон)/i.test(title + ' ' + url)) score += 22;
-        if (isSerial && /\b(фильм|films|film)\b/i.test(title + ' ' + url) && !/serial/i.test(url)) score -= 25;
-        var es = expectedSeasonNumber();
-        var ts = titleSeasonNumber(title);
-        if (isSerial && es && ts === es) score += 45;
-        else if (isSerial && !es && ts) score -= Math.min(40, ts * 4); // не вибирати одразу 4/5 сезон, коли потрібна загальна картка серіалу
-        if (isSerial && !ts && /(сериал|serial)/i.test(title + ' ' + url)) score += 40;
-        return score;
-      }
-      function selectBest(items, query) {
-        var best = null;
-        (items || []).forEach(function (item) {
-          var score = searchScore(item, query);
-          if (!best || score > best.score) best = { item: item, score: score };
-        });
-        stelsLog('uaserials-search-best', { query: query, best_title: best && best.item && best.item.title || '', best_link: best && best.item && best.item.link || '', best_score: best && best.score || 0 });
-        return best && best.item || (items && items[0]);
       }
       function parseSearchItems(html) {
         var root = $('<div>' + (html || '') + '</div>');
@@ -13394,50 +13424,177 @@
         stelsLog('uaserials-search-results', { title: select_title, count: items.length, sample: items.slice(0, 10).map(function (i) { return i.title + '|' + i.link; }) });
         return items;
       }
-      function parsePlayerDataFromPage(html, pageUrl, poster, title) {
-        var items = [];
-        var directRe = /https?:\/\/[^"'\s<>\\]+(?:\.m3u8|\.mp4)(?:\?[^"'\s<>\\]*)?/ig;
+      function parseUasPlayerTabs(html) {
+        var tags = [];
+        var re = /data-tag\d+\s*=\s*(['"])([\s\S]*?)\1/ig;
         var m;
-        while ((m = directRe.exec(html || ''))) {
-          items.push({ title: title || select_title, quality: 'UASerials', season: 0, episode: 0, stream: component.fixLink(m[0]), poster: poster || '', referer: pageUrl, headers: { Referer: pageUrl, 'User-Agent': Utils.baseUserAgent() } });
+        while ((m = re.exec(html || ''))) {
+          try {
+            var dec = decryptUasTag(m[2]);
+            var arr = JSON.parse(dec.replace(/\\/g, ''));
+            if (Array.isArray(arr)) tags = tags.concat(arr);
+          } catch (e) { stelsLog('uaserials-tag-decrypt-error', { error: e && (e.message || e.toString()), sample: String(m[2] || '').slice(0, 120) }); }
         }
-        var tagCount = ((html || '').match(/<player-control\b/ig) || []).length;
-        if (!items.length && tagCount) {
-          stelsLog('uaserials-encrypted-player', { page: pageUrl, tag_count: tagCount, note: 'player data is encrypted in data-tag; direct stream is not present in HTML' });
+        tags = tags.filter(function (x) { return x && x.url; });
+        stelsLog('uaserials-player-tabs', { count: tags.length, sample: tags.slice(0, 6) });
+        return tags;
+      }
+      function parseTortugaEmbed(html, embedUrl) {
+        var m = String(html || '').match(/new\s+TortugaCore\s*\(\s*\{([\s\S]*?)\}\s*\)\s*;/i);
+        var body = m && m[1] || '';
+        var fm = body.match(/file\s*:\s*(['"])([\s\S]*?)\1/i);
+        if (!fm) {
+          stelsLog('uaserials-tortuga-file-missing', { embed: embedUrl, html_len: String(html || '').length, sample: String(html || '').slice(0, 500) });
+          return [];
+        }
+        var decoded = tortugaDecode(fm[2]);
+        var json = [];
+        try { json = JSON.parse(decoded); } catch (e) { stelsLog('uaserials-tortuga-json-error', { error: e && (e.message || e.toString()), sample: String(decoded || '').slice(0, 500) }); }
+        stelsLog('uaserials-tortuga-decoded', { embed: embedUrl, decoded_len: String(decoded || '').length, is_array: Array.isArray(json), count: Array.isArray(json) ? json.length : 0, sample: Array.isArray(json) ? json.slice(0, 2).map(function (x) { return { title: x.title, season: x.season, folder: x.folder && x.folder.length }; }) : [] });
+        return Array.isArray(json) ? json : [];
+      }
+      function parseFileEntries(str) {
+        var out = [];
+        str = String(str || '').trim();
+        if (!str) return out;
+        var re = /\{([^}]+)\}\s*([^;]+)/g;
+        var m;
+        while ((m = re.exec(str))) out.push({ voice: cleanText(m[1]), url: absolute(m[2], tortugaHost + '/') });
+        if (!out.length && /^https?:/i.test(str)) out.push({ voice: 'UASerials', url: absolute(str, tortugaHost + '/') });
+        return out;
+      }
+      function parseSubtitleEntries(str) {
+        var out = [];
+        str = String(str || '').trim();
+        if (!str) return false;
+        var re = /\[([^\]]+)\]\s*([^;]+)/g;
+        var m;
+        while ((m = re.exec(str))) out.push({ label: cleanText(m[1]), url: component.processSubs(absolute(m[2], tortugaHost + '/')) });
+        return out.length ? out : false;
+      }
+      function normalizeTortugaData(data) {
+        var seasons = [];
+        var movie = [];
+        (data || []).forEach(function (node, idx) {
+          var folder = node.folder || node.playlist || node.episodes || null;
+          if (Array.isArray(folder)) {
+            var seasonNum = parseInt(node.season || node.number || node.title, 10) || (idx + 1);
+            var season = { num: seasonNum, title: node.title || ('Сезон ' + seasonNum), episodes: [] };
+            folder.forEach(function (ep, ei) {
+              var episodeNum = parseInt(ep.number || ep.episode || ep.title, 10) || (ei + 1);
+              var files = parseFileEntries(ep.file || ep.url || '');
+              season.episodes.push({ season: seasonNum, episode: episodeNum, title: ep.title || ('Серія ' + episodeNum), files: files, poster: ep.poster || node.poster || '', subtitles: parseSubtitleEntries(ep.subtitle || '') });
+            });
+            seasons.push(season);
+          } else if (node.file || node.url) {
+            movie.push({ title: node.title || select_title, files: parseFileEntries(node.file || node.url || ''), poster: node.poster || '', subtitles: parseSubtitleEntries(node.subtitle || '') });
+          }
+        });
+        seasons.sort(function (a, b) { return a.num - b.num; });
+        extract = { seasons: seasons, movie: movie };
+        stelsLog('uaserials-normalized', { seasons: seasons.length, movie: movie.length, episodes: seasons.reduce(function (n, s) { return n + s.episodes.length; }, 0), sample: seasons.slice(0, 4).map(function (s) { return { season: s.num, episodes: s.episodes.length }; }) });
+      }
+      function buildFilters() {
+        filter_items = { season: [], season_num: [], voice: [] };
+        if (extract.seasons.length) {
+          extract.seasons.forEach(function (s) { filter_items.season.push(s.title || ('Сезон ' + s.num)); filter_items.season_num.push(s.num); });
+          if (!filter_items.season[choice.season]) choice.season = 0;
+          var voices = [];
+          var season = extract.seasons[choice.season];
+          if (season) season.episodes.forEach(function (ep) { ep.files.forEach(function (f) { if (f.voice && voices.indexOf(f.voice) === -1) voices.push(f.voice); }); });
+          filter_items.voice = voices;
+          if (choice.voice_name && voices.indexOf(choice.voice_name) !== -1) choice.voice = voices.indexOf(choice.voice_name);
+          if (!filter_items.voice[choice.voice]) choice.voice = 0;
+          choice.voice_name = filter_items.voice[choice.voice] || '';
+        } else {
+          var v = [];
+          extract.movie.forEach(function (m) { m.files.forEach(function (f) { if (f.voice && v.indexOf(f.voice) === -1) v.push(f.voice); }); });
+          filter_items.voice = v;
+          if (!filter_items.voice[choice.voice]) choice.voice = 0;
+          choice.voice_name = filter_items.voice[choice.voice] || '';
+        }
+        component.filter(filter_items, choice);
+      }
+      function currentItems() {
+        var items = [];
+        var voice = filter_items.voice[choice.voice] || '';
+        if (extract.seasons.length) {
+          var season = extract.seasons[choice.season];
+          if (season) season.episodes.forEach(function (ep) {
+            ep.files.forEach(function (f) {
+              if (voice && f.voice !== voice) return;
+              items.push({ title: component.formatEpisodeTitle(ep.season, ep.episode), quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', season: ep.season, episode: ep.episode, voice: f.voice || '', stream: f.url, poster: absolute(ep.poster || '', tortugaHost + '/'), subtitles: ep.subtitles || false, headers: playHeaders });
+            });
+          });
+        } else {
+          extract.movie.forEach(function (m) { m.files.forEach(function (f) { if (!voice || f.voice === voice) items.push({ title: m.title || f.voice || select_title, quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', voice: f.voice || '', stream: f.url, poster: absolute(m.poster || '', tortugaHost + '/'), subtitles: m.subtitles || false, headers: playHeaders }); }); });
         }
         return items;
+      }
+      function append(items) {
+        component.reset();
+        var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        var last_episode = component.getLastEpisode(items);
+        items.forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = last_episode;
+            element.translate_voice = element.voice || choice.voice_name || 'UASerials';
+          }
+          var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie && (object.movie.original_title || object.movie.original_name || select_title)].join('') : (object.movie && (object.movie.original_title || object.movie.original_name) || select_title));
+          var view = Lampa.Timeline.view(hash);
+          var hash_file = Lampa.Utils.hash((element.season ? [element.season, element.episode, element.voice].join(':') : element.title + element.voice) + ':uaserials');
+          element.timeline = view;
+          var row = Lampa.Template.get('stels_online', element);
+          row.append(Lampa.Timeline.render(view));
+          if (viewed.indexOf(hash_file) !== -1) row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+          row.on('hover:enter', function () {
+            if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            var first = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title), poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: element.subtitles || false, quality: false }, 'uaserials');
+            Lampa.Player.play(first);
+            var playlist = [];
+            if (element.season && Lampa.Platform.version) {
+              items.forEach(function (el) { playlist.push(stelsSanitizeAndroidPlayable({ url: el.stream, title: el.title, poster: el.poster || '', timeline: el.timeline, headers: el.headers || false, subtitles: el.subtitles || false, quality: false }, 'uaserials')); });
+            } else playlist.push(first);
+            Lampa.Player.playlist(playlist);
+            if (viewed.indexOf(hash_file) === -1) { viewed.push(hash_file); row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>'); Lampa.Storage.set('online_view', viewed); }
+            try { stelsSaveWatchHistory(object.movie, 'uaserials', 'UASerials', element, { title: element.title }); } catch (e) {}
+          });
+          component.append(row);
+          component.contextmenu({ item: row, view: view, viewed: viewed, hash_file: hash_file, element: element, file: function (call) { call({ file: element.stream, quality: false, headers: element.headers || false, subtitles: element.subtitles || false }); } });
+        });
+        component.start(true);
+      }
+      function loadEmbed(embedUrl, pageUrl) {
+        requestText(embedUrl, function (embedHtml) {
+          if (destroyed) return;
+          var data = parseTortugaEmbed(embedHtml, embedUrl);
+          normalizeTortugaData(data);
+          component.loading(false);
+          buildFilters();
+          var list = currentItems();
+          if (list.length) append(list); else component.emptyForQuery(select_title);
+        }, function (err) { component.loading(false); component.empty(err || 'UASerials embed error'); }, { timeout: 15000, headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': pageUrl || host + '/', 'Origin': host, 'Accept-Language': 'uk-UA,uk;q=0.9,ru;q=0.8,en;q=0.6' } });
       }
       function loadPage(item) {
         component.loading(true);
         requestText(item.link, function (html) {
           if (destroyed) return;
-          var mt = String(html || '').match(/<meta\s+property=["']og:title["'][^>]*content=["']([^"']+)/i);
-          var mi = String(html || '').match(/<meta\s+property=["']og:image["'][^>]*content=["']([^"']+)/i);
-          var title = cleanText((mt && mt[1]) || item.title || select_title);
-          var poster = absolute((mi && mi[1]) || item.poster || '', item.link);
-          var parsed = parsePlayerDataFromPage(html, item.link, poster, title);
-          component.loading(false);
-          component.reset();
-          if (!parsed.length) {
-            component.empty('UASerials: сторінку знайдено, але дані плеєра зашифровані. Потрібен HAR з розшифрованим player-control або відкритим embed HTML.');
-            return;
-          }
-          parsed.forEach(function (element) {
-            var view = Lampa.Timeline.view(Lampa.Utils.hash(select_title + ':' + (element.stream || '')));
-            element.timeline = view;
-            var row = Lampa.Template.get('stels_online', element);
-            row.append(Lampa.Timeline.render(view));
-            row.on('hover:enter', function () {
-              Lampa.Player.play(stelsSanitizeAndroidPlayable({ url: element.stream, title: element.title || select_title, poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, quality: false }, 'uaserials'));
-              try { stelsSaveWatchHistory(object.movie, 'uaserials', 'UASerials', element, { title: element.title }); } catch (e) {}
-            });
-            component.append(row);
-          });
-          component.start(true);
-        }, function (err) {
-          component.loading(false);
-          component.empty(err || 'UASerials page error');
-        }, { timeout: 10000 });
+          ensureCrypto(function () {
+            try {
+              var tabs = parseUasPlayerTabs(html);
+              var main = tabs.filter(function (t) { return t.url && /tortuga\.tw\/embed/i.test(t.url) && !/трейлер|trailer/i.test(t.tabName || ''); })[0] || tabs.filter(function (t) { return t.url && /tortuga\.tw\/embed/i.test(t.url); })[0];
+              if (!main) {
+                component.loading(false);
+                component.empty('UASerials: player-control знайдено, але embed Tortuga не знайдено');
+                return;
+              }
+              loadEmbed(absolute(main.url, item.link), item.link);
+            } catch (e) {
+              component.loading(false);
+              component.empty('UASerials parse error: ' + (e && (e.message || e.toString()) || ''));
+            }
+          }, function (err) { component.loading(false); component.empty(err || 'UASerials crypto error'); });
+        }, function (err) { component.loading(false); component.empty(err || 'UASerials page error'); }, { timeout: 12000 });
       }
 
       this.search = function (_object, kinopoisk_id, data) {
@@ -13450,20 +13607,17 @@
         requestText(host + '/search/' + query + '/', function (html) {
           if (destroyed) return;
           var items = parseSearchItems(html);
-          if (!items.length) {
-            component.loading(false);
-            component.emptyForQuery(select_title);
-            return;
-          }
+          if (!items.length) { component.loading(false); component.emptyForQuery(select_title); return; }
           var best = items.filter(function (i) { return isRelevantTitle(i.title); })[0] || items[0];
           loadPage(best);
-        }, function (err) {
-          component.loading(false);
-          component.empty(err || 'UASerials search error');
-        }, { timeout: 10000 });
+        }, function (err) { component.loading(false); component.empty(err || 'UASerials search error'); }, { timeout: 12000 });
       };
-      this.destroy = function () { destroyed = true; try { network.clear(); } catch (e) {} };
+      this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
+      this.reset = function () { choice = { season: 0, voice: 0, voice_name: '' }; buildFilters(); append(currentItems()); component.saveChoice(choice); };
+      this.filter = function (type, a, b) { choice[a.stype] = b.index; if (a.stype === 'voice') choice.voice_name = filter_items.voice[b.index] || ''; buildFilters(); append(currentItems()); component.saveChoice(choice); setTimeout(component.closeFilter, 10); };
+      this.destroy = function () { destroyed = true; try { network.clear(); } catch (e) {} extract = { seasons: [], movie: [] }; };
     }
+
 
     function cdnvideohub(component, _object) {
       var network = new Lampa.Reguest();
@@ -23492,7 +23646,30 @@
         }
       };
       Lampa.Manifest.plugins = manifest;
-      var button = "<div class=\"full-start__button selector view--stels_online\" data-stels-main-button=\"1\" data-subtitle=\"" + STELS_ONLINE_VERSION + "\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0\" alt=\"Stels_Online\">\n        <span>#{stels_online_title}</span>\n        </div>";
+      var button = "<div class=\"full-start__button selector view--stels_online\" data-stels-main-button=\"1\">\n        <img class=\"stels-online-plugin-icon\" src=\"" + STELS_ICON_URL + "\" style=\"width:2.2em;height:2.2em;object-fit:contain;display:block;margin:0\" alt=\"Stels_Online\">\n        </div>";
+      function stelsInsertFullCardButton(e, reason) {
+        try {
+          if (!(e && e.object && e.object.activity && e.object.activity.render && e.data && e.data.movie)) return;
+          var render = e.object.activity.render();
+          if (!(render && render.length)) return;
+          if (render.find('.view--stels_online[data-stels-main-button="1"]').length) return;
+          var btn = $(Lampa.Lang.translate(button));
+          online_loading = false;
+          btn.on('hover:enter click', function () {
+            stelsLog('full-button-enter', { title: e.data && e.data.movie && (e.data.movie.title || e.data.movie.name) || '', reason: reason || '' });
+            loadOnline(e.data.movie);
+          });
+          var anchor = render.find('.view--torrent').last();
+          var place = render.find('.full-start__buttons,.full-start-new__buttons').first();
+          stelsLog('full-button-insert-before', { reason: reason || '', anchor_count: anchor.length, place_count: place.length, existing_count: render.find('.view--stels_online').length });
+          if (anchor.length) anchor.after(btn);
+          else if (place.length) place.append(btn);
+          else return;
+          stelsLog('full-button-insert-after', { reason: reason || '', inserted: render.find('.view--stels_online').length, html: (btn.prop('outerHTML') || '').slice(0, 260) });
+        } catch (insertErr) {
+          stelsLog('full-button-insert-error', { reason: reason || '', error: insertErr && (insertErr.message || insertErr.toString()) });
+        }
+      }
       Lampa.Listener.follow('full', function (e) {
         if (e.type == 'render' || e.type == 'build' || e.type == 'complite') {
           try {
@@ -23505,27 +23682,9 @@
               stels_count: e.object && e.object.activity && e.object.activity.render ? e.object.activity.render().find('.view--stels_online').length : -1
             });
           } catch (logErr) {}
-        }
-        if (e.type == 'complite') {
-          var btn = $(Lampa.Lang.translate(button));
-          online_loading = false;
-          btn.on('hover:enter', function () {
-            stelsLog('full-button-enter', { title: e.data && e.data.movie && (e.data.movie.title || e.data.movie.name) || '' });
-            loadOnline(e.data.movie);
-          });
-          try {
-            var render = e.object.activity.render();
-            render.find('.view--stels_online').remove();
-            var anchor = render.find('.view--torrent');
-            stelsLog('full-button-insert-before', { anchor_count: anchor.length, existing_count: render.find('.view--stels_online').length });
-            if (anchor.length) anchor.after(btn);
-            else render.find('.full-start__buttons,.full-start,.full-start-new__buttons').first().append(btn);
-            btn.removeAttr('data-subtitle');
-            btn.find('span,.full-start__subtitle,.selector__subtitle,[class*=\"subtitle\"],.stels-online-version-under').remove();
-            stelsLog('full-button-insert-after', { inserted: render.find('.view--stels_online').length, html: (btn.prop('outerHTML') || '').slice(0, 260) });
-          } catch (insertErr) {
-            stelsLog('full-button-insert-error', { error: insertErr && (insertErr.message || insertErr.toString()) });
-          }
+          stelsInsertFullCardButton(e, e.type + ':immediate');
+          setTimeout(function () { stelsInsertFullCardButton(e, e.type + ':delay120'); }, 120);
+          if (e.type !== 'render') setTimeout(function () { stelsInsertFullCardButton(e, e.type + ':delay550'); }, 550);
         }
       });
 
@@ -24398,7 +24557,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.12: Zerx: не нормалізуємо allarknow у stloadi, першим пробуємо оригінальний player з fileList; UI: патчимо клон full-start кнопки у меню Джерело.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.14: швидке повернення кнопки на головній картці, touch-переміщення джерел, структурний UASerials через player-control + Tortuga file.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
