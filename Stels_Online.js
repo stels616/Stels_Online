@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.18';
+    var STELS_ONLINE_VERSION = '1.1.19';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -840,6 +840,31 @@
         if (event && event.preventDefault) event.preventDefault();
         beginMove(this);
         return false;
+      });
+
+      var remoteOkTimer = 0;
+      html.on('keydown', function (event) {
+        var code = event && (event.keyCode || event.which) || 0;
+        var key = event && event.key || '';
+        var current = html.find('.stels-online-source-row.focus, .stels-online-source-row.hover, .stels-online-source-row.focused, .stels-online-source-row.selector--focus').first();
+        if (!current.length) current = html.find('.stels-online-source-row:focus').first();
+        if (!current.length && document.activeElement) current = $(document.activeElement).closest('.stels-online-source-row');
+        if (movingMode) {
+          if (code === 38 || key === 'ArrowUp') { moveSelectedRow(-1); event.preventDefault(); return false; }
+          if (code === 40 || key === 'ArrowDown') { moveSelectedRow(1); event.preventDefault(); return false; }
+          if (code === 13 || code === 23 || key === 'Enter') { commitMove(); event.preventDefault(); return false; }
+          if (code === 27 || code === 10009 || key === 'Escape' || key === 'Backspace') { movingMode = false; if (movingRow && movingRow.length) movingRow.removeClass('stels-online-source-moving').find('.stels-online-source-move-hint').text('Утримати'); event.preventDefault(); return false; }
+        }
+        if ((code === 13 || code === 23 || key === 'Enter') && current.length && !remoteOkTimer) {
+          remoteOkTimer = setTimeout(function () {
+            remoteOkTimer = 0;
+            beginMove(current);
+            stelsLog('sources-remote-long-start', { source: stelsNormalizeSourceKey(current.data('source')) });
+          }, 700);
+        }
+      });
+      html.on('keyup', function () {
+        if (remoteOkTimer) { clearTimeout(remoteOkTimer); remoteOkTimer = 0; }
       });
 
       function stopTouchAutoScroll() {
@@ -3996,24 +4021,30 @@
         }
         (list || []).forEach(function (u) {
           var info = zerxTokenInfo(u);
+          // Головне правило з нового HAR: не підміняти домен плеєра. Якщо Zerx віддав
+          // stloadi — першим іде саме stloadi; якщо allarknow — першим allarknow.
+          add(u, 'page');
           if (info.token_movie && info.token) {
-            // У HAR повний fileList відкривається саме на allarknow. Навіть якщо сторінка Zerx
-            // дала stloadi, першим примусово пробуємо allarknow з тим самим token_movie/token.
-            ['https://synthezoid-as.allarknow.online', 'https://synthezoid-as.stloadi.live'].forEach(function (origin) {
-              add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token), origin.indexOf('allarknow') > -1 ? 'token-allarknow' : 'token-stloadi');
+            if (info.origin) {
+              add(info.origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token), 'token-same-origin');
+              add(info.origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token) + '&domain=' + encodeURIComponent(host + '/'), 'token-same-origin-domain');
+            }
+            ['https://synthezoid-as.stloadi.live', 'https://synthezoid-as.allarknow.online'].forEach(function (origin) {
+              add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token), origin.indexOf('stloadi') > -1 ? 'token-stloadi' : 'token-allarknow');
               add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token) + '&domain=' + encodeURIComponent(host + '/'), 'token-domain');
               add(origin + '/?token_movie=' + encodeURIComponent(info.token_movie) + '&token=' + encodeURIComponent(info.token) + '&domain=' + encodeURIComponent(host), 'token-domain-noslash');
               add(origin + '/?token=' + encodeURIComponent(info.token) + '&token_movie=' + encodeURIComponent(info.token_movie), 'token-reverse');
             });
           }
-          add(u, 'page');
         });
         out.sort(function (a, b) {
           function rank(v) {
             var u = String(v.url || ''), r = String(v.reason || '');
-            if (/allarknow/i.test(u) && r === 'token-allarknow') return 0;
-            if (/allarknow/i.test(u)) return 1;
-            if (/stloadi/i.test(u)) return 4;
+            if (r === 'page') return 0;
+            if (r === 'token-same-origin') return 1;
+            if (r === 'token-same-origin-domain') return 2;
+            if (/stloadi/i.test(u)) return 3;
+            if (/allarknow/i.test(u)) return 4;
             if (/ortified/i.test(u)) return 9;
             return 5;
           }
@@ -4140,70 +4171,27 @@
             stream_url: iframeUrl
           });
         }
-        // Уніфікована функція обробки об'єкта {tXX: {id, episode, translation, ...}}
-        function processVoicesObj(snum, voices, fallbackEpNum) {
-          if (!voices || typeof voices !== 'object') return;
-          Object.keys(voices).forEach(function (vk) {
-            var v = voices[vk] || {};
-            if (!v.id) return;
-            var epNum = parseInt(v.episode != null ? v.episode : (fallbackEpNum != null ? fallbackEpNum : 0), 10);
-            addItem(parseInt(snum, 10) || 0, epNum, v.translation || '', v.id, v.quality || '');
-          });
-        }
         if (fileList.type == 'serial' && fileList.all) {
           Object.keys(fileList.all).forEach(function (snum) {
             var eps = fileList.all[snum];
             if (Array.isArray(eps)) {
-              // Масив: eps[idx] = {tXX: {...}} де idx може бути 0 (епізод 0 / тизер сезону) — НЕ пропускаємо
               eps.forEach(function (voices, idx) {
-                if (!voices) return; // тільки null/undefined пропускаємо
-                processVoicesObj(snum, voices, idx);
+                if (!voices || idx === 0) return;
+                Object.keys(voices).forEach(function (vk) { var v = voices[vk] || {}; addItem(parseInt(snum, 10) || 0, parseInt(v.episode || idx, 10) || idx, v.translation || '', v.id, v.quality || ''); });
               });
             } else if (eps && typeof eps == 'object') {
-              // Об'єкт: eps[epnum] = {tXX: {...}}
               Object.keys(eps).forEach(function (epnum) {
-                processVoicesObj(snum, eps[epnum], parseInt(epnum, 10) || 0);
+                var voices = eps[epnum] || {};
+                Object.keys(voices).forEach(function (vk) { var v = voices[vk] || {}; addItem(parseInt(snum, 10) || 0, parseInt(v.episode || epnum, 10) || parseInt(epnum, 10) || 0, v.translation || '', v.id, v.quality || ''); });
               });
             }
           });
-        } else if (fileList.all && typeof fileList.all == 'object') {
-          // Фільм або нестандартна структура: all може бути {1: {tXX: {id,...}}} або {tXX: {id,...}}
-          var allKeys = Object.keys(fileList.all);
-          var firstVal = fileList.all[allKeys[0]];
-          if (firstVal && typeof firstVal == 'object' && (firstVal.id || firstVal.translation)) {
-            // Плаский об'єкт {tXX: {id, translation}} — фільм без сезону
-            processVoicesObj(0, fileList.all, 0);
-          } else {
-            // Вкладена структура {snum: {epnum: {tXX: {...}}}} або {snum: [{tXX:{}},...]}
-            Object.keys(fileList.all).forEach(function (snum) {
-              var eps = fileList.all[snum];
-              if (Array.isArray(eps)) {
-                eps.forEach(function (voices, idx) {
-                  if (!voices) return;
-                  processVoicesObj(snum, voices, idx);
-                });
-              } else if (eps && typeof eps == 'object') {
-                var epKeys = Object.keys(eps);
-                var epFirst = eps[epKeys[0]];
-                if (epFirst && typeof epFirst == 'object' && (epFirst.id || epFirst.translation)) {
-                  // {snum: {tXX: {id,...}}} — фільм з "сезонами"-озвучками
-                  processVoicesObj(0, eps, 0);
-                } else {
-                  Object.keys(eps).forEach(function (epnum) {
-                    processVoicesObj(snum, eps[epnum], parseInt(epnum, 10) || 0);
-                  });
-                }
-              }
-            });
-          }
-          // Додатково: взяти active якщо items ще порожні
-          if (!items.length) {
-            var active = fileList.active || {};
-            addItem(0, 0, active.translation || 'Zerx', active.id, active.quality || '');
-          }
         } else {
           var active = fileList.active || {};
           addItem(0, 0, active.translation || 'Zerx', active.id, active.quality || '');
+          if (fileList.all && typeof fileList.all == 'object') {
+            Object.keys(fileList.all).forEach(function (k) { var v = fileList.all[k] || {}; addItem(0, 0, v.translation || k, v.id, v.quality || ''); });
+          }
         }
         if (forcedSeason) {
           var uniq = [];
@@ -4359,7 +4347,7 @@
               'User-Agent': player_browser_ua,
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
               'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-              'Referer': host + '/',
+              'Referer': pageUrl || (host + '/'),
               'Upgrade-Insecure-Requests': '1',
               'Sec-Fetch-Dest': 'iframe',
               'Sec-Fetch-Mode': 'navigate',
@@ -4868,11 +4856,10 @@
           var title = cleanText(node.title || '');
           if (node.folder && node.folder.length) {
             var s = parseNum(title, 'season') || season || 0;
-            // Якщо title містить "сезон/season" — це позначка сезону, голос не змінюємо.
-            // Якщо title не містить "сезон/season" і не порожній — це голос (озвучка).
-            var isSeason = /сезон|season/i.test(title);
-            var v = isSeason ? (voice || 'KinoUkr') : (title || voice || 'KinoUkr');
-            walk(node.folder, v, s || season);
+            var v = voice;
+            if (!s && title) v = title;
+            if (s && (!voice || /сезон|season/i.test(voice))) v = voice && !/сезон|season/i.test(voice) ? voice : (v || 'KinoUkr');
+            walk(node.folder, v || title || voice, s || season);
           } else if (node.file) {
             addItem(node, voice, season, index + 1);
           }
@@ -13336,19 +13323,31 @@
         var key = CryptoJS.PBKDF2(uasPassword, salt, { hasher: CryptoJS.algo.SHA512, keySize: 8, iterations: 999 });
         return CryptoJS.AES.decrypt(obj.ciphertext || '', key, { iv: iv }).toString(CryptoJS.enc.Utf8);
       }
-      function tortugaBase64ToBinary(input) {
+      function tortugaNormalizeBase64(input) {
         var s = String(input || '').replace(/\n|\r|\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
-        if (!s) return '';
-        // Tortuga часто віддає base64 без фінального padding. Browser atob у Lampa
-        // на таких рядках може падати, тому нормалізуємо padding вручну.
         s = s.replace(/=+$/g, '');
         while (s.length % 4) s += '=';
-        try { return atob(s); } catch (e1) {}
+        return s;
+      }
+      function tortugaBase64ToBinary(input, meta) {
+        var s = tortugaNormalizeBase64(input);
+        if (!s) return '';
+        if (meta) meta.normalized_len = s.length;
+        try {
+          var raw = atob(s);
+          if (meta) meta.decoder = 'atob';
+          return raw;
+        } catch (e1) {
+          if (meta) meta.atob_error = e1 && (e1.message || e1.toString()) || 'atob error';
+        }
         try {
           if (typeof CryptoJS !== 'undefined' && CryptoJS.enc && CryptoJS.enc.Base64) {
+            if (meta) meta.decoder = 'cryptojs';
             return CryptoJS.enc.Latin1.stringify(CryptoJS.enc.Base64.parse(s));
           }
-        } catch (e2) {}
+        } catch (e2) {
+          if (meta) meta.cryptojs_error = e2 && (e2.message || e2.toString()) || 'cryptojs error';
+        }
         try {
           var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
           var out = '', buffer = 0, bits = 0;
@@ -13365,31 +13364,48 @@
               out += String.fromCharCode((buffer >> bits) & 255);
             }
           }
+          if (meta) meta.decoder = 'manual';
           return out;
-        } catch (e3) {}
+        } catch (e3) {
+          if (meta) meta.manual_error = e3 && (e3.message || e3.toString()) || 'manual error';
+        }
         return '';
       }
-      function tortugaDecodeOnce(input) {
+      function tortugaXorKey(seed, index) {
+        // Точна формула з tor.core.min.js: #O(seed,index) = (seed + 7*index + 13) % 256
+        return (seed + 7 * index + 13) % 256;
+      }
+      function tortugaDecodeOnce(input, meta) {
         try {
-          var raw = tortugaBase64ToBinary(input);
+          var raw = tortugaBase64ToBinary(input, meta);
+          if (meta) meta.raw_len = raw ? raw.length : 0;
           if (!raw || raw.length < 2) return input;
           var seed = raw.charCodeAt(0);
+          if (meta) meta.seed = seed;
           var out = '';
-          for (var i = 1; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ ((seed + 7 * (i - 1) + 13) % 256));
-          try { return decodeURIComponent(escape(out)); } catch (e) { return out; }
-        } catch (e) { return input; }
+          for (var i = 1; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ tortugaXorKey(seed, i - 1));
+          if (meta) meta.xor_start = out.slice(0, 16);
+          try { return decodeURIComponent(escape(out)); } catch (e) { if (meta) meta.utf8_error = e && (e.message || e.toString()); return out; }
+        } catch (e) {
+          if (meta) meta.decode_error = e && (e.message || e.toString()) || 'decode error';
+          return input;
+        }
       }
       function looksBase64(value) {
         value = String(value || '').trim();
-        return value.length > 16 && /^[A-Za-z0-9+\/=_-]+$/.test(value) && value.indexOf('{') === -1 && value.indexOf('[') === -1;
+        return value.length > 16 && /^[A-Za-z0-9+\/_=-]+$/.test(value) && value.indexOf('{') === -1 && value.indexOf('[') === -1;
       }
       function tortugaDecode(input) {
         var value = String(input || '').trim();
         var chain = [];
         for (var i = 0; i < 4; i++) {
           var before = value;
-          var after = tortugaDecodeOnce(before);
-          chain.push({ step: i + 1, in_len: before.length, out_len: String(after || '').length, out_start: String(after || '').slice(0, 12) });
+          var meta = { step: i + 1, in_len: before.length, in_start: before.slice(0, 12), algo: 'tor.core.#k/#O', formula: '(seed + 7*index + 13) % 256' };
+          var after = tortugaDecodeOnce(before, meta);
+          meta.out_len = String(after || '').length;
+          meta.out_start = String(after || '').slice(0, 32);
+          meta.changed = after !== before;
+          chain.push(meta);
           value = String(after || '');
           var t = value.replace(/^\uFEFF/, '').trim();
           if (t.charAt(0) === '[' || t.charAt(0) === '{') { value = t; break; }
@@ -13609,7 +13625,7 @@
           ensureCrypto(function () {
             try {
               var tabs = parseUasPlayerTabs(html);
-              var main = tabs.filter(function (t) { return t.url && /tortuga\.tw\/embed/i.test(t.url) && !/трейлер|trailer/i.test(t.tabName || ''); })[0] || tabs.filter(function (t) { return t.url && /tortuga\.tw\/embed/i.test(t.url); })[0];
+              var main = tabs.filter(function (t) { return t.url && /tortuga\.tw\/(?:embed|usp)\//i.test(t.url) && !/трейлер|trailer/i.test(t.tabName || ''); })[0] || tabs.filter(function (t) { return t.url && /tortuga\.tw\/(?:embed|usp)\//i.test(t.url); })[0];
               if (!main) {
                 component.loading(false);
                 component.empty('UASerials: player-control знайдено, але embed Tortuga не знайдено');
@@ -13630,14 +13646,56 @@
         destroyed = false;
         component.loading(true);
         if (data && data[0] && data[0].link) return loadPage(data[0]);
-        var query = encodeURIComponent(select_title || '');
-        requestText(host + '/search/' + query + '/', function (html) {
-          if (destroyed) return;
-          var items = parseSearchItems(html);
-          if (!items.length) { component.loading(false); component.emptyForQuery(select_title); return; }
-          var best = items.filter(function (i) { return isRelevantTitle(i.title); })[0] || items[0];
-          loadPage(best);
-        }, function (err) { component.loading(false); component.empty(err || 'UASerials search error'); }, { timeout: 12000 });
+        function scoreSearchItem(item, queryTitle) {
+          var t = normalizeForCompare(item && item.title || '');
+          var q = normalizeForCompare(queryTitle || '');
+          var movie = object.movie || {};
+          var uk = normalizeForCompare(movie.title || movie.name || '');
+          var orig = normalizeForCompare(movie.original_title || movie.original_name || '');
+          var year = String((movie.release_date || movie.first_air_date || movie.year || '').match(/\d{4}/) || '');
+          var sc = 0;
+          if (q && t === q) sc += 120;
+          if (uk && t === uk) sc += 220;
+          if (orig && t === orig) sc += 70;
+          if (q && t.indexOf(q) !== -1) sc += 50;
+          if (uk && t.indexOf(uk) !== -1) sc += 100;
+          if (year && String(item.title || '').indexOf(year) !== -1) sc += 20;
+          if (/^[А-Яа-яІіЇїЄєҐґ]/.test(item.title || '')) sc += 35;
+          return sc;
+        }
+        function uasSearchVariants() {
+          var movie = object.movie || {};
+          var out = [];
+          function add(t) { t = cleanText(t || ''); if (t && out.indexOf(t) === -1) out.push(t); }
+          // Пріоритет української назви: на UASerials українська назва дає правильний порядок,
+          // а англійська часто піднімає сиквели вище оригінального фільму.
+          add(movie.title || movie.name || '');
+          movieTitles().forEach(add);
+          add(select_title || '');
+          add(movie.original_title || movie.original_name || '');
+          return out;
+        }
+        var variants = uasSearchVariants();
+        stelsLog('uaserials-search-variants', { select_title: select_title, variants: variants });
+        function trySearchVariant(pos, bestSoFar) {
+          if (pos >= variants.length) {
+            component.loading(false);
+            if (bestSoFar && bestSoFar.item) loadPage(bestSoFar.item); else component.emptyForQuery(select_title);
+            return;
+          }
+          var qtitle = variants[pos];
+          var query = encodeURIComponent(qtitle || '');
+          requestText(host + '/search/' + query + '/', function (html) {
+            if (destroyed) return;
+            var items = parseSearchItems(html);
+            var ranked = items.map(function (it) { return { item: it, score: scoreSearchItem(it, qtitle), query: qtitle }; }).sort(function (a, b) { return b.score - a.score; });
+            stelsLog('uaserials-search-ranked', { query: qtitle, count: items.length, best: ranked[0] ? { title: ranked[0].item.title, link: ranked[0].item.link, score: ranked[0].score } : null });
+            if (ranked[0] && ranked[0].score >= 180) { loadPage(ranked[0].item); return; }
+            if (ranked[0] && (!bestSoFar || ranked[0].score > bestSoFar.score)) bestSoFar = ranked[0];
+            trySearchVariant(pos + 1, bestSoFar);
+          }, function () { trySearchVariant(pos + 1, bestSoFar); }, { timeout: 12000 });
+        }
+        trySearchVariant(0, null);
       };
       this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
       this.reset = function () { choice = { season: 0, voice: 0, voice_name: '' }; buildFilters(); append(currentItems()); component.saveChoice(choice); };
@@ -14657,11 +14715,15 @@
                 stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality) : [] });
                 zetflixnetStopCurrentPlayback('voice-switch:' + voiceName);
                 setTimeout(function () {
+                  if (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen') && play.quality) {
+                    try { play.url = component.getDefaultQuality(play.quality, play.url); } catch (e5) {}
+                    play._stels_tizen_voice_switch = true;
+                  }
                   Lampa.Player.play(play);
                   if (!stelsAndroidPlayerFixEnabled()) {
                     try { Lampa.Player.playlist([play]); } catch (e4) {}
                   }
-                }, 120);
+                }, (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 260 : 120);
               }, function (err) {
                 try { Lampa.Player.loading(false); } catch (e3) {}
                 stelsLog('zetflixnet-voice-switch-fail', { voice: voiceName, error: err || '', season: element && element.season || '', episode: element && element.episode || '' });
@@ -24554,7 +24616,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.15: логіку кнопки Stels_Online на головній картці відновлено за робочим Stels_Online1.js; інші зміни 1.1.14 збережено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.19: Zerx домен плеєра береться з HAR/сторінки без примусової підміни; UASerials підтримує tortuga /usp; додано OK-long для Tizen і стабілізацію ZetflixNet voice switch.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
