@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.72';
+    var STELS_ONLINE_VERSION = '1.1.73';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -688,8 +688,9 @@
           '.stels-online-source-status-error{color:#ff3b30!important;}' +
           '.stels-online-source-status-wait{color:#ffd400!important;}' +
           '.stels-online-source-quality-badge{margin-left:auto!important;padding-left:1.2em!important;min-width:4.2em!important;text-align:right!important;font-weight:900!important;color:#ffb300!important;-webkit-text-fill-color:#ffb300!important;font-size:.95em!important;letter-spacing:.02em!important;text-shadow:0 0 .2em rgba(0,0,0,.75)!important;white-space:nowrap!important;}' +
-          '.stels-online-source-status-line{display:flex!important;align-items:center!important;width:100%!important;min-width:0!important;}' +
+          '.stels-online-source-status-line{display:flex!important;align-items:center!important;width:100%!important;min-width:0!important;gap:.35em!important;}' +
           '.stels-online-source-status-name{display:inline-flex!important;align-items:center!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}' +
+          '.stels-online-source-status-name .stels-online-ua-flag{position:static!important;display:inline-block!important;vertical-align:middle!important;flex-shrink:0!important;margin-right:.45em!important;}' +
           '.stels-online-source-moving{outline:2px solid #23d160!important;background:rgba(35,209,96,.12)!important;border-radius:.45em;padding-left:.45em!important;padding-right:.45em!important;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*=\"subtitle\"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
@@ -5495,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.71: precheck показує лише фактичну якість із play-елементів/URL, без якості за замовчуванням джерела.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.73: виправлено відображення якості в меню джерел, вирівнювання прапора/назви та збір якості через contextmenu/element.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -24403,22 +24404,20 @@
           var text = String(label || '').replace(/&nbsp;/g, ' ');
           try { text = decodeURIComponent(text); } catch (e) {}
           try { text = text.replace(/\u([0-9a-f]{4})/ig, function (all, h) { return String.fromCharCode(parseInt(h, 16)); }); } catch (e) {}
-          // 1.1.71: не вважаємо діапазони типу "360p ~ 4K" або "360p ~ 1080p" фактичною якістю.
-          if (/[~〜～]/.test(text)) return 0;
           var max = 0;
-          text.replace(/\b(8|4|2)\s*k\b/ig, function (all, k) {
+          text.replace(/(^|[^a-z0-9])([842])\s*k([^a-z0-9]|$)/ig, function (all, pre, k) {
             var v = parseInt(k, 10);
             if (v === 8) max = Math.max(max, 4320);
             else if (v === 4) max = Math.max(max, 2160);
             else if (v === 2) max = Math.max(max, 1440);
             return all;
           });
-          text.replace(/(?:^|[^0-9])([1-9][0-9]{2,3})\s*p\b/ig, function (all, q) {
+          text.replace(/(^|[^a-z0-9])((?:4320|2160|1440|1080|720|576|480|360|240))\s*p([^a-z0-9]|$)/ig, function (all, pre, q) {
             var v = parseInt(q, 10);
             if (v >= 240 && v <= 4320) max = Math.max(max, v);
             return all;
           });
-          text.replace(/(?:quality|height|max_quality|q|res|resolution)[^0-9]{0,8}([1-9][0-9]{2,3})/ig, function (all, q) {
+          text.replace(/(?:quality|height|max_quality|res|resolution)[^0-9]{0,12}((?:4320|2160|1440|1080|720|576|480|360|240))/ig, function (all, q) {
             var v = parseInt(q, 10);
             if (v >= 240 && v <= 4320) max = Math.max(max, v);
             return all;
@@ -24454,9 +24453,6 @@
           // фактичний stream у data-json/href/HTML. Декодуємо HTML і шукаємо якість там.
           var dataJson = el.attr('data-json') || el.attr('data-url') || el.attr('href') || '';
           if (dataJson) max = Math.max(max, stelsQualityToValue(dataJson));
-          var html = '';
-          try { html = (el.prop && el.prop('outerHTML') || el.html && el.html() || '') + ''; } catch (e) {}
-          if (html) max = Math.max(max, stelsQualityToValue(html));
         } catch (e) {}
         return max;
       }
@@ -24473,8 +24469,7 @@
           if (typeof value == 'number') return /quality|height|resolution|max|q/.test(keyHint) ? stelsQualityToValue(value) : 0;
           if (typeof value == 'string') {
             var text = value;
-            if (/[~〜～]/.test(text)) return 0;
-            if (/quality|height|resolution|max|q|file|url|stream|src|label|title|text/.test(keyHint) || /\b(?:8|4|2)\s*k\b|\b[1-9][0-9]{2,3}\s*p\b/i.test(text)) {
+            if (/quality|height|resolution|max|file|url|stream|src|label|title|text/.test(keyHint) || /(^|[^a-z0-9])(?:[842]\s*k|(?:4320|2160|1440|1080|720|576|480|360|240)\s*p)([^a-z0-9]|$)/i.test(text)) {
               return stelsQualityToValue(text);
             }
             return 0;
@@ -24486,7 +24481,6 @@
           if (typeof value == 'object') {
             Object.keys(value).forEach(function (k) {
               var lk = String(k || '').toLowerCase();
-              if (/quality|height|resolution|max|q|label|title|text/.test(lk)) max = Math.max(max, stelsQualityToValue(k));
               max = Math.max(max, stelsExtractMaxQualityFromAny(value[k], depth + 1, lk));
             });
           }
@@ -24519,8 +24513,8 @@
           var watch = stelsGetWatchHistory(object && object.movie);
           if (watch && watch.source === key) title += ' • останнє' + (watch.season && watch.episode ? ' S' + watch.season + 'E' + watch.episode : '');
         } catch (e) {}
-        if (status === 'ok') return title + ' ✅' + (quality ? ' ' + quality : '');
-        if (status === 'empty' || status === 'error') return title + ' ❌' + (quality ? ' ' + quality : '');
+        if (status === 'ok') return title + ' ✓' + (quality ? ' ' + quality : '');
+        if (status === 'empty' || status === 'error') return title + ' ✕';
         if (status === 'wait') return title + ' ⏳' + (quality ? ' ' + quality : '');
         return title;
       }
@@ -24549,13 +24543,15 @@
       }
 
       function stelsSourceTitleWithStatusHtml(source) {
-        var title = stelsStripSourceStatusTitle(stelsSourceTitleWithStatus(source));
+        var key = stelsNormalizeSourceKey(source && source.name || source);
+        var title = source && source.title || stelsSourceTitle(key);
         var kind = stelsSourceStatusKind(source);
         var quality = stelsSourceQuality(source);
         var icon = stelsSourceStatusIconHtml(kind);
-        var qhtml = quality ? '<span class="stels-online-source-quality-badge" style="color:#ffb300!important;-webkit-text-fill-color:#ffb300!important">' + stelsEscapeHtml(quality) + '</span>' : '';
-        if (!kind && !qhtml) return stelsEscapeHtml(title);
-        return '<span class="stels-online-source-status-line"><span class="stels-online-source-status-name">' + stelsEscapeHtml(title) + (icon ? ' ' + icon : '') + '</span>' + qhtml + '</span>';
+        var name = stelsNeedsUaFlag(title, key) ? STELS_UA_FLAG_HTML + '<span>' + stelsEscapeHtml(title) + '</span>' : '<span>' + stelsEscapeHtml(title) + '</span>';
+        var qhtml = quality && kind === 'ok' ? '<span class="stels-online-source-quality-badge" style="color:#ffb300!important;-webkit-text-fill-color:#ffb300!important">' + stelsEscapeHtml(quality) + '</span>' : '';
+        if (!kind && !qhtml) return '<span class="stels-online-source-status-line"><span class="stels-online-source-status-name">' + name + '</span></span>';
+        return '<span class="stels-online-source-status-line"><span class="stels-online-source-status-name">' + name + (icon ? ' ' + icon : '') + '</span>' + qhtml + '</span>';
       }
 
       var stelsPrecheckTimer = null;
@@ -24634,14 +24630,14 @@
         probe.selected = function () {};
         probe.start = function () {};
         probe.closeFilter = function () {};
-        probe.contextmenu = function () {};
+        probe.contextmenu = function (params) { rememberQuality(params, 'contextmenu'); try { if (params && params.element) rememberQuality(params.element, 'element'); } catch (e) {} try { if (params && params.item) rememberQuality(params.item, 'item'); } catch (e2) {} scheduleOkFinish(); };
         probe.saveChoice = function () {};
         function scheduleOkFinish() {
           if (finished || token !== stelsPrecheckToken) return;
           try { if (probeOkTimer) clearTimeout(probeOkTimer); } catch (e) {}
           // Дочікуємось кількох append() з одного джерела, щоб максимальна якість
           // рахувалась по всіх знайдених серіях/релізах, а не тільки по першій картці.
-          probeOkTimer = setTimeout(function () { finish('ok'); }, 220);
+          probeOkTimer = setTimeout(function () { finish('ok'); }, 420);
         }
         probe.append = function (items) {
           rememberQuality(items, 'append-item');
@@ -28039,7 +28035,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.71: precheck показує лише фактичну якість із play-елементів/URL, без якості за замовчуванням джерела.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.73: виправлено відображення якості в меню джерел, вирівнювання прапора/назви та збір якості через contextmenu/element.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
