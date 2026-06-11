@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.97';
+    var STELS_ONLINE_VERSION = '1.1.98';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -307,6 +307,124 @@
     function stelsPreviewUrl(url) {
       url = (url == null ? '' : String(url));
       return url.length > 220 ? url.slice(0, 220) + '...' : url;
+    }
+
+    function stelsAllohaHex32(num) {
+      num = num >>> 0;
+      var s = num.toString(16);
+      while (s.length < 8) s = '0' + s;
+      return s.slice(-8);
+    }
+
+    function stelsAllohaFingerprint(seed) {
+      seed = String(seed || '');
+      var base = '';
+      try { base += navigator.userAgent || ''; } catch (e) {}
+      try { base += '|' + (navigator.language || navigator.userLanguage || ''); } catch (e2) {}
+      try { base += '|' + (Intl.DateTimeFormat().resolvedOptions().timeZone || ''); } catch (e3) {}
+      try { base += '|' + (screen.width + 'x' + screen.height + 'x' + screen.colorDepth); } catch (e4) {}
+      base += '|' + seed;
+      var seeds = [2166136261, 16777619, 2654435761, 2246822519, 3266489917, 668265263, 374761393, 362436069];
+      var out = '';
+      for (var j = 0; j < seeds.length; j++) {
+        var h = seeds[j] >>> 0;
+        for (var i = 0; i < base.length; i++) {
+          h ^= base.charCodeAt(i) + ((j + 1) * 31);
+          h = Math.imul(h, 16777619 + j * 97) >>> 0;
+          h ^= h >>> 13;
+        }
+        out += stelsAllohaHex32(h);
+      }
+      return out.slice(0, 64);
+    }
+
+    function stelsAllohaZ6(str, rotate) {
+      str = String(str || '');
+      var len = str.length;
+      if (len <= 0) return str;
+      function prime(n) {
+        if (n < 2) return false;
+        if (n % 2 === 0) return n === 2;
+        for (var p = 3; p * p <= n; p += 2) if (n % p === 0) return false;
+        return true;
+      }
+      var mod = Math.max(2, len + 1);
+      while (!prime(mod)) mod += 2;
+      var used = new Array(len).fill(false);
+      var order = [];
+      var pos = 0;
+      while (order.length < len) {
+        pos = (pos + 2) % mod;
+        if (pos < len && !used[pos]) { order.push(pos); used[pos] = true; }
+      }
+      var out = new Array(len);
+      for (var i = 0; i < len; i++) out[order[i]] = str.charAt(i);
+      var res = out.join('');
+      return rotate && res.length > 1 ? res.slice(1) + res.charAt(0) : res;
+    }
+
+    function stelsAllohaZ7(str, rotate) {
+      str = String(str || '');
+      var len = str.length;
+      if (len <= 1) return str;
+      var bits = 0;
+      while ((1 << bits) < len) bits++;
+      function groupIndex(n) {
+        if (n === 0) return bits;
+        var c = 0;
+        while (!(n & 1)) { c++; n >>= 1; }
+        return c;
+      }
+      var counts = new Array(bits + 1).fill(0);
+      for (var i = 0; i < len; i++) counts[groupIndex(i)]++;
+      var groups = new Array(bits + 1);
+      var off = 0;
+      for (var g = 0; g <= bits; g++) { groups[g] = str.slice(off, off + counts[g]); off += counts[g]; }
+      var indexes = new Array(bits + 1).fill(0);
+      var out = new Array(len);
+      for (var k = 0; k < len; k++) {
+        var gi = groupIndex(k);
+        out[k] = groups[gi].charAt(indexes[gi]++);
+      }
+      var res = out.join('');
+      return rotate && res.length > 1 ? res.slice(-1) + res.slice(0, -1) : res;
+    }
+
+    function stelsAllohaZ8(str, rotate) {
+      str = String(str || '');
+      var len = str.length;
+      if (len <= 1) return str;
+      var bits = 0;
+      while ((1 << bits) < len) bits++;
+      function groupIndex(n) {
+        if (n === 0) return 0;
+        var c = 0;
+        while (n > 0) { c++; n >>>= 1; }
+        return c;
+      }
+      var counts = new Array(bits + 1).fill(0);
+      for (var i = 0; i < len; i++) counts[groupIndex(i)]++;
+      var groups = new Array(bits + 1);
+      var off = 0;
+      for (var g = bits; g >= 0; g--) { groups[g] = str.slice(off, off + counts[g]); off += counts[g]; }
+      var indexes = new Array(bits + 1).fill(0);
+      var out = new Array(len);
+      for (var k = 0; k < len; k++) {
+        var gi = groupIndex(k);
+        out[k] = groups[gi].charAt(indexes[gi]++);
+      }
+      var res = out.join('');
+      return rotate && res.length > 1 ? res.slice(1) + res.charAt(0) : res;
+    }
+
+    function stelsAllohaBorthHeaderFromHtml(html) {
+      html = String(html || '');
+      var m = html.match(/<meta[^>]+name=["']viewporti["'][^>]+content=["']([^"']+)/i) || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']viewporti["']/i);
+      var v = m ? String(m[1] || '') : '';
+      if (!v) return '';
+      var payload = stelsAllohaZ6(stelsAllohaZ7(stelsAllohaZ8(v, false), false), false);
+      var header = stelsAllohaFingerprint(v) + '|' + payload;
+      return header;
     }
 
     function stelsSanitizeAndroidPlayable(play, ctx) {
@@ -5369,6 +5487,7 @@
       }
       function parseAllohaIframe(html, iframeUrl) {
         var token = (html.match(/token\s*:\s*['"]([^'"]+)/) || [])[1] || (iframeUrl.match(/[?&]token=([^&]+)/) || [])[1] || '';
+        var borth = stelsAllohaBorthHeaderFromHtml(html);
         var raw = (html.match(/const\s+fileList\s*=\s*JSON\.parse\('([\s\S]*?)'\);/) || html.match(/fileList\s*=\s*JSON\.parse\('([\s\S]*?)'\);/) || [])[1] || '';
         var fl = null;
         try { fl = JSON.parse(raw.replace(/\\'/g, "'")); } catch (e) { try { fl = JSON.parse(JSON.parse('"' + raw.replace(/"/g, '\\"') + '"')); } catch (e2) {} }
@@ -5384,7 +5503,8 @@
             data_id: String(node.id),
             token: token,
             iframe: iframeUrl,
-            file_node: node
+            file_node: node,
+            borth: borth
           });
         }
         if (fl.type == 'serial' && fl.all) {
@@ -5442,7 +5562,9 @@
         var url = playerOrigin + '/bnsi/movies/' + el.data_id;
         var post = 'token=' + enc(el.token || '') + '&av1=true&autoplay=0&audio=&subtitle=';
         network.clear(); network.timeout(1000 * 12);
-        log('stream-request', { url: url, data_id: el.data_id, voice: el.voice, season: el.season, episode: el.episode, token: !!el.token, referer: el.iframe || ref });
+        log('stream-request', { url: url, data_id: el.data_id, voice: el.voice, season: el.season, episode: el.episode, token: !!el.token, borth: !!el.borth, referer: el.iframe || ref });
+        var streamHeaders = { 'User-Agent': Utils.baseUserAgent(), 'Origin': playerOrigin, 'Referer': el.iframe || ref, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Accept': 'application/json, text/javascript, */*; q=0.01' };
+        if (el.borth) streamHeaders.Borth = el.borth;
         network.native(url, function (txt) {
           var json = {};
           try { json = typeof txt == 'string' ? JSON.parse(txt) : txt; } catch (e) {}
@@ -5452,7 +5574,7 @@
           ok({ url: q.url, quality: component.renameQualityMap(q.quality), raw_quality: q.quality });
         }, function (a,c) { log('stream-error', { data_id: el.data_id, status: a && a.status || 0, message: network.errorDecode(a,c) || '' }); if (fail) fail(network.errorDecode(a,c)); }, post, {
           dataType: 'text',
-          headers: { 'User-Agent': Utils.baseUserAgent(), 'Origin': playerOrigin, 'Referer': el.iframe || ref, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Accept': 'application/json, text/javascript, */*; q=0.01' }
+          headers: streamHeaders
         });
       }
       function render() {
@@ -5496,7 +5618,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.97: Tartuga-Alloha: багаторівневий stream fallback (raw/proxy, альтернативні iframe-домени, fallback на базовий id/all ids і iframe).' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.98: Tartuga-Alloha: додано Borth header з viewporti для /bnsi/movies stream API.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -11231,6 +11353,7 @@
       var player_origin = '';
       var player_referer = '';
       var player_token = '';
+      var player_borth = '';
       var extract = { fileList: null, iframe: '', info: null, items: [] };
       var filter_items = {};
       var choice = { season: 0, voice: 0, voice_name: '' };
@@ -11779,7 +11902,8 @@
           extract.iframe = currentIframe;
           extract.fileList = fileList;
           extract.items = normalizeFileList(fileList);
-          log('filelist-loaded', { mode: mode, type: fileList.type, items: extract.items.length, origin: player_origin, token_len: player_token.length, sample: extract.items.slice(0, 8) });
+          player_borth = stelsAllohaBorthHeaderFromHtml(html);
+          log('filelist-loaded', { mode: mode, type: fileList.type, items: extract.items.length, origin: player_origin, token_len: player_token.length, borth: !!player_borth, sample: extract.items.slice(0, 8) });
           callback(extract.items);
           return true;
         }
@@ -12458,12 +12582,15 @@
           api_prox_enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
           api_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin + '/')) + '/';
           if (player_origin) api_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
+          if (player_borth) api_prox_enc += 'param/Borth=' + encodeURIComponent(player_borth) + '/';
           api_prox_enc += 'param/Content-Type=' + encodeURIComponent('application/x-www-form-urlencoded; charset=UTF-8') + '/';
           api_prox_enc += 'param/X-Requested-With=' + encodeURIComponent('XMLHttpRequest') + '/';
           api_prox_enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('empty') + '/';
           api_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('cors') + '/';
           api_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('same-origin') + '/';
         }
+        if (player_borth) headers.Borth = player_borth;
+        log('stream-request', { id: id, url: preview(url), origin: player_origin, referer: preview(player_referer, 220), borth: !!player_borth, proxy: !!prox2 });
         requestText(url, function (json) {
           json = safeJsonParse(json) || json;
           log('stream-response', { id: id, has_hls: !!(json && json.hlsSource && json.hlsSource.length), keys: json && typeof json == 'object' ? Object.keys(json).slice(0, 20) : [], sample: typeof json == 'string' ? preview(json, 300) : '' });
@@ -16015,10 +16142,11 @@
             player.player_origin = originFromUrl(current);
             player.player_referer = current;
             player.player_token = tokenFromUrl(current);
+            player.player_borth = stelsAllohaBorthHeaderFromHtml(html);
             player.player_iframe_variants = variants;
             player.player_iframe_reason = variants[pos] && variants[pos].reason || '';
             var items = normalizeFileListItems(fileList, player);
-            log('filelist-loaded', { player: player.title, type: fileList.type, items: items.length, origin: player.player_origin, token_len: String(player.player_token || '').length, sample: items.slice(0, 8).map(function (it) { return it.title + '|' + it.voice; }) });
+            log('filelist-loaded', { player: player.title, type: fileList.type, items: items.length, origin: player.player_origin, token_len: String(player.player_token || '').length, borth: !!player.player_borth, sample: items.slice(0, 8).map(function (it) { return it.title + '|' + it.voice; }) });
             if (items.length) success(items); else fail && fail('fileList empty');
           }, function () { tryOne(pos + 1); }, { headers: playerHeaders, dataType: 'text', timeout: 16000 });
         }
@@ -16213,6 +16341,7 @@
           enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
           enc += 'param/Referer=' + encodeURIComponent(attempt.referer || (attempt.origin + '/')) + '/';
           enc += 'param/Origin=' + encodeURIComponent(attempt.origin) + '/';
+          if (player.player_borth) enc += 'param/Borth=' + encodeURIComponent(player.player_borth) + '/';
           enc += 'param/Content-Type=' + encodeURIComponent('application/x-www-form-urlencoded; charset=UTF-8') + '/';
           enc += 'param/X-Requested-With=' + encodeURIComponent('XMLHttpRequest') + '/';
           enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('empty') + '/';
@@ -16302,7 +16431,8 @@
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin'
           };
-          log('alloha-stream-request', { id: id, pos: pos, total: total, reason: attempt.reason || '', url: preview(url, 220), origin: attempt.origin, referer: preview(attempt.referer, 220), token_len: String(token || '').length, proxy: !!(attempt.proxy && allohaProxy) });
+          if (player.player_borth) h.Borth = player.player_borth;
+          log('alloha-stream-request', { id: id, pos: pos, total: total, reason: attempt.reason || '', url: preview(url, 220), origin: attempt.origin, referer: preview(attempt.referer, 220), token_len: String(token || '').length, borth: !!player.player_borth, proxy: !!(attempt.proxy && allohaProxy) });
           requestText(url, function (jsonText) {
             if (extractStream(jsonText, id, enc)) call(element);
             else tryAllohaStream(pos + 1, 'empty stream for id ' + id + ' via ' + (attempt.reason || ''));
@@ -29733,7 +29863,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.97: Tartuga-Alloha: багаторівневий stream fallback (raw/proxy, альтернативні iframe-домени, fallback на базовий id/all ids і iframe).' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.98: Tartuga-Alloha: додано Borth header з viewporti для /bnsi/movies stream API.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
