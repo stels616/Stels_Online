@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.79';
+    var STELS_ONLINE_VERSION = '1.1.80';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.79: база 1.1.77 + відновлена логіка майбутніх серій без змін precheck/якості.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.80: база 1.1.77 + посилене визначення та показ майбутніх серій без змін precheck/якості.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -5963,7 +5963,7 @@
       }
       function kinobaseParseSeasonEpisodeTitle(title) {
         title = String(title || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        var m = title.match(/(?:^|\D)(\d{1,2})\s*(?:сезон|season|s)\D{0,18}(\d{1,3})\s*(?:сер(?:ия|ії|ія|и[яи])?|episode|e)/i);
+        var m = title.match(/(?:^|\D)(\d{1,2})\s*(?:сезон|season|s)\D{0,18}(\d{1,3})\s*(?:сер(?:ия|ії|ія|и[яи])?|episode|e)\b/i);
         if (!m) m = title.match(/s\s*(\d{1,2})\s*e\s*(\d{1,3})/i);
         if (!m) m = title.match(/(\d{1,2})\s*[xх]\s*(\d{1,3})/i);
         if (!m) return null;
@@ -23661,6 +23661,8 @@
         stype: 'quality'
       };
       var contextmenu_all = [];
+      var stels_last_filter_items = {};
+      var stels_last_choice = {};
 
       var stels_tmdb_season_cache = {};
 
@@ -23732,7 +23734,7 @@
         var sourceText = (badge ? badge + ' ' : '') + title;
         var m = !season && (sourceText.match(/(?:^|\b)S\s*(\d+)/i) || sourceText.match(/(?:сезон|season)\s*(\d+)/i));
         if (m) season = parseInt(m[1], 10) || 0;
-        m = !episode && sourceText.match(/(?:S\s*\d+\s*[:.]\s*E|сер[іиіяя]*|эпизод|episode|епізод)\s*(\d+)/i);
+        m = !episode && (sourceText.match(/(?:S\s*\d+\s*[:.]\s*E|сер[іиіяя]*|эпизод|episode|епізод)\s*(\d+)/i) || sourceText.match(/(?:^|[\s(\[\-–—])\s*(\d{1,3})\s*(?:сер[іиіяя]*|серия|episode|ep\.?|епізод|эпизод)\b/i));
         if (m) episode = parseInt(m[1], 10) || 0;
         if (!episode) {
           var nums = sourceText.match(/\d+/g) || [];
@@ -25837,6 +25839,7 @@
 
       this.filter = function (filter_items, choice) {
         var select = [];
+        try { stels_last_filter_items = filter_items || {}; stels_last_choice = choice || {}; } catch (efstate) {}
 
         var add = function add(type, title) {
           var need = Lampa.Storage.get('stels_online_filter', '{}');
@@ -25949,6 +25952,16 @@
 
       this.contextmenu = function (params) {
         contextmenu_all.push(params);
+        try {
+          if (params && params.item && params.element) {
+            var __s = parseInt(params.element.season || params.element.s || 0, 10) || 0;
+            var __e = parseInt(params.element.episode || params.element.e || 0, 10) || 0;
+            if (__s && __e) {
+              params.item.attr('data-stels-season', __s);
+              params.item.attr('data-stels-episode', __e);
+            }
+          }
+        } catch (eAttr) {}
         try {
           params.item.on('hover:enter', function () {
             stelsSaveWatchHistory(object.movie, balanser, stelsSourceTitle(balanser), params.element || {}, { item_title: params.item && params.item.find ? params.item.find('.online__title').text() : '' });
@@ -26223,8 +26236,11 @@
         try {
           var movie = object && object.movie || {};
           var tmdb_id = movie.tmdb_id || movie.id;
-          var isTv = !!(movie.name || movie.original_name || movie.number_of_seasons || movie.first_air_date || movie.last_episode_to_air || movie.next_episode_to_air);
-          if (!isTv || !tmdb_id || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) return;
+          var isTv = !!(movie.name || movie.original_name || movie.number_of_seasons || movie.first_air_date || movie.last_episode_to_air || movie.next_episode_to_air || movie.media_type === 'tv' || object.type === 'tv' || object.media === 'tv' || /[?&]media=tv\b/i.test(String(location && location.href || '')));
+          if (!isTv || !tmdb_id || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) {
+            stelsLog('global-future-episodes-skip', { source: balanser, reason: 'not-tv-or-no-tmdb', is_tv: !!isTv, tmdb_id: tmdb_id || '', has_tmdb_api: !!(Lampa.Api && Lampa.Api.sources && Lampa.Api.sources.tmdb) });
+            return;
+          }
           var root = scroll && scroll.render ? scroll.render() : null;
           if (!root || !root.find) return;
 
@@ -26235,7 +26251,7 @@
             if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
             m = text.match(/(?:Сезон|Season|Sezon)\s*(\d{1,2})[\s\/\-–—|]+(?:Серія|Серия|Episode|Ep\.?)\s*(\d{1,3})/i);
             if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
-            m = text.match(/(?:Серія|Серия|Episode|Ep\.?)\s*(\d{1,3})/i) || text.match(/^\s*(\d{1,3})\s*(?:серія|серия|episode|ep\.?)/i);
+            m = text.match(/(?:Серія|Серия|Episode|Ep\.?)\s*(\d{1,3})/i) || text.match(/(?:^|[\s(\[\-–—])\s*(\d{1,3})\s*(?:серія|серия|episode|ep\.?)\b/i);
             if (m) e = parseInt(m[1], 10) || 0;
             m = text.match(/(?:Сезон|Season|Sezon)\s*(\d{1,2})/i) || text.match(/\bS\s*(\d{1,2})\b/i);
             if (m) s = parseInt(m[1], 10) || 0;
@@ -26252,7 +26268,15 @@
           function guessSeasonFromStorage() {
             try {
               var saved = Lampa.Storage.get('stels_online_filter', {}) || {};
-              var idx = parseInt(saved.season || 0, 10) || 0;
+              var idx = parseInt((stels_last_choice && stels_last_choice.season != null ? stels_last_choice.season : saved.season) || 0, 10) || 0;
+              if (stels_last_filter_items && Array.isArray(stels_last_filter_items.season_num) && stels_last_filter_items.season_num[idx] != null) {
+                var snum = parseInt(stels_last_filter_items.season_num[idx], 10) || 0;
+                if (snum) return snum;
+              }
+              if (stels_last_filter_items && Array.isArray(stels_last_filter_items.season) && stels_last_filter_items.season[idx]) {
+                var sm = String(stels_last_filter_items.season[idx] || '').match(/(?:Сезон|Season|Sezon)\s*(\d{1,2})/i);
+                if (sm) return parseInt(sm[1], 10) || 0;
+              }
               var seasons = [];
               if (Array.isArray(movie.seasons)) {
                 movie.seasons.forEach(function (sn) {
@@ -26269,9 +26293,29 @@
             } catch (e2) {}
             return 0;
           }
+          function expectedEpisodeCountFromFilter(season) {
+            try {
+              if (!season || !stels_last_filter_items || !Array.isArray(stels_last_filter_items.season)) return 0;
+              var best = 0;
+              stels_last_filter_items.season.forEach(function (label, idx) {
+                label = String(label || '');
+                var sn = 0;
+                if (Array.isArray(stels_last_filter_items.season_num) && stels_last_filter_items.season_num[idx] != null) sn = parseInt(stels_last_filter_items.season_num[idx], 10) || 0;
+                if (!sn) {
+                  var sm = label.match(/(?:Сезон|Season|Sezon)\s*(\d{1,2})/i);
+                  if (sm) sn = parseInt(sm[1], 10) || 0;
+                }
+                if (sn !== season) return;
+                var mm = label.match(/\((\d{1,3})\s*(?:еп\.?|епіз|сер(?:і|и)?й|series|episodes?|eps?)\.?\)/i) || label.match(/(?:еп\.?|епізод(?:ів)?|сер(?:і|и)?й|episodes?|eps?)\D{0,8}(\d{1,3})/i);
+                if (mm) best = Math.max(best, parseInt(mm[1], 10) || 0);
+              });
+              return best;
+            } catch (e) { return 0; }
+          }
 
           var rows = root.find('.online.selector:not(.stels-online-future-episode)');
-          var existing = {}, seasonCount = {}, maxExisting = 0;
+          var storageSeason = guessSeasonFromStorage();
+          var parsedRows = [], seasonCount = {};
           rows.each(function () {
             var row = $(this);
             var title = '';
@@ -26279,16 +26323,31 @@
             try { title += ' ' + (row.find('.stels-online-episode-badge').text() || '') + ' ' + (row.find('.online__title').text() || row.text() || ''); } catch (e) { title = title || ''; }
             var se = parseSeasonEpisodeText(title);
             if (!se.episode) return;
-            var sn = se.season || 0;
-            if (sn) seasonCount[sn] = (seasonCount[sn] || 0) + 1;
+            if (!se.season && storageSeason) se.season = storageSeason;
+            parsedRows.push(se);
+            if (se.season) seasonCount[se.season] = (seasonCount[se.season] || 0) + 1;
+          });
+          if (!parsedRows.length) {
+            stelsLog('global-future-episodes-skip', { source: balanser, reason: 'no-parsed-episodes', rows: rows.length, storage_season: storageSeason || 0 });
+            return;
+          }
+          var season = storageSeason || 0, bestCount = 0;
+          Object.keys(seasonCount).forEach(function (k) { if (seasonCount[k] > bestCount) { season = parseInt(k, 10) || 0; bestCount = seasonCount[k]; } });
+          if (!season) season = storageSeason;
+          if (!season) {
+            stelsLog('global-future-episodes-skip', { source: balanser, reason: 'no-season', rows: rows.length, parsed: parsedRows.length });
+            return;
+          }
+          var existing = {}, maxExisting = 0;
+          parsedRows.forEach(function (se) {
+            if (se.season && se.season !== season) return;
             existing[se.episode] = true;
             if (se.episode > maxExisting) maxExisting = se.episode;
           });
-          if (!maxExisting) return;
-          var season = 0, bestCount = 0;
-          Object.keys(seasonCount).forEach(function (k) { if (seasonCount[k] > bestCount) { season = parseInt(k, 10) || 0; bestCount = seasonCount[k]; } });
-          if (!season) season = guessSeasonFromStorage();
-          if (!season) return;
+          if (!maxExisting) {
+            stelsLog('global-future-episodes-skip', { source: balanser, reason: 'no-current-season-episodes', season: season, rows: rows.length, parsed: parsedRows.length });
+            return;
+          }
           var marker = 'global-future-' + tmdb_id + '-' + season + '-' + maxExisting;
           if (root.find('[data-stels-global-future-key="' + marker + '"]').length) return;
 
@@ -26327,7 +26386,7 @@
                       if ((parseInt(sn && sn.season_number || 0, 10) || 0) === season) seasonMeta = sn;
                     });
                   }
-                  var total = parseInt(seasonMeta && seasonMeta.episode_count || 0, 10) || 0;
+                  var total = Math.max(parseInt(seasonMeta && seasonMeta.episode_count || 0, 10) || 0, expectedEpisodeCountFromFilter(season));
                   if (total > maxExisting && total <= 80) {
                     for (var epn = maxExisting + 1; epn <= total; epn++) {
                       if (!existing[epn]) future.push({ episode_number: epn, name: 'Серія ' + epn, air_date: '' });
@@ -28222,7 +28281,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.79: база 1.1.77 + відновлена логіка майбутніх серій без змін precheck/якості.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.80: база 1.1.77 + посилене визначення та показ майбутніх серій без змін precheck/якості.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
