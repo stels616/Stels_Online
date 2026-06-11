@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.53';
+    var STELS_ONLINE_VERSION = '1.1.54';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -3821,10 +3821,14 @@
         var maxSeason = expectedMaxSeason();
         if (isSerial() && /(сезон|серіал|сериал|serial|season|sezon)/i.test(allText)) score += 25;
         var y = yearOf();
-        var years = yearsFromText(allText);
-        var hasExpectedYear = y && years.indexOf(y) >= 0;
+        // Рік у Zerx часто присутній лише в slug/id сторінки і може не відповідати реальному
+        // року релізу (наприклад Friends -> druzja-2015.html). Тому штрафуємо тільки за рік
+        // у видимому заголовку, а URL використовуємо лише як допоміжний сигнал.
+        var titleYears = yearsFromText(titleRaw);
+        var urlYears = yearsFromText(url);
+        var hasExpectedYear = y && (titleYears.indexOf(y) >= 0 || urlYears.indexOf(y) >= 0);
         if (hasExpectedYear) score += 50;
-        else if (y && years.length) score -= 45;
+        else if (y && titleYears.length) score -= 45;
         if (seasonNum && maxSeason && seasonNum > maxSeason) score -= 320;
         else if (seasonNum && isSerial()) score += 35;
         if (looksServiceUrl(url)) score -= 120;
@@ -3909,6 +3913,20 @@
         });
         // LazyDev ajax іноді повертає компактні рядки з searchheading.
         html.replace(/<a[^>]+href=["']([^"']+\.html)["'][^>]*>[\s\S]{0,400}?(?:class=["'][^"']*(?:searchheading|title|heading|name)[^"']*["'][^>]*>|<h[1-4][^>]*>|<span[^>]*itemprop=["']name["'][^>]*>)([\s\S]{1,180}?)(?:<\/h[1-4]>|<\/span>)/gi, function (all, href, title) {
+          add(href, title);
+          return all;
+        });
+        // LazyDev 1.3 на Zerx повертає zss__item/zss__title; у 1.1.53 ці картки
+        // не витягувались, тому AJAX знаходив 4 результати, але parseSearch давав count=0.
+        html.replace(/<a[^>]+class=["'][^"']*zss__item[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>[\s\S]{0,1500}?(?:class=["'][^"']*zss__(?:title|name|heading)[^"']*["'][^>]*>|<span[^>]*itemprop=["']name["'][^>]*>)([\s\S]{1,220}?)(?:<\/div>|<\/span>|<\/a>)/gi, function (all, href, title) {
+          add(href, title);
+          return all;
+        });
+        html.replace(/<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*zss__item[^"']*["'][^>]*>[\s\S]{0,1500}?(?:class=["'][^"']*zss__(?:title|name|heading)[^"']*["'][^>]*>|<span[^>]*itemprop=["']name["'][^>]*>)([\s\S]{1,220}?)(?:<\/div>|<\/span>|<\/a>)/gi, function (all, href, title) {
+          add(href, title);
+          return all;
+        });
+        html.replace(/<a[^>]+href=["']([^"']+\.html)["'][^>]*>[\s\S]{0,1200}?class=["'][^"']*zss__(?:title|name|heading)[^"']*["'][^>]*>([\s\S]{1,220}?)(?:<\/div>|<\/span>|<\/a>)/gi, function (all, href, title) {
           add(href, title);
           return all;
         });
@@ -4459,6 +4477,7 @@
               'Sec-Fetch-Dest': 'iframe',
               'Sec-Fetch-Mode': 'navigate',
               'Sec-Fetch-Site': 'cross-site',
+              'Sec-Fetch-Storage-Access': 'active',
               'sec-ch-ua': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
               'sec-ch-ua-mobile': '?0',
               'sec-ch-ua-platform': '"Windows"'
@@ -11568,6 +11587,7 @@
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'cross-site',
             'Sec-Fetch-User': '?1',
+            'Sec-Fetch-Storage-Access': 'active',
             'Sec-CH-UA': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
             'Sec-CH-UA-Mobile': '?0',
             'Sec-CH-UA-Platform': '"Windows"'
@@ -11584,6 +11604,7 @@
             player_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('navigate') + '/';
             player_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('cross-site') + '/';
             player_prox_enc += 'param/Sec-Fetch-User=' + encodeURIComponent('?1') + '/';
+            player_prox_enc += 'param/Sec-Fetch-Storage-Access=' + encodeURIComponent('active') + '/';
           }
           stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
           stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin ? player_origin + '/' : currentIframe)) + '/';
@@ -11611,24 +11632,32 @@
           setupFor(current);
           log('player-iframe-request', { pos: pos, total: variants.length, reason: reason, iframe: preview(current), origin: player_origin, token_len: player_token.length });
 
-          function tryRaw(afterProxyMessage) {
+          function tryProxy(afterRawMessage) {
             requestText(current, function (html) {
-              if (!consume(html, 'raw:' + reason, current)) {
-                log('player-raw-empty', { reason: reason, iframe: preview(current), proxy_message: preview(afterProxyMessage || '', 260) });
+              if (!consume(html, prox2 ? ('proxy:' + reason) : ('direct:' + reason), current)) {
+                log('player-proxy-empty', { reason: reason, iframe: preview(current), raw_message: preview(afterRawMessage || '', 260) });
                 tryVariant(pos + 1);
               }
             }, function (message) {
-              log('player-raw-fail', { reason: reason, iframe: preview(current), message: preview(message, 400) });
+              log('player-proxy-fail', { reason: reason, iframe: preview(current), proxy: !!prox2, raw_first: true, message: preview(message, 400) });
               tryVariant(pos + 1);
-            }, { kind: 'player-raw', headers: player_headers, raw: true, dataType: 'text', timeout: 18000 });
+            }, { kind: 'player', headers: player_headers, proxy: prox2, prox_enc: player_prox_enc, dataType: 'text', timeout: 18000 });
           }
 
+          // Для movie-токенів Alloha/Kinobaza запит через proxy першим може давати 404 і
+          // після цього raw з тим самим одноразовим token теж падає. HAR Kinobaza відкриває
+          // iframe напряму як browser navigation, тому пробуємо raw першим.
           requestText(current, function (html) {
-            if (!consume(html, prox2 ? ('proxy:' + reason) : ('direct:' + reason), current)) tryRaw('fileList missing after proxy');
+            if (!consume(html, 'raw-first:' + reason, current)) {
+              log('player-raw-empty', { reason: reason, iframe: preview(current) });
+              if (prox2) tryProxy('fileList missing after raw');
+              else tryVariant(pos + 1);
+            }
           }, function (message) {
-            log('player-proxy-fail', { reason: reason, iframe: preview(current), proxy: !!prox2, message: preview(message, 400) });
-            tryRaw(message);
-          }, { kind: 'player', headers: player_headers, proxy: prox2, prox_enc: player_prox_enc, dataType: 'text', timeout: 18000 });
+            log('player-raw-fail', { reason: reason, iframe: preview(current), raw_first: true, message: preview(message, 400) });
+            if (prox2) tryProxy(message);
+            else tryVariant(pos + 1);
+          }, { kind: 'player-raw', headers: player_headers, raw: true, dataType: 'text', timeout: 18000 });
         }
 
         tryVariant(0);
@@ -27372,7 +27401,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.53: Alloha - додано fallback iframe-доменів stloadi/allarknow для movie-токенів; Zerx додано в precheck і оновлено логіку player iframe за HAR zerx.tv.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.54: Zerx - додано парсинг LazyDev zss__ результатів; Alloha movie iframe відкривається raw-first з Sec-Fetch-Storage-Access як у HAR Kinobaza.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
