@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.64';
+    var STELS_ONLINE_VERSION = '1.1.65';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -20776,6 +20776,26 @@
         return typeof value == 'string' && value && (/^https?:\/\//i.test(value) || /\.(m3u8|mp4)(\?|$)/i.test(value));
       }
 
+      function lampauaQualityLabelFromText(text) {
+        text = (text || '') + '';
+        var m = text.match(/(?:^|[^0-9])((?:2160|1440|1080|720|480|360)p)(?:[^0-9]|$)/i);
+        return m ? m[1].toLowerCase().replace(/^([0-9]+)p$/, '$1p') : '';
+      }
+
+      function lampauaEnrichQualityFromTitle(item) {
+        if (!item || item.qualitys || item.quality && typeof item.quality == 'object') return item;
+        var url = item.stream || item.url || '';
+        if (!url || typeof url != 'string') return item;
+        var label = lampauaQualityLabelFromText(item.text || item.title || item.info || '');
+        if (!label && /mirage|pidtor/i.test(sourceTitle || '')) label = lampauaQualityLabelFromText((item.text || '') + ' ' + (item.title || ''));
+        if (label) {
+          item.qualitys = {};
+          item.qualitys[label] = url;
+          item.quality = label;
+        }
+        return item;
+      }
+
 
       function remotePickPlayableFromHtml(str, originalFile) {
         if (typeof str != 'string' || str.indexOf('videos__') === -1) return null;
@@ -20841,6 +20861,13 @@
         return { method: 'play', url: m[0], text: sourceTitle };
       }
 
+      function lampauaEndpointDirectFallback(file) {
+        if (!file || !file.url) return null;
+        var fallback = {};
+        for (var fk in file) fallback[fk] = file[fk];
+        return lampauaEnrichQualityFromTitle(fallback);
+      }
+
       function getFileUrl(file, call) {
         if (!file) return call(false, {});
 
@@ -20885,7 +20912,7 @@
         }
 
         network.clear();
-        network.timeout(20000);
+        network.timeout(file_is_endpoint ? 3500 : 20000);
         stelsLog('lampaua-getfile-request', {
           source: sourceTitle,
           title: file.title || file.text,
@@ -20951,10 +20978,41 @@
             has_vast: !!(json && json.vast),
             url_preview: previewUrl(json && (json.url || json.stream || json.file) || '')
           });
+          if (file_is_endpoint && file.method == 'play' && !(json && (json.url || json.stream || json.file || json.quality))) {
+            var respFallback = lampauaEndpointDirectFallback(file);
+            if (respFallback) {
+              stelsLog('lampaua-getfile-endpoint-empty-direct-fallback', {
+                source: sourceTitle,
+                title: respFallback.title || respFallback.text,
+                season: respFallback.season,
+                episode: respFallback.episode,
+                quality: respFallback.quality || '',
+                json_type: typeof json,
+                url_preview: previewUrl(respFallback.url || '')
+              });
+              return call(respFallback, respFallback);
+            }
+          }
           call(json, json || {});
         }, function (a, c) {
           var err = network.errorDecode ? network.errorDecode(a, c) : 'LampUA getFile request error';
           stelsLog('lampaua-getfile-fail', { source: sourceTitle, url: previewUrl(file.url), error: err, status: a && a.status, statusText: a && a.statusText });
+          // У Mirage/PidTor endpoint /lite/pidtor/s... може бути не JSON, а сам потоковий
+          // URL. XHR до нього часто висить до timeout, але плеєр може відкрити його напряму
+          // (саме так працює оригінальний rc.js). Тому після невдалого швидкого resolve
+          // повертаємо прямий play-елемент, щоб натискання на серію не блокувалось.
+          if (file_is_endpoint && file.method == 'play' && file.url) {
+            var fallback = lampauaEndpointDirectFallback(file);
+            stelsLog('lampaua-getfile-endpoint-direct-fallback', {
+              source: sourceTitle,
+              title: fallback.title || fallback.text,
+              season: fallback.season,
+              episode: fallback.episode,
+              quality: fallback.quality || '',
+              url_preview: previewUrl(fallback.url || '')
+            });
+            return call(fallback, fallback);
+          }
           call(false, {});
         }, false, { headers: addHeaders() });
       }
@@ -21229,6 +21287,7 @@
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(current_videos);
         current_videos.forEach(function (element, index) {
+          lampauaEnrichQualityFromTitle(element);
           if (element.quality && typeof element.quality === 'object') {
             element.qualitys = element.quality;
             element.quality = Lampa.Arrays.getKeys(element.quality)[0] || '';
@@ -27629,7 +27688,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.54: Zerx - додано парсинг LazyDev zss__ результатів; Alloha movie iframe відкривається raw-first з Sec-Fetch-Storage-Access як у HAR Kinobaza.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.65: Mirage/PidTor endpoint fallback — серія відкривається напряму після timeout resolve; якість добирається з назви файлу.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
