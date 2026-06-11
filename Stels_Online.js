@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.62';
+    var STELS_ONLINE_VERSION = '1.1.63';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -21017,6 +21017,14 @@
         return norm(sourceTitle || '') == norm('Rezka ~ 720') || wanted.indexOf('rezka720') !== -1 || wanted.indexOf('pizdatoehd') !== -1;
       }
 
+      function lampauaSupportsVoiceFilter() {
+        return lampauaIsRezka720() || !!remoteOptions.voiceFromSimilar;
+      }
+
+      function lampauaVoiceLogPrefix() {
+        return remoteOptions.voiceFromSimilar ? 'lampaua-remote' : 'lampaua-rezka720';
+      }
+
       function lampauaPlayableReady(json, item) {
         return json && (json.url || json.stream || json.file || (item && item.method != 'call' && (item.url || isRealStreamValue(item.stream))));
       }
@@ -21166,7 +21174,7 @@
       }
 
       function lampauaRezkaVoiceovers(element, selected_index) {
-        if (!lampauaIsRezka720() || !(filter_find.voice && filter_find.voice.length > 1)) return false;
+        if (!lampauaSupportsVoiceFilter() || !(filter_find.voice && filter_find.voice.length > 1)) return false;
         return filter_find.voice.map(function (voice, index) {
           return {
             index: index,
@@ -21246,7 +21254,7 @@
               element.loading = false;
               if (json && (json.url || json.stream || json.file || (element.method != 'call' && (element.url || isRealStreamValue(element.stream))))) {
                 var first = preparePlayable(element, json, json_call || {});
-                if (lampauaIsRezka720()) first.voiceovers = lampauaRezkaVoiceovers(element, choice.voice);
+                if (lampauaSupportsVoiceFilter()) first.voiceovers = lampauaRezkaVoiceovers(element, choice.voice);
                 var playlist = [];
                 if (element.season) {
                   current_videos.forEach(function (elem) {
@@ -21264,7 +21272,7 @@
                             this.subtitles = cell.subtitles;
                             this.subtitles_call = cell.subtitles_call;
                             this.segments = cell.segments;
-                            if (lampauaIsRezka720()) this.voiceovers = lampauaRezkaVoiceovers(elem, choice.voice);
+                            if (lampauaSupportsVoiceFilter()) this.voiceovers = lampauaRezkaVoiceovers(elem, choice.voice);
                           } else this.url = '';
                           call();
                         }.bind(this));
@@ -21275,7 +21283,7 @@
                       episode: elem.episode,
                       voice_name: elem.voice_name,
                       thumbnail: elem.thumbnail,
-                      voiceovers: lampauaIsRezka720() ? lampauaRezkaVoiceovers(elem, choice.voice) : false
+                      voiceovers: lampauaSupportsVoiceFilter() ? lampauaRezkaVoiceovers(elem, choice.voice) : false
                     });
                   });
                 } else playlist.push(first);
@@ -21364,6 +21372,13 @@
                   choice.voice_name = active.text;
                   choice.voice_url = active.url;
                 }
+              } else if (remoteOptions.voiceFromSimilar && filter_find.voice && filter_find.voice.length) {
+                var saved_voice = filter_find.voice[choice.voice] || filter_find.voice[0];
+                if (saved_voice) {
+                  choice.voice = Math.max(0, filter_find.voice.indexOf(saved_voice));
+                  choice.voice_url = saved_voice.url || choice.voice_url || '';
+                  choice.voice_name = saved_voice.title || choice.voice_name || sourceTitle;
+                }
               } else {
                 filter_find.voice = [];
                 choice.voice = 0;
@@ -21373,6 +21388,30 @@
               display(videos);
             } else if (items.length) {
               if (similar.length) {
+                if (remoteOptions.voiceFromSimilar && object.movie && object.movie.name) {
+                  filter_find.voice = similar.filter(function (elem) { return elem && elem.url; }).map(function (elem, index) {
+                    return {
+                      title: elem.text || elem.title || ('Переклад ' + (index + 1)),
+                      url: elem.url,
+                      active: index == (parseInt(choice.voice || 0, 10) || 0)
+                    };
+                  });
+                  var selected_voice = filter_find.voice[choice.voice] || filter_find.voice[0];
+                  if (selected_voice) {
+                    choice.voice = filter_find.voice.indexOf(selected_voice);
+                    choice.voice_name = selected_voice.title;
+                    choice.voice_url = selected_voice.url;
+                    component.saveChoice(choice);
+                    stelsLog('lampaua-remote-voices-from-similar', {
+                      source: sourceTitle,
+                      count: filter_find.voice.length,
+                      selected: selected_voice.title,
+                      sample: filter_find.voice.slice(0, 8).map(function (v) { return { title: v.title, url: previewUrl(v.url || '') }; })
+                    });
+                    request(selected_voice.url);
+                    return;
+                  }
+                }
                 similar.forEach(function (elem) {
                   elem.title = elem.text || elem.title;
                   elem.link = elem.url;
@@ -23716,7 +23755,7 @@
       }, {
         name: 'rc-mirage',
         title: 'Mirage',
-        source: new lampauaRemoteSource(this, object, ['mirage', 'мираж'], 'Mirage', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
+        source: new lampauaRemoteSource(this, object, ['mirage', 'мираж'], 'Mirage', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true }),
         search: true,
         kp: true,
         imdb: true
@@ -24220,7 +24259,7 @@
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
