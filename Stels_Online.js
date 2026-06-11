@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.76';
+    var STELS_ONLINE_VERSION = '1.1.77';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -684,9 +684,9 @@
           '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;min-height:4.4em!important;}' +
           '.stels-online-source-entry .stels-online-source-icon{width:2.15em!important;height:2.15em!important;margin-right:.7em!important;object-fit:contain!important;flex-shrink:0!important;}' +
           '.stels-online-source-status-icon{font-weight:900!important;margin-left:.35em!important;font-size:1.05em!important;line-height:1!important;display:inline-block!important;vertical-align:-.05em!important;text-shadow:0 0 .22em rgba(0,0,0,.75)!important;}' +
-          '.stels-online-source-status-ok{color:#00d36f!important;-webkit-text-fill-color:#00d36f!important;}' +
-          '.stels-online-source-status-error{color:#ff3b30!important;-webkit-text-fill-color:#ff3b30!important;}' +
-          '.stels-online-source-status-wait{color:#ffd400!important;-webkit-text-fill-color:#ffd400!important;}' +
+          '.stels-online-source-status-ok{color:#00d36f!important;}' +
+          '.stels-online-source-status-error{color:#ff3b30!important;}' +
+          '.stels-online-source-status-wait{color:#ffd400!important;}' +
           '.stels-online-source-quality-badge{margin-left:auto!important;padding-left:1.2em!important;min-width:4.2em!important;text-align:right!important;font-weight:900!important;color:#ffb300!important;-webkit-text-fill-color:#ffb300!important;font-size:.95em!important;letter-spacing:.02em!important;text-shadow:0 0 .2em rgba(0,0,0,.75)!important;white-space:nowrap!important;}' +
           '.stels-online-source-status-line{display:flex!important;align-items:center!important;width:100%!important;min-width:0!important;gap:.35em!important;}' +
           '.stels-online-source-status-name{display:inline-flex!important;align-items:center!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}' +
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.76: стабільне стилізування статусів і badge якості при повторному відкритті меню джерел.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.77: відкат важкого DOM-observer з 1.1.76; легке стилізування меню джерел без дублювання badge якості і без зависань.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -24350,6 +24350,7 @@
           }));
           filter.show('Джерело', 'sort');
           stelsPatchOpenSourceSortMenu();
+          stelsEnsureSourceMenuObserver();
           setTimeout(stelsPatchOpenSourceSortMenu, 80);
           setTimeout(stelsPatchOpenSourceSortMenu, 260);
           stelsLog('floating-source-button-open', { source: balanser });
@@ -24577,12 +24578,8 @@
 
       function stelsStripSourceStatusTitle(title) {
         var text = String(title || '').replace(/\s+/g, ' ').trim();
-        for (var i = 0; i < 4; i++) {
-          var before = text;
-          text = text.replace(/\s*[✅❌⏳✓✔✕✖]\s*(?:[•·-]?\s*(?:8K|4K|2K|[1-9][0-9]{2,3}p?))?\s*$/ig, '').trim();
-          text = text.replace(/\s+(?:8K|4K|2K|[1-9][0-9]{2,3}p)\s*[✅❌⏳✓✔✕✖]\s*$/ig, '').trim();
-          if (text === before) break;
-        }
+        text = text.replace(/\s*[✅❌⏳✓✔✕✖]\s*(?:[•·-]?\s*(?:8K|4K|2K|[1-9][0-9]{2,3}p?))?\s*$/ig, '').trim();
+        text = text.replace(/\s+(?:8K|4K|2K|[1-9][0-9]{2,3}p)\s*[✅❌⏳✓✔✕✖]\s*$/ig, '').trim();
         return text;
       }
 
@@ -24596,10 +24593,6 @@
       function stelsSourceTitleWithStatusHtml(source) {
         var key = stelsNormalizeSourceKey(source && source.name || source);
         var title = source && source.title || stelsSourceTitle(key);
-        try {
-          var watch = stelsGetWatchHistory(object && object.movie);
-          if (watch && watch.source === key) title += ' • останнє' + (watch.season && watch.episode ? ' S' + watch.season + 'E' + watch.episode : '');
-        } catch (e) {}
         var kind = stelsSourceStatusKind(source);
         var quality = stelsSourceQuality(source);
         var icon = stelsSourceStatusIconHtml(kind);
@@ -24609,66 +24602,6 @@
         return '<span class="stels-online-source-status-line"><span class="stels-online-source-status-name">' + name + (icon ? ' ' + icon : '') + '</span>' + qhtml + '</span>';
       }
 
-
-      function stelsColorizeSourceStatusSymbols(root) {
-        try {
-          var map = {};
-          obj_filter_sources.forEach(function (src) {
-            var key = stelsNormalizeSourceKey(src && src.name || src);
-            var base = src && src.title || stelsSourceTitle(key);
-            var html = stelsSourceTitleWithStatusHtml(src);
-            [base, stelsSourceTitleWithStatus(src), stelsStripSourceStatusTitle(stelsSourceTitleWithStatus(src))].forEach(function (name) {
-              var clean = stelsStripSourceStatusTitle(name || '');
-              if (clean) map[clean] = html;
-            });
-          });
-          var scope = root ? $(root) : $(document.body);
-          var selector = '.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item, .filter--sort, .filter--sort span, .filter--sort div, .selectbox span, .selectbox div';
-          scope.find(selector).addBack(selector).each(function () {
-            var el = $(this);
-            if (!el.length || el.find('.stels-online-source-status-line').length) return;
-            var raw = (el.text() || '').replace(/\s+/g, ' ').trim();
-            if (!raw || raw.length > 96) return;
-            if (!/[✅❌⏳✓✔✕✖]|(?:8K|4K|2K|[1-9][0-9]{2,3}p)\s*$/i.test(raw)) return;
-            var clean = stelsStripSourceStatusTitle(raw);
-            if (!map[clean]) return;
-            var target = el.children().filter(function () {
-              var t = ($(this).text() || '').replace(/\s+/g, ' ').trim();
-              return stelsStripSourceStatusTitle(t) === clean;
-            }).first();
-            if (!target.length) target = el.find('span,div').filter(function () {
-              var t = ($(this).text() || '').replace(/\s+/g, ' ').trim();
-              return t.length < 96 && stelsStripSourceStatusTitle(t) === clean;
-            }).first();
-            if (target.length) target.html(map[clean]);
-            else el.html(map[clean]);
-          });
-        } catch (e) {}
-      }
-
-      var stelsSourceMenuObserver = null;
-      function stelsEnsureSourceMenuObserver() {
-        try {
-          if (stelsSourceMenuObserver || typeof MutationObserver === 'undefined' || !document.body) return;
-          var busy = false;
-          stelsSourceMenuObserver = new MutationObserver(function (mutations) {
-            if (busy) return;
-            var need = false;
-            for (var i = 0; i < mutations.length; i++) {
-              var m = mutations[i];
-              if (m && m.addedNodes && m.addedNodes.length) { need = true; break; }
-            }
-            if (!need) return;
-            busy = true;
-            setTimeout(function () {
-              busy = false;
-              stelsPatchOpenSourceSortMenu();
-            }, 30);
-          });
-          stelsSourceMenuObserver.observe(document.body, { childList: true, subtree: true });
-        } catch (e) {}
-      }
-
       var stelsPrecheckTimer = null;
       var stelsPrecheckToken = 0;
       var stelsPrecheckRunning = false;
@@ -24676,29 +24609,85 @@
         try {
           var map = {};
           obj_filter_sources.forEach(function (s) {
-            var clean = stelsStripSourceStatusTitle(s.title || '');
-            map[clean] = { text: stelsSourceTitleWithStatus(s), html: stelsSourceTitleWithStatusHtml(s) };
+            var base = stelsStripSourceStatusTitle(s.title || '');
+            var titled = stelsStripSourceStatusTitle(stelsSourceTitleWithStatus(s));
+            var html = stelsSourceTitleWithStatusHtml(s);
+            if (base) map[base] = html;
+            if (titled) map[titled] = html;
           });
-          $('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item, .filter--sort span').each(function () {
-            var el = $(this);
-            var txt = stelsStripSourceStatusTitle((el.text() || '').replace(/\s+/g, ' '));
-            if (!map[txt]) return;
-            var target = el.children().filter(function () {
-              var t = stelsStripSourceStatusTitle(($(this).text() || '').replace(/\s+/g, ' '));
-              return t === txt;
+
+          // Важливо: патчимо тільки рядки меню, а не всі span/div всередині.
+          // У 1.1.76 MutationObserver заходив у вкладені елементи і створював дублікати badge якості.
+          var rows = $('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item');
+          rows.each(function () {
+            var row = $(this);
+            if (!row.length) return;
+            var raw = (row.text() || '').replace(/\s+/g, ' ').trim();
+            if (!raw || raw.length > 140) return;
+            var clean = stelsStripSourceStatusTitle(raw);
+            if (!map[clean]) return;
+
+            var target = row.children().filter(function () {
+              var t = ($(this).text() || '').replace(/\s+/g, ' ').trim();
+              return t && t.length < 140 && stelsStripSourceStatusTitle(t) === clean;
             }).first();
-            if (!target.length) target = el.find('span,div').filter(function () {
-              var t = stelsStripSourceStatusTitle(($(this).text() || '').replace(/\s+/g, ' '));
-              return t === txt;
-            }).first();
-            if (target.length) target.html(map[txt].html);
-            else el.html(map[txt].html);
+
+            if (!target.length) {
+              target = row.find('span,div').filter(function () {
+                var t = ($(this).text() || '').replace(/\s+/g, ' ').trim();
+                if (!t || t.length > 140) return false;
+                // Не чіпаємо вже наші вставки і системну галочку вибору Lampa.
+                if ($(this).closest('.stels-online-source-status-line').length) return false;
+                return stelsStripSourceStatusTitle(t) === clean;
+              }).first();
+            }
+
+            if (target.length) target.html(map[clean]);
+            else row.html(map[clean]);
           });
-          stelsColorizeSourceStatusSymbols(document.body);
-          setTimeout(function () { stelsColorizeSourceStatusSymbols(document.body); }, 60);
-          setTimeout(function () { stelsColorizeSourceStatusSymbols(document.body); }, 180);
           stelsPatchUaFlagIcons(document.body);
-          stelsEnsureSourceMenuObserver();
+        } catch (e) {}
+      }
+
+      var stelsSourceMenuObserver = null;
+      var stelsSourceMenuPatchTimer = null;
+      function stelsScheduleSourceMenuPatch(delay) {
+        try {
+          if (stelsSourceMenuPatchTimer) clearTimeout(stelsSourceMenuPatchTimer);
+          stelsSourceMenuPatchTimer = setTimeout(function () {
+            stelsSourceMenuPatchTimer = null;
+            stelsPatchOpenSourceSortMenu();
+          }, typeof delay === 'number' ? delay : 80);
+        } catch (e) {}
+      }
+
+      function stelsEnsureSourceMenuObserver() {
+        try {
+          if (stelsSourceMenuObserver || typeof MutationObserver === 'undefined' || !document.body) return;
+          stelsSourceMenuObserver = new MutationObserver(function (mutations) {
+            try {
+              var need = false;
+              for (var i = 0; i < mutations.length && !need; i++) {
+                var nodes = mutations[i] && mutations[i].addedNodes;
+                if (!nodes || !nodes.length) continue;
+                for (var j = 0; j < nodes.length; j++) {
+                  var n = nodes[j];
+                  if (!n || n.nodeType !== 1) continue;
+                  var el = $(n);
+                  if (el.hasClass('stels-online-source-status-line') || el.closest('.stels-online-source-status-line').length) continue;
+                  if (el.is('.selectbox, .selectbox-item, .selectbox__item, .selector__item, .menu__item') || el.find('.selectbox-item, .selectbox__item, .selector__item, .menu__item').length) {
+                    need = true;
+                    break;
+                  }
+                }
+              }
+              if (need) {
+                stelsScheduleSourceMenuPatch(60);
+                setTimeout(stelsPatchOpenSourceSortMenu, 180);
+              }
+            } catch (e) {}
+          });
+          stelsSourceMenuObserver.observe(document.body, { childList: true, subtree: true });
         } catch (e) {}
       }
 
@@ -24716,6 +24705,7 @@
           }));
           stelsPatchOpenSourceSortMenu();
           stelsUpdateFloatingSourceButton();
+          stelsEnsureSourceMenuObserver();
           setTimeout(stelsPatchOpenSourceSortMenu, 120);
         } catch (e) {}
       }
@@ -25893,6 +25883,7 @@
           };
         }));
         stelsPatchOpenSourceSortMenu();
+        stelsEnsureSourceMenuObserver();
         setTimeout(stelsPatchOpenSourceSortMenu, 80);
         setTimeout(stelsPatchOpenSourceSortMenu, 260);
         this.selected(filter_items);
@@ -28191,7 +28182,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.76: стабільне стилізування статусів і badge якості при повторному відкритті меню джерел.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.77: відкат важкого DOM-observer з 1.1.76; легке стилізування меню джерел без дублювання badge якості і без зависань.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
