@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.49';
+    var STELS_ONLINE_VERSION = '1.1.50';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -2232,13 +2232,20 @@
             element.loading = true;
             getStream(element, function (element) {
               element.loading = false;
-              var first = {
+              var firstTracks = allohaVoiceovers(element, element.voice) || [];
+              var first = stelsSanitizeAndroidPlayable({
                 url: component.getDefaultQuality(element.qualitys, element.stream),
                 quality: component.renameQualityMap(element.qualitys),
                 subtitles: element.subtitles,
                 timeline: element.timeline,
-                title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title)
-              };
+                title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title),
+                season: element.season || 0,
+                episode: element.episode || 0,
+                voice_name: element.voice || '',
+                translate_voice: element.voice || '',
+                translate: { tracks: firstTracks },
+                voiceovers: firstTracks
+              }, 'alloha-first');
               Lampa.Player.play(first);
 
               if (element.season && Lampa.Platform.version) {
@@ -11749,6 +11756,68 @@
         });
       }
 
+
+      function loadLegacyMovie(kp, callback, fail) {
+        kp = String(kp || '').replace(/\D+/g, '');
+        if (!kp) { fail && fail('no kp'); return; }
+        legacy_id = kp;
+        var url = legacyUrl(kp, 0, 0, '');
+        log('legacy-movie-start', { kp: kp, url: preview(url) });
+        requestText(url, function (str) {
+          var parsed = parseLegacyPlayerConfig(str, url);
+          log('legacy-movie-response', {
+            kp: kp,
+            html_len: String(str || '').length,
+            has_file: !!parsed.file,
+            file: preview(parsed.file || '', 220),
+            subtitles: parsed.subtitles && parsed.subtitles.length || 0,
+            debug: parsed.debug || {}
+          });
+          if (!parsed.file) { fail && fail('legacy movie empty'); return; }
+          var item = {
+            title: select_title || object.movie && (object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name) || 'Alloha',
+            quality: '360p ~ 1080p',
+            info: '',
+            season: 0,
+            episode: 0,
+            voice: 'Alloha',
+            legacy: true,
+            stream: parsed.file,
+            subtitles: parsed.subtitles || false,
+            media: {
+              season: 0,
+              episode: 0,
+              voice_id: '',
+              voice_name: 'Alloha',
+              legacy: true,
+              movie: true,
+              raw: {}
+            }
+          };
+          legacy_items = [item];
+          extract.fileList = null;
+          extract.iframe = '';
+          extract.info = { legacy: true, legacy_movie: true, kp: kp };
+          extract.items = legacy_items;
+          callback(legacy_items);
+        }, function (message) {
+          log('legacy-movie-fail', { kp: kp, message: preview(message, 400) });
+          fail && fail(message || 'legacy movie fail');
+        }, {
+          kind: 'legacy-movie',
+          proxy: prox,
+          prox_enc: legacy_prox_enc,
+          enc: 'enc2t',
+          headers: {
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://lomont.site/'
+          },
+          dataType: 'text',
+          timeout: 12000
+        });
+      }
+
       function decodeLegacyAttr(value) {
         value = String(value || '');
         try { value = component.decodeHtml(value); } catch (e) {}
@@ -11951,6 +12020,77 @@
         return out.length ? out : false;
       }
 
+      function allohaFindAlt(element, voiceName) {
+        voiceName = String(voiceName || '');
+        var season = parseInt(element && element.season || 0, 10) || 0;
+        var episode = parseInt(element && element.episode || 0, 10) || 0;
+        var found = null;
+        (extract.items || []).forEach(function (it) {
+          if (found) return;
+          if (season && (parseInt(it.season || 0, 10) || 0) !== season) return;
+          if (episode && (parseInt(it.episode || 0, 10) || 0) !== episode) return;
+          if (!season && !episode && (it.season || it.episode)) return;
+          if (String(it.voice || '') === voiceName) found = it;
+        });
+        return found;
+      }
+
+      function allohaVoiceovers(element, selectedVoice) {
+        var voices = filter_items.voice || [];
+        if (!(voices && voices.length > 1)) return false;
+        selectedVoice = selectedVoice || element && (element.voice || element.translate_voice || element.voice_name) || voices[choice.voice] || '';
+        return voices.map(function (voiceName, index) {
+          return {
+            index: index,
+            language: voiceName,
+            name: voiceName,
+            label: 'Alloha',
+            selected: voiceName === selectedVoice,
+            active: voiceName === selectedVoice,
+            checked: voiceName === selectedVoice,
+            current: voiceName === selectedVoice,
+            enabled: true,
+            onSelect: function () {
+              if (voiceName === selectedVoice) return;
+              var target = allohaFindAlt(element, voiceName);
+              if (!target) {
+                log('voice-switch-missing', { voice: voiceName, season: element && element.season || 0, episode: element && element.episode || 0 });
+                Lampa.Noty.show('Не вдалося знайти переклад: ' + voiceName);
+                return;
+              }
+              try { Lampa.Player.loading(true); } catch (e) {}
+              log('voice-switch-start', { voice: voiceName, season: target.season || 0, episode: target.episode || 0, title: target.title || '' });
+              getStream(target, function (item) {
+                try { Lampa.Player.loading(false); } catch (e2) {}
+                var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+                var tracks = allohaVoiceovers(item, voiceName) || [];
+                var play = stelsSanitizeAndroidPlayable({
+                  url: component.getDefaultQuality(item.qualitys, item.stream),
+                  quality: component.renameQualityMap(item.qualitys),
+                  subtitles: item.subtitles || current.subtitles || false,
+                  headers: item.headers || current.headers || false,
+                  timeline: current.timeline || item.timeline || element.timeline,
+                  poster: current.poster || item.poster || element.poster || '',
+                  title: current.title || (item.season ? item.title : select_title + (item.title == select_title ? '' : ' / ' + item.title)),
+                  season: item.season || current.season || 0,
+                  episode: item.episode || current.episode || 0,
+                  voice_name: voiceName,
+                  translate_voice: voiceName,
+                  translate: { tracks: tracks },
+                  voiceovers: tracks
+                }, 'alloha-voice-switch');
+                Lampa.Player.play(play);
+                log('voice-switch-play', { voice: voiceName, url_preview: preview(item.stream || '', 180) });
+              }, function (err) {
+                try { Lampa.Player.loading(false); } catch (e3) {}
+                log('voice-switch-fail', { voice: voiceName, error: preview(err || '', 200), season: element && element.season || 0, episode: element && element.episode || 0 });
+                Lampa.Noty.show('Не вдалося завантажити переклад: ' + voiceName);
+              });
+            }
+          };
+        });
+      }
+
       function getStream(element, call, error) {
         if (element && element.legacy) return getLegacyStream(element, call, error);
         if (element.stream) return call(element);
@@ -12050,6 +12190,11 @@
                           cell.url = component.getDefaultQuality(elem.qualitys, elem.stream);
                           cell.quality = component.renameQualityMap(elem.qualitys);
                           cell.subtitles = elem.subtitles;
+                          cell.voice_name = elem.voice || '';
+                          cell.translate_voice = elem.voice || '';
+                          var tracks = allohaVoiceovers(elem, elem.voice) || [];
+                          cell.translate = { tracks: tracks };
+                          cell.voiceovers = tracks;
                           ready();
                         }, function () { cell.url = ''; ready(); });
                       },
@@ -12136,6 +12281,11 @@
         if (kp && isSerialObject()) {
           loadLegacy(kp, finishLegacy, function (message) {
             log('legacy-to-kinobaza-fallback', { message: preview(message, 400) });
+            kinobazaFallback();
+          });
+        } else if (kp) {
+          loadLegacyMovie(kp, finishLegacy, function (message) {
+            log('legacy-movie-to-kinobaza-fallback', { message: preview(message, 400) });
             kinobazaFallback();
           });
         } else kinobazaFallback();
