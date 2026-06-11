@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.68';
+    var STELS_ONLINE_VERSION = '1.1.69';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5492,7 +5492,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: 'очікується Referer https://kinobaza.online/ як у браузері' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.69: Mirage глобально групує картки перекладів у фільтр для серіалів і фільмів; RC-style direct play збережено.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -21223,6 +21223,12 @@
         }, false, { dataType: 'text', headers: addHeaders() });
       }
 
+      function lampauaCloneItem(item) {
+        var out = {};
+        for (var k in (item || {})) out[k] = item[k];
+        return out;
+      }
+
       function lampauaResolveVoicePlayable(element, voice, call) {
         if (!voice) return call(false);
         var target = lampauaCurrentEpisodeElement(element || {});
@@ -21240,6 +21246,7 @@
             } else call(false);
           });
         };
+        if (voice.item) return finish(lampauaCloneItem(voice.item));
         if (use_current) return finish(target);
         lampauaRequestVoiceItems(voice, function (items) {
           var same = lampauaFindSameEpisode(items, target);
@@ -21305,6 +21312,58 @@
           if (score > bestScore) { bestScore = score; best = i; }
         });
         return best >= 0 ? best : 0;
+      }
+
+      function lampauaShouldGroupMirageMovieVideos(videos) {
+        return lampauaIsMirageLike() && videos && videos.length > 1 && videos.every(function (v) { return v && !parseInt(v.season || 0, 10); });
+      }
+
+      function lampauaMirageMovieVoiceTitle(item, index) {
+        var title = String(item && (item.text || item.title || item.info || item.voice_name) || '').trim();
+        return title || ('Переклад ' + (index + 1));
+      }
+
+      function lampauaBuildMirageMovieFilter(videos) {
+        var seen = {};
+        filter_find.voice = (videos || []).filter(function (v) { return v && (v.url || v.stream || v.file); }).map(function (v, index) {
+          var base = lampauaMirageMovieVoiceTitle(v, index);
+          var key = base.toLowerCase();
+          seen[key] = (seen[key] || 0) + 1;
+          var title = seen[key] > 1 ? (base + ' #' + seen[key]) : base;
+          var item = lampauaCloneItem(v);
+          item.voice_name = title;
+          item.translate_voice = title;
+          item.info = title;
+          item.title = select_title || object.movie && (object.movie.title || object.movie.name) || title;
+          return { title: title, url: item.url || '', active: false, item: item };
+        });
+        var preferred = lampauaPreferredSimilarVoiceIndex(filter_find.voice);
+        var voice = filter_find.voice[preferred] || filter_find.voice[0];
+        if (voice) {
+          choice.voice = Math.max(0, filter_find.voice.indexOf(voice));
+          choice.voice_name = voice.title;
+          choice.voice_url = voice.url || '';
+          component.saveChoice(choice);
+          stelsLog('lampaua-mirage-movie-voices-grouped', {
+            source: sourceTitle,
+            count: filter_find.voice.length,
+            selected: voice.title,
+            sample: filter_find.voice.slice(0, 12).map(function (v) { return { title: v.title, url: previewUrl(v.url || '') }; })
+          });
+          return [lampauaCloneItem(voice.item)];
+        }
+        return videos || [];
+      }
+
+      function lampauaDisplaySelectedMovieVoice() {
+        var voice = filter_find.voice && filter_find.voice[choice.voice] || filter_find.voice && filter_find.voice[0];
+        if (!voice || !voice.item) return false;
+        choice.voice = Math.max(0, filter_find.voice.indexOf(voice));
+        choice.voice_name = voice.title;
+        choice.voice_url = voice.url || '';
+        component.saveChoice(choice);
+        display([lampauaCloneItem(voice.item)]);
+        return true;
       }
 
       function lampauaEnsureAudioAfterPlay(reason, play) {
@@ -21572,6 +21631,7 @@
                 choice.voice_url = '';
                 choice.voice_name = sourceTitle;
               }
+              if (lampauaShouldGroupMirageMovieVideos(videos)) videos = lampauaBuildMirageMovieFilter(videos);
               display(videos);
             } else if (items.length) {
               if (similar.length) {
@@ -21653,6 +21713,7 @@
             choice.voice_url = voice.url;
             component.saveChoice(choice);
             component.loading(true);
+            if (voice.item && lampauaDisplaySelectedMovieVoice()) return setTimeout(component.closeFilter, 10);
             request(voice.url);
           }
         } else if (a.stype == 'season') {
@@ -27814,7 +27875,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.67: Mirage/PidTor максимально наближено до rc.js — http://rc.bwa.ad, method=play endpoint без XHR resolve, isonline=true, якість із q-коментаря/назви.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.69: Mirage глобально групує картки перекладів у фільтр для серіалів і фільмів; RC-style direct play збережено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
