@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.84';
+    var STELS_ONLINE_VERSION = '1.1.85';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.83: Tartuga - плеєри винесено в окремий фільтр Плеєри, переклади більше не засмічуються назвами плеєрів.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.85: Tartuga/VeoVeo - прибрано службові Default-серії, виправлено HLS master-потік без втрати аудіодоріжок.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15357,11 +15357,30 @@
         items.sort(function (a, b) { return (a.season - b.season) || (a.episode - b.episode) || String(a.voice || '').localeCompare(String(b.voice || '')); });
         return items;
       }
+      function normalizeVeoVeoPlayableUrl(url) {
+        url = absolute(url || '', ref);
+        // У HAR VeoVeo master.m3u8 спочатку йде через global.temptcdn.com/content-router/r,
+        // після чого 307 веде на video.mvapspdmpg.com. Якщо HLS.js/Lampa бере master через XHR,
+        // редірект без коректної бази ламає відносні /movies/... плейлисти. Тому одразу даємо
+        // фінальний CDN-хост із правильним base URL для всіх вкладених audio/video playlist-ів.
+        url = url.replace(/^https?:\/\/global\.temptcdn\.com\/content-router\/r\//i, 'https://video.mvapspdmpg.com/');
+        return url;
+      }
       function normalizeVeoVeoItems(player, content, seasons, episodes) {
         var seasonById = {};
         (seasons || []).forEach(function (s) { if (s && s.id != null) seasonById[s.id] = parseInt(s.order, 10) || 0; });
+        var seasonHasRealVoice = {};
+        (episodes || []).forEach(function (ep) {
+          ep = ep || {};
+          var season = ep.season && (seasonById[ep.season.id] || parseInt(ep.season.order, 10)) || 0;
+          (ep.episodeVariants || []).forEach(function (v) {
+            var voice = clean(v && v.title || '');
+            if (voice && !/^default$/i.test(voice)) seasonHasRealVoice[season] = true;
+          });
+        });
         var items = [];
         var seen = {};
+        var skippedDefault = 0;
         (episodes || []).forEach(function (ep) {
           ep = ep || {};
           var season = ep.season && (seasonById[ep.season.id] || parseInt(ep.season.order, 10)) || 0;
@@ -15369,15 +15388,23 @@
           var variants = ep.episodeVariants || [];
           variants.forEach(function (v) {
             v = v || {};
-            var file = absolute(v.filepath || ep.m3u8MasterFilePath || '', player && player.url || ref);
+            var rawVoice = clean(v.title || '');
+            // VeoVeo для деяких серіалів повертає службові записи Default як фальшиві
+            // додаткові серії поточного сезону. У filmo.tartugi.net_serial.har для From це
+            // S1E11-S1E23, яких реально не існує. Якщо в сезоні є нормальні переклади,
+            // службовий Default не показуємо ні в серіях, ні у фільтрі перекладів.
+            if (/^default$/i.test(rawVoice || '') && seasonHasRealVoice[season]) { skippedDefault++; return; }
+            var file = normalizeVeoVeoPlayableUrl(v.filepath || ep.m3u8MasterFilePath || '');
             if (!file) return;
-            var voice = clean(v.title || 'VeoVeo');
+            var voice = rawVoice || 'VeoVeo';
             var key = [season, episode, voice, file].join('|');
             if (seen[key]) return;
             seen[key] = true;
             items.push({
               title: component.formatEpisodeTitle(season, episode, ep.title || ''),
-              quality: v.streamQuality || '360p ~ 1080p',
+              // Не розбиваємо VeoVeo master.m3u8 на окремі quality URL: master містить
+              // окремі AUDIO groups, і при виборі variant-playlist можна отримати відео без аудіо.
+              quality: v.streamQuality || 'HLS',
               info: ' / ' + Lampa.Utils.shortText(voice, 50),
               season: season,
               episode: episode,
@@ -15386,11 +15413,13 @@
               media: v,
               poster: v.previewImageFilepath || content && content.posterUrl || player && player.poster || '',
               headers: false,
-              player: player
+              player: player,
+              skip_quality_probe: true
             });
           });
         });
         items.sort(function (a, b) { return (a.season - b.season) || (a.episode - b.episode) || String(a.voice || '').localeCompare(String(b.voice || '')); });
+        log('veoveo-normalized', { input_episodes: (episodes || []).length, output_items: items.length, skipped_default: skippedDefault, voices: items.map(function (it) { return it.voice; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 20), sample: items.slice(0, 10).map(function (it) { return 'S' + it.season + 'E' + it.episode + '|' + it.voice + '|' + preview(it.stream, 120); }) });
         return items;
       }
       function loadVeoVeoSerial(player, success, fail) {
@@ -15570,6 +15599,11 @@
       }
       function getStream(element, call, error) {
         if (element.stream) {
+          if (element.skip_quality_probe) {
+            element.qualitys = false;
+            call(element);
+            return;
+          }
           if (!element.qualitys && /\.m3u8(?:$|\?)/i.test(element.stream || '')) {
             requestText(element.stream, function (m3u) {
               element.qualitys = parseTartugaM3uQualities(m3u, element.stream);
@@ -29037,7 +29071,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.83: Tartuga - плеєри винесено в окремий фільтр Плеєри, переклади більше не засмічуються назвами плеєрів.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.85: Tartuga/VeoVeo - прибрано службові Default-серії, виправлено HLS master-потік без втрати аудіодоріжок.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
