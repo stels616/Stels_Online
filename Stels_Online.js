@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.92';
+    var STELS_ONLINE_VERSION = '1.1.94';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.92: Tartuga - HDVB retry через сторінку фільму з правильним Referer; якщо KP-CDN повертає тільки Parlo, запускається пошук сторінки, щоб підтягнути VeoVeo/HDVB/інші плеєри.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.94: Tartuga - прибрано hardcode під окремі серіали; пошук сторінки переведено на глобальний DLE ajax search.php з fallback на звичайний search.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -13149,6 +13149,26 @@
           .trim());
       }
 
+      function maybeDecodeTartugaText(text) {
+        text = String(text == null ? '' : text);
+        var trimmed = text.trim();
+        // У Chrome HAR сторінки Tartuga інколи видно як base64; у деяких WebView/native request
+        // може повернутись такий самий сирий body. Декодуємо тільки явні HTML-префікси.
+        if (trimmed.length > 80 && /^(?:PCE|PCF|PGh0|PGRp|PHNj|PGhl)/.test(trimmed.slice(0, 4)) && /^[A-Za-z0-9+\/\r\n=]+$/.test(trimmed)) {
+          try {
+            var bin = atob(trimmed.replace(/\s+/g, ''));
+            try {
+              var esc = '';
+              for (var i = 0; i < bin.length; i++) esc += '%' + ('00' + bin.charCodeAt(i).toString(16)).slice(-2);
+              var utf = decodeURIComponent(esc);
+              if (/<(?:!doctype|html|div|a|script|span)\b/i.test(utf.slice(0, 800))) return utf;
+            } catch (e) {
+              if (/<(?:!doctype|html|div|a|script|span)\b/i.test(bin.slice(0, 800))) return bin;
+            }
+          } catch (e2) {}
+        }
+        return text;
+      }
       function absolute(link, base) {
         link = String(link || '').replace(/\\\//g, '/').trim();
         if (!link) return '';
@@ -15009,6 +15029,7 @@
       var extract = [];
       var filter_items = { player: [], season: [], season_num: [], voice: [] };
       var choice = { player: 0, player_name: '', season: 0, voice: 0, voice_name: '' };
+      var hdvb_retry_global = 0;
       var headers = {
         'User-Agent': Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -15039,6 +15060,24 @@
           .replace(/&nbsp;/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
+      }
+      function maybeDecodeTartugaText(text) {
+        text = String(text == null ? '' : text);
+        var trimmed = text.trim();
+        if (trimmed.length > 80 && /^(?:PCE|PCF|PGh0|PGRp|PHNj|PGhl)/.test(trimmed.slice(0, 4)) && /^[A-Za-z0-9+\/\r\n=]+$/.test(trimmed)) {
+          try {
+            var bin = atob(trimmed.replace(/\s+/g, ''));
+            try {
+              var esc = '';
+              for (var i = 0; i < bin.length; i++) esc += '%' + ('00' + bin.charCodeAt(i).toString(16)).slice(-2);
+              var utf = decodeURIComponent(esc);
+              if (/<(?:!doctype|html|div|a|script|span)\b/i.test(utf.slice(0, 800))) return utf;
+            } catch (e) {
+              if (/<(?:!doctype|html|div|a|script|span)\b/i.test(bin.slice(0, 800))) return bin;
+            }
+          } catch (e2) {}
+        }
+        return text;
       }
       function absolute(link, base) {
         link = String(link || '').replace(/\\\//g, '/').replace(/&amp;/g, '&').trim();
@@ -15086,11 +15125,34 @@
         if (joined.indexOf('the lord of the rings the two towers') !== -1 || joined.indexOf('дві вежі') !== -1 || joined.indexOf('две крепости') !== -1) addUnique(out, 'Властелин колец 2: Две крепости');
         if (joined.indexOf('the lord of the rings the fellowship of the ring') !== -1 || joined.indexOf('хранителі персня') !== -1 || joined.indexOf('хранители персня') !== -1) addUnique(out, 'Властелин колец: Братство кольца');
         if (joined.indexOf('the lord of the rings the return of the king') !== -1 || joined.indexOf('повернення короля') !== -1 || joined.indexOf('возвращение короля') !== -1) addUnique(out, 'Властелин колец: Возвращение короля');
-        if (joined.indexOf('from') !== -1 || joined.indexOf('ззовні') !== -1 || joined.indexOf('ззовни') !== -1) addUnique(out, 'Извне');
+        // Серіали не hardcode-имо по назвах. Пошук має бути глобальним:
+        // беремо назви з Lampa/TMDB, альтернативні назви, переклади, оригінал і універсально додаємо рік/форми.
+        function addGenericForms(t) {
+          t = clean(t || '');
+          if (!t) return;
+          addUnique(out, t);
+          var cut = clean(t.replace(/\s*[(:\-–—].*$/, ''));
+          if (cut && cut.length >= 3 && cut !== t) addUnique(out, cut);
+          if (/^[a-z0-9\s'’.,:&!\-–—]+$/i.test(t)) {
+            addUnique(out, t.replace(/^the\s+/i, ''));
+            addUnique(out, t.replace(/^a\s+/i, ''));
+          }
+          if (/[іїєґІЇЄҐ]/.test(t)) {
+            var ruLike = clean(t.replace(/ї/gi, 'и').replace(/і/gi, 'и').replace(/є/gi, 'е').replace(/ґ/gi, 'г'));
+            if (ruLike && ruLike !== t) addUnique(out, ruLike);
+          }
+        }
+        var initial = out.slice(0);
+        initial.forEach(addGenericForms);
         var y = movieYear();
         var base = out.slice(0);
-        base.forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) addUnique(out, t + ' ' + y); });
-        return out.filter(Boolean).slice(0, 18);
+        base.forEach(function (t) {
+          if (y && !/(?:19|20)\d{2}/.test(t)) {
+            addUnique(out, t + ' ' + y);
+            addUnique(out, t + ' (' + y + ')');
+          }
+        });
+        return out.filter(Boolean).slice(0, 28);
       }
       function requestText(url, success, fail, opts) {
         opts = opts || {};
@@ -15098,7 +15160,7 @@
         try {
           network.clear();
           network.timeout(opts.timeout || 14000);
-          network['native'](url, function (html) { if (!destroyed) success(html || ''); }, function (a, c) {
+          network['native'](url, function (html) { if (!destroyed) success(maybeDecodeTartugaText(html || '')); }, function (a, c) {
             var msg = '';
             try { msg = network.errorDecode(a, c); } catch (e) {}
             log('request-fail', { url: String(url || '').slice(0, 260), status: a && a.status, statusText: a && a.statusText, message: msg || c || '' });
@@ -15136,24 +15198,46 @@
       function parseSearchItems(html) {
         var out = [];
         var seen = {};
-        html = String(html || '');
-        html.replace(/<a[^>]+href\s*=\s*(['"])([^'"]+\/(?:\d+\-)?[^'"]+\.html)\1[^>]*>([\s\S]{0,1200}?)<\/a>/gi, function (all, q, href, body) {
+        html = maybeDecodeTartugaText(String(html || ''));
+        function pushCandidate(title, href, raw) {
           href = absolute(href, ref);
-          if (!href || seen[href]) return all;
-          var title = clean((body.match(/<span[^>]*itemprop=['"]name['"][^>]*>([\s\S]*?)<\/span>/i) || [])[1] || (body.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i) || [])[1] || (body.match(/alt\s*=\s*(['"])(.*?)\1/i) || [])[2] || body);
-          if (!title || title.length > 180) title = clean((all.match(/title\s*=\s*(['"])(.*?)\1/i) || [])[2] || '');
-          if (!title) return all;
+          title = clean(title || '');
+          if (!title || title.length > 220) {
+            title = clean(((raw || '').match(/(?:title|alt)\s*=\s*(['"])([\s\S]*?)\1/i) || [])[2] || '');
+          }
+          if (!title || !href || seen[href]) return;
           var sc = scoreTitle(title, href);
-          if (sc < 80) return all;
+          if (sc < 65) return;
           seen[href] = true;
           out.push({ title: title, url: href, link: href, score: sc });
+        }
+        // Основний DLE-шаблон: <a href="/5274-druzya.html">...назва...</a>
+        html.replace(/<a[^>]+href\s*=\s*(['"])([^'"#]+\/(?:\d+\-)?[^'"<>]+\.html)\1[^>]*>([\s\S]{0,1800}?)<\/a>/gi, function (all, q, href, body) {
+          var title = clean((body.match(/<span[^>]*(?:itemprop=['"]name['"]|class=['"][^'"]*(?:searchheading|title|name)[^'"]*)[^>]*>([\s\S]*?)<\/span>/i) || [])[1]
+            || (body.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i) || [])[1]
+            || (body.match(/(?:title|alt)\s*=\s*(['"])([\s\S]*?)\1/i) || [])[2]
+            || body);
+          pushCandidate(title, href, all);
+          return all;
+        });
+        // Додатковий прохід: у деяких результатах title лежить поруч з посиланням, а не всередині <a>.
+        html.replace(/href\s*=\s*(['"])([^'"#]+\/(?:\d+\-)?[^'"<>]+\.html)\1/gi, function (all, q, href, off) {
+          href = absolute(href, ref);
+          if (!href || seen[href] || /\/page\/|\/tags\/|\/xfsearch\//i.test(href)) return all;
+          var pos = typeof off === 'number' ? off : html.indexOf(all);
+          var chunk = html.slice(Math.max(0, pos - 900), Math.min(html.length, pos + 1600));
+          var title = ((chunk.match(/<span[^>]*(?:class=['"][^'"]*(?:searchheading|title|name)[^'"]*|itemprop=['"]name['"])[^>]*>([\s\S]*?)<\/span>/i) || [])[1]
+            || (chunk.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i) || [])[1]
+            || (chunk.match(/(?:title|alt)\s*=\s*(['"])([\s\S]*?)\1/i) || [])[2]
+            || '');
+          pushCandidate(title, href, chunk);
           return all;
         });
         out.sort(function (a, b) { return b.score - a.score; });
         return out.slice(0, 12);
       }
       function parsePageInfo(html, pageUrl) {
-        html = String(html || '');
+        html = maybeDecodeTartugaText(String(html || ''));
         var title = clean((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || (html.match(/<span[^>]+itemprop=['"]name['"][^>]*>([\s\S]*?)<\/span>/i) || [])[1] || select_title);
         var poster = absolute((html.match(/<meta[^>]+property=['"]og:image['"][^>]+content=['"]([^'"]+)['"]/i) || [])[1] || '', pageUrl);
         var cdn = (html.match(/url\s*:\s*(['"])([^'"]*\/CDN\/ChangeCDN-RU\.php[^'"]+)\1/i) || [])[2] || '';
@@ -15172,7 +15256,7 @@
           title = clean(title || 'Плеєр');
           if (!url || seen[url]) return;
           seen[url] = true;
-          out.push({ title: title || ('Плеєр ' + (out.length + 1)), url: url, quality: qualityFromText(title + ' ' + url) || 'iframe', poster: pageInfo && pageInfo.poster || '', referer: pageInfo && pageInfo.page || ref });
+          out.push({ title: title || ('Плеєр ' + (out.length + 1)), url: url, quality: qualityFromText(title + ' ' + url) || 'iframe', poster: pageInfo && pageInfo.poster || '', referer: pageInfo && pageInfo.page || ref, cdn_url: pageInfo && pageInfo.cdn || '', page_info: pageInfo || null });
         }
         html.replace(/<span[^>]*onclick\s*=\s*(['"])([\s\S]*?)\1[^>]*>([\s\S]*?)<\/span>/gi, function (all, q, onclick, body) {
           var u = (onclick.match(/ChangeCDN\s*\([^,]+,\s*(['"])([\s\S]*?)\1\s*\)/i) || [])[2] || '';
@@ -15208,19 +15292,27 @@
         log('render', { count: extract.length, selected_player: extract[choice.player] && extract[choice.player].title || '', sample: extract.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 80); }) });
       }
       function loadCdn(url, pageInfo, fail) {
-        log('cdn-request', { url: url });
+        pageInfo = pageInfo || { page: ref, poster: '' };
+        if (!pageInfo.page) pageInfo.page = ref;
+        if (!pageInfo.cdn) pageInfo.cdn = url;
+        var h = {};
+        Object.keys(ajaxHeaders).forEach(function (k) { h[k] = ajaxHeaders[k]; });
+        // В HAR Tartuga ChangeCDN викликається саме зі сторінки тайтлу. Для HDVB це критично:
+        // з головним referer CDN часто віддає sevstar host, який одразу повертає 404.
+        if (pageInfo.page && pageInfo.page !== ref) h.Referer = pageInfo.page;
+        log('cdn-request', { url: url, referer: h.Referer || '' });
         requestText(url, function (text) {
-          var players = parsePlayers(text, pageInfo || { page: ref, poster: '' });
-          log('cdn-response', { players: players.length, sample: players.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 100); }) });
-          if (players.length && shouldFallbackFromCdnPlayers(players, pageInfo || { page: ref, poster: '' }) && fail) {
+          var players = parsePlayers(text, pageInfo || { page: ref, poster: '', cdn: url });
+          log('cdn-response', { players: players.length, referer: h.Referer || '', sample: players.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 100); }) });
+          if (players.length && shouldFallbackFromCdnPlayers(players, pageInfo || { page: ref, poster: '', cdn: url }) && fail) {
             log('cdn-fallback-search', { reason: 'only-parlo-or-no-real-player', players: players.length, sample: players.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 100); }) });
             fail('players only Parlo');
             return;
           }
-          if (players.length) renderPlayers(players, pageInfo || { page: ref, poster: '' });
+          if (players.length) renderPlayers(players, pageInfo || { page: ref, poster: '', cdn: url });
           else if (fail) fail('players empty');
           else { component.loading(false); component.emptyForQuery(select_title); }
-        }, function (err) { if (fail) fail(err); else { component.loading(false); component.empty(err || 'Tartuga: CDN error'); } }, { headers: ajaxHeaders, timeout: 14000 });
+        }, function (err) { if (fail) fail(err); else { component.loading(false); component.empty(err || 'Tartuga: CDN error'); } }, { headers: h, timeout: 14000 });
       }
       function loadTitlePage(link) {
         link = absolute(link, ref);
@@ -15235,36 +15327,58 @@
           }
         }, function (err) { component.loading(false); component.empty(err || 'Tartuga: page error'); }, { headers: headers, timeout: 15000 });
       }
+      function tartugaSearchPost(query, ajaxMode) {
+        if (ajaxMode) return 'query=' + encodeURIComponent(query) + '&user_hash=';
+        return 'do=search&sortby=title&subaction=search&story=' + encodeURIComponent(query) + '&x=0&y=0';
+      }
+      function tartugaSearchUrl(ajaxMode) {
+        return ajaxMode ? (host + '/engine/ajax/search.php') : (host + '/index.php?do=search');
+      }
+      function runTartugaSearch(query, label, success, fail) {
+        var modes = [true, false];
+        function nextMode(i) {
+          if (i >= modes.length) { if (fail) fail('search empty'); return; }
+          var ajaxMode = modes[i];
+          var h = {};
+          Object.keys(ajaxHeaders).forEach(function (k) { h[k] = ajaxHeaders[k]; });
+          if (ajaxMode) {
+            h.Referer = ref;
+            h['X-Requested-With'] = 'XMLHttpRequest';
+            h.Accept = '*/*';
+          }
+          log(label + (ajaxMode ? '-ajax' : '-page'), { query: query });
+          requestText(tartugaSearchUrl(ajaxMode), function (html) {
+            var results = parseSearchItems(html);
+            log(label + (ajaxMode ? '-ajax-results' : '-page-results'), { query: query, count: results.length, sample: results.slice(0, 6).map(function (r) { return r.title + '|' + r.url; }) });
+            if (results.length) success(results, ajaxMode);
+            else nextMode(i + 1);
+          }, function () { nextMode(i + 1); }, { post: tartugaSearchPost(query, ajaxMode), headers: h, timeout: ajaxMode ? 9000 : 15000 });
+        }
+        nextMode(0);
+      }
       function searchByQuery(queries, pos) {
         if (destroyed) return;
         if (pos >= queries.length) { component.loading(false); component.emptyForQuery(select_title); return; }
         var q = queries[pos];
-        var post = 'do=search&sortby=title&subaction=search&story=' + encodeURIComponent(q) + '&x=0&y=0';
         log('search-try', { query: q, pos: pos, total: queries.length });
-        requestText(host + '/index.php?do=search', function (html) {
-          var results = parseSearchItems(html);
-          log('search-results', { query: q, count: results.length, sample: results.slice(0, 6).map(function (r) { return r.title + '|' + r.url; }) });
-          if (!results.length) { searchByQuery(queries, pos + 1); return; }
+        runTartugaSearch(q, 'search', function (results) {
           if (results.length > 1 && !object.clarification) { component.loading(false); component.similars(results); return; }
           loadTitlePage((results[0] || {}).url || (results[0] || {}).link);
-        }, function () { searchByQuery(queries, pos + 1); }, { post: post, headers: ajaxHeaders, timeout: 15000 });
+        }, function () { searchByQuery(queries, pos + 1); });
       }
       function findBestTitlePage(queries, pos, success, fail) {
         if (destroyed) return;
         queries = queries || [];
         if (pos >= queries.length) { if (fail) fail('title page not found'); return; }
         var q = queries[pos];
-        var post = 'do=search&sortby=title&subaction=search&story=' + encodeURIComponent(q) + '&x=0&y=0';
         log('title-page-retry-search', { query: q, pos: pos, total: queries.length });
-        requestText(host + '/index.php?do=search', function (html) {
-          var results = parseSearchItems(html);
-          log('title-page-retry-results', { query: q, count: results.length, best: results[0] && (results[0].title + '|' + results[0].url) || '' });
+        runTartugaSearch(q, 'title-page-retry', function (results) {
           if (results.length && results[0] && (results[0].url || results[0].link)) {
             success(results[0].url || results[0].link);
             return;
           }
           findBestTitlePage(queries, pos + 1, success, fail);
-        }, function () { findBestTitlePage(queries, pos + 1, success, fail); }, { post: post, headers: ajaxHeaders, timeout: 15000 });
+        }, function () { findBestTitlePage(queries, pos + 1, success, fail); });
       }
       function retryHdvbViaTitlePage(player, lastError) {
         if (!player || player._hdvb_page_retry) return false;
@@ -15278,6 +15392,21 @@
           component.empty('HDVB: не вдалося завантажити відео або список серій');
           component.loading(false);
           log('hdvb-page-retry-fail', { message: preview(err || lastError || '', 260) });
+        });
+        return true;
+      }
+      function retryHdvbViaFreshCdn(player, lastError) {
+        if (!player || !player.cdn_url || !player.referer || player.referer === ref) return false;
+        if (hdvb_retry_global >= 3) return false;
+        hdvb_retry_global++;
+        log('hdvb-cdn-refresh-retry', { attempt: hdvb_retry_global, cdn: preview(player.cdn_url, 220), referer: player.referer || '', error: preview(lastError || '', 220) });
+        component.loading(true);
+        loadCdn(player.cdn_url, player.page_info || { page: player.referer, poster: player.poster || '', cdn: player.cdn_url }, function (err) {
+          log('hdvb-cdn-refresh-fail', { attempt: hdvb_retry_global, message: preview(err || lastError || '', 260) });
+          if (retryHdvbViaTitlePage(player, err || lastError)) return;
+          component.reset();
+          component.empty('HDVB: не вдалося завантажити відео або список серій');
+          component.loading(false);
         });
         return true;
       }
@@ -15483,7 +15612,9 @@
           'Accept': 'application/json,text/plain,*/*',
           'Accept-Language': headers['Accept-Language'],
           'Referer': absolute(player.url, ref),
-          'Origin': apiHost
+          'Origin': apiHost,
+          'dle-api-token': tokenFromUrl(player && player.url || '') || '',
+          'iframe-request-id': 'stels-online-' + Date.now()
         };
         log('veoveo-load-start', { player: player.title, id: id });
         requestText(base + '/contents/' + encodeURIComponent(id), function (contentText) {
@@ -15912,6 +16043,7 @@
         }, function (err) {
           buildFilter();
           if (isHdvbPlayer(p)) {
+            if (retryHdvbViaFreshCdn(p, err)) return;
             if ((!p.referer || p.referer === ref) && retryHdvbViaTitlePage(p, err)) return;
             component.reset();
             component.empty('HDVB: не вдалося завантажити відео або список серій');
@@ -16077,8 +16209,8 @@
         if (data && data[0] && (data[0].url || data[0].link)) { loadTitlePage(data[0].url || data[0].link); return; }
         var kp = kinopoiskId(kinopoisk_id);
         if (kp) {
-          loadCdn(cdnUrlByKp(kp), { page: ref, poster: object.movie && (object.movie.img || object.movie.poster_path || object.movie.poster) || '' }, function () {
-            searchByQuery(titleVariants(), 0);
+          loadCdn(cdnUrlByKp(kp), { page: ref, poster: object.movie && (object.movie.img || object.movie.poster_path || object.movie.poster) || '', cdn: cdnUrlByKp(kp) }, function () {
+            findBestTitlePage(titleVariants(), 0, function (link) { loadTitlePage(link); }, function () { searchByQuery(titleVariants(), 0); });
           });
           return;
         }
@@ -29408,7 +29540,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.92: Tartuga - HDVB retry через сторінку фільму з правильним Referer; якщо KP-CDN повертає тільки Parlo, запускається пошук сторінки, щоб підтягнути VeoVeo/HDVB/інші плеєри.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.94: Tartuga - прибрано hardcode під окремі серіали; пошук сторінки переведено на глобальний DLE ajax search.php з fallback на звичайний search.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
