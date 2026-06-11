@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.52';
+    var STELS_ONLINE_VERSION = '1.1.53';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -3690,13 +3690,14 @@
       var user_agent = Utils.baseUserAgent();
       var player_browser_ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
       var page_headers = {
-        'User-Agent': user_agent,
+        'User-Agent': player_browser_ua,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
         'Referer': ref
       };
       var ajax_headers = {
-        'User-Agent': user_agent,
-        'Accept': 'text/html,*/*;q=0.8',
+        'User-Agent': player_browser_ua,
+        'Accept': '*/*',
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'Origin': host,
         'Referer': ref,
@@ -11513,50 +11514,89 @@
         var m = String(url || '').match(/^(https?:\/\/[^\/]+)/i);
         return m ? m[1] : '';
       }
+      function tokenMovieFromUrl(url) {
+        var m = String(url || '').match(/[?&]token_movie=([^&#]+)/i);
+        return m ? decodeURIComponent(m[1]) : '';
+      }
+      function allohaIframeVariants(iframe) {
+        var out = [];
+        var seen = {};
+        function add(url, reason) {
+          url = abs(url || '', ref);
+          if (!url || seen[url]) return;
+          seen[url] = true;
+          out.push({ url: url, reason: reason || 'original' });
+        }
+        iframe = abs(iframe, ref);
+        add(iframe, 'original');
+        var tm = tokenMovieFromUrl(iframe);
+        var tk = tokenFromUrl(iframe);
+        if (tm && tk) {
+          var origins = [];
+          var current = originFromUrl(iframe);
+          if (current) origins.push(current);
+          ['https://synthezoid-as.stloadi.live', 'https://synthezoid-as.allarknow.online', 'https://mars.stravers.live'].forEach(function (o) {
+            if (origins.indexOf(o) === -1) origins.push(o);
+          });
+          origins.forEach(function (origin, idx) {
+            var base = origin + '/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
+            add(base, idx === 0 ? 'same-origin-token' : ('alt-origin-' + origin.replace(/^https?:\/\//, '')));
+            add(base + '&domain=' + encodeURIComponent(host + '/'), 'domain-' + origin.replace(/^https?:\/\//, ''));
+            add(base + '&domain=' + encodeURIComponent(host), 'domain-noslash-' + origin.replace(/^https?:\/\//, ''));
+          });
+        }
+        return out;
+      }
 
       function loadPlayer(iframe, callback, fail) {
         iframe = abs(iframe, ref);
-        player_origin = originFromUrl(iframe) || '';
-        player_referer = iframe;
-        player_token = tokenFromUrl(iframe);
-        player_headers = {
-          'User-Agent': mars_user_agent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Referer': ref,
-          'Upgrade-Insecure-Requests': '1',
-          'Sec-Fetch-Dest': 'iframe',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'cross-site',
-          'Sec-Fetch-User': '?1',
-          'Sec-CH-UA': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
-          'Sec-CH-UA-Mobile': '?0',
-          'Sec-CH-UA-Platform': '"Windows"'
-        };
-        player_prox_enc = '';
-        stream_prox_enc = '';
-        if (prox2) {
-          player_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
-          player_prox_enc += 'param/Accept=' + encodeURIComponent('text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8') + '/';
-          player_prox_enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
-          player_prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
-          player_prox_enc += 'param/Upgrade-Insecure-Requests=' + encodeURIComponent('1') + '/';
-          player_prox_enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('iframe') + '/';
-          player_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('navigate') + '/';
-          player_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('cross-site') + '/';
-          player_prox_enc += 'param/Sec-Fetch-User=' + encodeURIComponent('?1') + '/';
-        }
-        stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
-        stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin ? player_origin + '/' : iframe)) + '/';
-        if (player_origin) stream_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
+        var variants = allohaIframeVariants(iframe);
+        log('player-iframe-variants', { original: preview(iframe), count: variants.length, sample: variants.slice(0, 8).map(function (v) { return v.reason + '|' + preview(v.url, 180); }) });
 
-        function consume(html, mode) {
+        function setupFor(currentIframe) {
+          currentIframe = abs(currentIframe, ref);
+          player_origin = originFromUrl(currentIframe) || '';
+          player_referer = currentIframe;
+          player_token = tokenFromUrl(currentIframe);
+          player_headers = {
+            'User-Agent': mars_user_agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': ref,
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'iframe',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'cross-site',
+            'Sec-Fetch-User': '?1',
+            'Sec-CH-UA': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+            'Sec-CH-UA-Mobile': '?0',
+            'Sec-CH-UA-Platform': '"Windows"'
+          };
+          player_prox_enc = '';
+          stream_prox_enc = '';
+          if (prox2) {
+            player_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
+            player_prox_enc += 'param/Accept=' + encodeURIComponent('text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8') + '/';
+            player_prox_enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
+            player_prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
+            player_prox_enc += 'param/Upgrade-Insecure-Requests=' + encodeURIComponent('1') + '/';
+            player_prox_enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('iframe') + '/';
+            player_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('navigate') + '/';
+            player_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('cross-site') + '/';
+            player_prox_enc += 'param/Sec-Fetch-User=' + encodeURIComponent('?1') + '/';
+          }
+          stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
+          stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin ? player_origin + '/' : currentIframe)) + '/';
+          if (player_origin) stream_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
+        }
+
+        function consume(html, mode, currentIframe) {
           var fileList = parseJsonParseVariable(html, 'fileList');
           if (!fileList) {
-            log('filelist-missing', { mode: mode, iframe: preview(iframe), html_len: String(html || '').length, sample: preview(html, 800) });
+            log('filelist-missing', { mode: mode, iframe: preview(currentIframe), html_len: String(html || '').length, sample: preview(html, 800) });
             return false;
           }
-          extract.iframe = iframe;
+          extract.iframe = currentIframe;
           extract.fileList = fileList;
           extract.items = normalizeFileList(fileList);
           log('filelist-loaded', { mode: mode, type: fileList.type, items: extract.items.length, origin: player_origin, token_len: player_token.length, sample: extract.items.slice(0, 8) });
@@ -11564,22 +11604,34 @@
           return true;
         }
 
-        function tryRaw() {
-          requestText(iframe, function (html) {
-            if (!consume(html, 'raw')) fail && fail('fileList not found');
+        function tryVariant(pos) {
+          if (pos >= variants.length) { fail && fail('fileList not found'); return; }
+          var current = variants[pos].url;
+          var reason = variants[pos].reason;
+          setupFor(current);
+          log('player-iframe-request', { pos: pos, total: variants.length, reason: reason, iframe: preview(current), origin: player_origin, token_len: player_token.length });
+
+          function tryRaw(afterProxyMessage) {
+            requestText(current, function (html) {
+              if (!consume(html, 'raw:' + reason, current)) {
+                log('player-raw-empty', { reason: reason, iframe: preview(current), proxy_message: preview(afterProxyMessage || '', 260) });
+                tryVariant(pos + 1);
+              }
+            }, function (message) {
+              log('player-raw-fail', { reason: reason, iframe: preview(current), message: preview(message, 400) });
+              tryVariant(pos + 1);
+            }, { kind: 'player-raw', headers: player_headers, raw: true, dataType: 'text', timeout: 18000 });
+          }
+
+          requestText(current, function (html) {
+            if (!consume(html, prox2 ? ('proxy:' + reason) : ('direct:' + reason), current)) tryRaw('fileList missing after proxy');
           }, function (message) {
-            log('player-raw-fail', { message: preview(message, 400) });
-            fail && fail(message || 'player raw fail');
-          }, { kind: 'player-raw', headers: player_headers, raw: true, dataType: 'text', timeout: 18000 });
+            log('player-proxy-fail', { reason: reason, iframe: preview(current), proxy: !!prox2, message: preview(message, 400) });
+            tryRaw(message);
+          }, { kind: 'player', headers: player_headers, proxy: prox2, prox_enc: player_prox_enc, dataType: 'text', timeout: 18000 });
         }
 
-        requestText(iframe, function (html) {
-          if (!consume(html, prox2 ? 'proxy' : 'direct')) tryRaw();
-        }, function (message) {
-          // На частині платформ proxy для mars.stravers.live повертає 404, хоча прямий iframe доступний.
-          log('player-proxy-fail', { proxy: !!prox2, message: preview(message, 400) });
-          tryRaw();
-        }, { kind: 'player', headers: player_headers, proxy: prox2, prox_enc: player_prox_enc, dataType: 'text', timeout: 18000 });
+        tryVariant(0);
       }
 
       function normalizeFileList(fileList) {
@@ -23982,6 +24034,7 @@
           if (engine === 'animelib') return new animelib(fake, object);
           if (engine === 'kodik') return new kodik(fake, object);
           if (engine === 'alloha') return new alloha(fake, object);
+          if (engine === 'zerx') return new zerx(fake, object);
           if (engine === 'kinopub') return new kinopub(fake, object);
         } catch (e) {
           stelsLog('source-precheck-create-error', { source: name, engine: engine, error: e && (e.message || e.toString()) });
@@ -27319,7 +27372,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.52: Alloha - mars.stravers.live відкривається з iframe-like headers; legacy lomont для серіалів лишився, для фільмів fallback через Kinobaza/Mars.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.53: Alloha - додано fallback iframe-доменів stloadi/allarknow для movie-токенів; Zerx додано в precheck і оновлено логіку player iframe за HAR zerx.tv.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
