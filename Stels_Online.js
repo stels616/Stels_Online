@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.66';
+    var STELS_ONLINE_VERSION = '1.1.67';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -20322,6 +20322,7 @@
       var choice = { season: 0, voice: 0, voice_url: '', voice_name: sourceTitle || 'LampUA' };
       var current_videos = [];
       var current_source = null;
+      var remote_quality_hint = '';
 
       function remoteDirectUrl() {
         var direct = remoteOptions.directPath || remoteOptions.directBalanser || '';
@@ -20748,6 +20749,21 @@
         return url.length > 260 ? url.slice(0, 260) + '...' : url;
       }
 
+      function lampauaIsMirageSource() {
+        return !!remoteOptions.voiceFromSimilar && (/mirage|pidtor/i.test(sourceTitle || '') || /pidtor/i.test(remoteOptions.directPath || remoteOptions.directBalanser || ''));
+      }
+
+      function lampauaNormalizeMirageUrl(url) {
+        url = String(url || '');
+        if (lampauaIsMirageSource()) url = url.replace(/^https:\/\/rc\.bwa\.ad\//i, 'http://rc.bwa.ad/');
+        return url;
+      }
+
+      function lampauaIsMirageEndpoint(data) {
+        var url = data && (data.url || data.link || '') || '';
+        return lampauaIsMirageSource() && data && data.method == 'play' && typeof url == 'string' && /\/lite\/pidtor\/s[^?\s]*/i.test(url);
+      }
+
       function orUrlReserve(data) {
         if (data && data.url && typeof data.url == 'string' && data.url.indexOf(' or ') !== -1) {
           var urls = data.url.split(' or ');
@@ -20788,6 +20804,8 @@
         if (!url || typeof url != 'string') return item;
         var label = lampauaQualityLabelFromText(item.text || item.title || item.info || '');
         if (!label && /mirage|pidtor/i.test(sourceTitle || '')) label = lampauaQualityLabelFromText((item.text || '') + ' ' + (item.title || ''));
+        if (!label && lampauaIsMirageSource()) label = remote_quality_hint || '';
+        if (lampauaIsMirageSource()) item.url = lampauaNormalizeMirageUrl(item.url || '');
         if (label) {
           item.qualitys = {};
           item.qualitys[label] = url;
@@ -20865,6 +20883,7 @@
         if (!file || !file.url) return null;
         var fallback = {};
         for (var fk in file) fallback[fk] = file[fk];
+        fallback.url = lampauaNormalizeMirageUrl(fallback.url || '');
         return lampauaEnrichQualityFromTitle(fallback);
       }
 
@@ -20909,6 +20928,19 @@
         if (!file.url) {
           stelsLog('lampaua-getfile-empty-url', { source: sourceTitle, title: file.title || file.text, method: file.method, season: file.season, episode: file.episode });
           return call(false, {});
+        }
+
+        if (lampauaIsMirageEndpoint(file)) {
+          var directMirage = lampauaEndpointDirectFallback(file);
+          stelsLog('lampaua-mirage-play-direct-like-rc', {
+            source: sourceTitle,
+            title: directMirage && (directMirage.title || directMirage.text),
+            season: directMirage && directMirage.season,
+            episode: directMirage && directMirage.episode,
+            quality: directMirage && directMirage.quality || '',
+            url_preview: previewUrl(directMirage && directMirage.url || '')
+          });
+          return call(directMirage, {});
         }
 
         network.clear();
@@ -21033,6 +21065,7 @@
         if (!url && item.method != 'call') url = isRealStreamValue(item.stream) ? item.stream : item.url || '';
         if (url === true || url === false) url = '';
         if (q && typeof q === 'object') url = component.getDefaultQuality(q, url);
+        url = lampauaNormalizeMirageUrl(url || '');
         var play = {
           url: url,
           quality: component.renameQualityMap(q),
@@ -21048,6 +21081,7 @@
           voice_name: item.voice_name,
           thumbnail: item.thumbnail
         };
+        if (lampauaIsMirageSource()) play.isonline = true;
         if (json.vast && json.vast.url) {
           play.vast_url = json.vast.url;
           play.vast_msg = json.vast.msg;
@@ -21416,6 +21450,7 @@
                       episode: elem.episode,
                       voice_name: elem.voice_name,
                       thumbnail: elem.thumbnail,
+                      isonline: lampauaIsMirageSource() ? true : undefined,
                       voiceovers: lampauaSupportsVoiceFilter() ? lampauaRezkaVoiceovers(elem, choice.voice) : false
                     });
                   });
@@ -21487,6 +21522,8 @@
               return;
             }
           }
+          var qhint = String(str || '').match(/<!--\s*q\s*:\s*([0-9]{3,4}p)\s*-->/i);
+          remote_quality_hint = qhint ? qhint[1].toLowerCase() : remote_quality_hint;
           var items = parseJsonDate(str, '.videos__item');
           var buttons = parseJsonDate(str, '.videos__button');
           stelsLog('lampaua-parse', { source: sourceTitle, items_count: items.length, buttons_count: buttons.length, methods: items.slice(0, 20).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, similar: !!i.similar, url: i.url }; }) });
@@ -23890,7 +23927,7 @@
       }, {
         name: 'rc-mirage',
         title: 'Mirage',
-        source: new lampauaRemoteSource(this, object, ['mirage', 'мираж'], 'Mirage', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true }),
+        source: new lampauaRemoteSource(this, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true }),
         search: true,
         kp: true,
         imdb: true
@@ -24394,7 +24431,7 @@
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true });
+          if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
@@ -27761,7 +27798,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.66: Mirage audio fix — пріоритет одиночної/української доріжки, розмороження audio/video після запуску, fallback endpoint залишено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.67: Mirage/PidTor максимально наближено до rc.js — http://rc.bwa.ad, method=play endpoint без XHR resolve, isonline=true, якість із q-коментаря/назви.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
