@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.67';
+    var STELS_ONLINE_VERSION = '1.1.68';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -21274,18 +21274,34 @@
 
       function lampauaPreferredSimilarVoiceIndex(voices) {
         if (!(voices && voices.length) || !lampauaIsMirageLike()) return Math.max(0, parseInt(choice.voice || 0, 10) || 0);
+
+        // 1.1.68: звук у Mirage залежить не від audioTracks API, а від конкретного
+        // torrent/stream та його аудіокодека. У 1.1.66 примусовий вибір "Украинский"
+        // часто заводив на Hurtom/Toloka MKV, які можуть відкриватись без звуку у
+        // Chromium/Lampa. Тому за замовчуванням повертаємось ближче до RC-логіки:
+        // сумісніші веб-варіанти HDRezka/дубляж/комбіновані групи мають вищий пріоритет,
+        // а "Украинский/Ukr" лишається у фільтрі, але не форсується першим.
+        var savedIndex = parseInt(choice.voice || 0, 10) || 0;
+        var savedName = String(choice.voice_name || '').toLowerCase();
+        if (savedName) {
+          for (var si = 0; si < voices.length; si++) {
+            var st = String(voices[si] && (voices[si].title || voices[si].text) || '').toLowerCase();
+            if (st && (st === savedName || st.indexOf(savedName) >= 0 || savedName.indexOf(st) >= 0)) return si;
+          }
+        }
+
         var best = -1;
         var bestScore = -999;
         voices.forEach(function (v, i) {
           var t = String(v && (v.title || v.text) || '').toLowerCase();
           var score = 0;
-          if (/укра|ukr|ukrain/i.test(t)) score += 120;
-          if (/hdrezka|резка|rezka/i.test(t)) score += 70;
-          if (/alexfilm/i.test(t)) score += 25;
-          if (/lostfilm/i.test(t)) score += 10;
-          if (t.indexOf(',') >= 0) score -= 45;
-          if (t.indexOf('lostfilm, alexfilm, hdrezka') >= 0) score -= 30;
-          if (i === (parseInt(choice.voice || 0, 10) || 0)) score += 5;
+          if (/дубляж|dub|dubbed/i.test(t)) score += 140;
+          if (/hdrezka|резка|rezka/i.test(t)) score += 100;
+          if (/red\s*head|redhead|le[-\s]?production|alexfilm|lostfilm/i.test(t)) score += 45;
+          if (/укра|ukr|ukrain/i.test(t)) score += 20;
+          if (/hurtom|toloka|толока|гуртом/i.test(t)) score -= 35;
+          if (t.indexOf(',') >= 0) score += 10;
+          if (i === savedIndex) score += 5;
           if (score > bestScore) { bestScore = score; best = i; }
         });
         return best >= 0 ? best : 0;
