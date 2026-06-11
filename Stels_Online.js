@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.74';
+    var STELS_ONLINE_VERSION = '1.1.75';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -24490,7 +24490,15 @@
           if (typeof value == 'object') {
             Object.keys(value).forEach(function (k) {
               var lk = String(k || '').toLowerCase();
-              max = Math.max(max, stelsExtractMaxQualityFromAny(value[k], depth + 1, lk));
+              var child = value[k];
+              // 1.1.75: у багатьох джерел фактична якість приходить як ключ
+              // quality-map: {"480p": url, "1080p": url}. Раніше ми перевіряли
+              // тільки value, тому якщо сам URL не містив 480/1080 — якість губилась.
+              if (/quality|qualitys|qualities|file|url|stream|src|sources|links|playlist/.test(keyHint || '')) {
+                var keyQ = stelsQualityToValue(k);
+                if (keyQ && (typeof child == 'string' || typeof child == 'object')) max = Math.max(max, keyQ);
+              }
+              max = Math.max(max, stelsExtractMaxQualityFromAny(child, depth + 1, lk));
             });
           }
         } catch (e) {}
@@ -24650,16 +24658,31 @@
           }
         }
         var probeMaxQuality = 0;
+        var probeVerifiedQuality = 0;
         var probeOkTimer = null;
+        var probeFileCount = 0;
+        var probeFileActive = 0;
+        var probeResolveStarted = 0;
         function rememberQuality(value, keyHint) {
           try { probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || '')); } catch (e) {}
         }
+        function rememberVerifiedQuality(value, keyHint) {
+          try { probeVerifiedQuality = Math.max(probeVerifiedQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || '')); } catch (e) {}
+        }
         function finish(status, message, quality) {
           if (finished || token !== stelsPrecheckToken) return;
+          if (!quality && probeFileActive > 0 && probeResolveStarted && Date.now() - probeResolveStarted < 2600) {
+            try { if (probeOkTimer) clearTimeout(probeOkTimer); } catch (e) {}
+            probeOkTimer = setTimeout(function () { finish(status, message, quality); }, 260);
+            return;
+          }
           finished = true;
-          var qlabel = quality || (probeMaxQuality ? stelsQualityLabel(probeMaxQuality) : '');
+          // 1.1.75: якщо вдалося зробити file()/getStream() для фактичної серії,
+          // його якість має пріоритет над підказками типу "FilmixTV 4K" або назвами фільтрів.
+          var qvalue = probeVerifiedQuality || probeMaxQuality || 0;
+          var qlabel = quality || (qvalue ? stelsQualityLabel(qvalue) : '');
           stelsMarkSourceStatus(sourceName, status, message || '', qlabel);
-          stelsLog('source-precheck-result', { source: sourceName, status: status, message: message || '', quality: qlabel || '' });
+          stelsLog('source-precheck-result', { source: sourceName, status: status, message: message || '', quality: qlabel || '', verified_quality: probeVerifiedQuality ? stelsQualityLabel(probeVerifiedQuality) : '' });
           stelsRefreshSourceFilterTitles();
           if (done) done();
         }
@@ -24669,14 +24692,36 @@
         probe.selected = function () {};
         probe.start = function () {};
         probe.closeFilter = function () {};
-        probe.contextmenu = function (params) { rememberQuality(params, 'contextmenu'); try { if (params && params.element) rememberQuality(params.element, 'element'); } catch (e) {} try { if (params && params.item) rememberQuality(params.item, 'item'); } catch (e2) {} scheduleOkFinish(); };
+        probe.contextmenu = function (params) {
+          rememberQuality(params, 'contextmenu');
+          try { if (params && params.element) rememberQuality(params.element, 'element'); } catch (e) {}
+          try { if (params && params.item) rememberQuality(params.item, 'item'); } catch (e2) {}
+          // 1.1.75: частина джерел показує в append() тільки сезон/серію або call-endpoint.
+          // Фактична якість стає відома тільки через params.file() / getStream().
+          // Беремо 1-2 перші картки, щоб не вантажити всі серії, але мати реальну якість.
+          try {
+            if (params && typeof params.file === 'function' && probeFileCount < 2) {
+              probeFileCount++;
+              probeFileActive++;
+              if (!probeResolveStarted) probeResolveStarted = Date.now();
+              params.file(function (res) {
+                try { rememberVerifiedQuality(res, 'file-result'); } catch (e3) {}
+                try { if (res && res.file) rememberVerifiedQuality(res.file, 'file'); } catch (e4) {}
+                try { if (res && res.quality) rememberVerifiedQuality(res.quality, 'quality'); } catch (e5) {}
+                probeFileActive = Math.max(0, probeFileActive - 1);
+                scheduleOkFinish();
+              });
+            }
+          } catch (e6) { probeFileActive = Math.max(0, probeFileActive - 1); }
+          scheduleOkFinish();
+        };
         probe.saveChoice = function () {};
         function scheduleOkFinish() {
           if (finished || token !== stelsPrecheckToken) return;
           try { if (probeOkTimer) clearTimeout(probeOkTimer); } catch (e) {}
           // Дочікуємось кількох append() з одного джерела, щоб максимальна якість
           // рахувалась по всіх знайдених серіях/релізах, а не тільки по першій картці.
-          probeOkTimer = setTimeout(function () { finish('ok'); }, 420);
+          probeOkTimer = setTimeout(function () { finish('ok'); }, probeFileActive > 0 ? 900 : 520);
         }
         probe.append = function (items) {
           rememberQuality(items, 'append-item');
