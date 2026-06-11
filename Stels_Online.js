@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.71';
+    var STELS_ONLINE_VERSION = '1.1.72';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -24401,6 +24401,8 @@
           if (label == null || label === false || label === true) return 0;
           if (typeof label == 'number') return label > 100 && label < 9000 ? label : 0;
           var text = String(label || '').replace(/&nbsp;/g, ' ');
+          try { text = decodeURIComponent(text); } catch (e) {}
+          try { text = text.replace(/\u([0-9a-f]{4})/ig, function (all, h) { return String.fromCharCode(parseInt(h, 16)); }); } catch (e) {}
           // 1.1.71: не вважаємо діапазони типу "360p ~ 4K" або "360p ~ 1080p" фактичною якістю.
           if (/[~〜～]/.test(text)) return 0;
           var max = 0;
@@ -24448,6 +24450,13 @@
           if (qtext && !/[~〜～]/.test(qtext)) max = Math.max(max, stelsQualityToValue(qtext));
           var title = (el.find('.online__title').first().text() || '').replace(/\s+/g, ' ').trim();
           if (title) max = Math.max(max, stelsQualityToValue(title));
+          // 1.1.72: у precheck деякі картки не мають quality-тексту, але мають
+          // фактичний stream у data-json/href/HTML. Декодуємо HTML і шукаємо якість там.
+          var dataJson = el.attr('data-json') || el.attr('data-url') || el.attr('href') || '';
+          if (dataJson) max = Math.max(max, stelsQualityToValue(dataJson));
+          var html = '';
+          try { html = (el.prop && el.prop('outerHTML') || el.html && el.html() || '') + ''; } catch (e) {}
+          if (html) max = Math.max(max, stelsQualityToValue(html));
         } catch (e) {}
         return max;
       }
@@ -24494,8 +24503,9 @@
       function stelsMarkSourceStatus(source, status, message, quality) {
         source = stelsNormalizeSourceKey(source || balanser);
         if (!source) return;
-        var prev = stelsSourceStatus[source] || {};
-        if (!quality && status === 'ok') quality = prev.quality || '';
+        // 1.1.72: не переносимо стару якість на новий precheck.
+        // Якщо для поточного контенту фактичну якість не визначено — очищаємо badge,
+        // щоб не залишався 4K/1080p від попередньої картки.
         stelsSourceStatus[source] = { status: status, message: message || '', quality: quality || '', time: Date.now() };
         stelsSaveSourceStatus();
       }
@@ -24634,7 +24644,10 @@
           probeOkTimer = setTimeout(function () { finish('ok'); }, 220);
         }
         probe.append = function (items) {
-          rememberQuality(arguments, 'append');
+          rememberQuality(items, 'append-item');
+          try {
+            for (var i = 0; i < arguments.length; i++) rememberQuality(arguments[i], 'append-arg');
+          } catch (e) {}
           scheduleOkFinish();
         };
         probe.empty = function (msg) { finish(msg ? 'error' : 'empty', msg || ''); };
