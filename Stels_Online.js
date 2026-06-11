@@ -15308,6 +15308,13 @@
         var json = safeJson(text);
         var html = json && json.data != null ? json.data : text;
         html = String(html || '').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+        // filmo.tartugi.net CDN повертає подвійно закодований HTML у JSON-полі data:
+        // після JSON.parse атрибути onclick містять \" і \' замість " і '.
+        // Регексп onclick\s*=\s*(['"])... не знаходить збіг через backslash перед лапкою.
+        // Тому знімаємо один рівень escaping перед парсингом.
+        if (html.indexOf('\\"') !== -1 || html.indexOf("\\'") !== -1) {
+          html = html.replace(/\\"/g, '"').replace(/\\'/g, "'");
+        }
         var out = [];
         var seen = {};
         function add(title, url) {
