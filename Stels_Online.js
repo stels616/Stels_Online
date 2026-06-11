@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.58';
+    var STELS_ONLINE_VERSION = '1.1.59';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -684,9 +684,9 @@
           '.stels-online-source-entry{display:flex!important;align-items:center!important;justify-content:flex-start!important;min-height:4.4em!important;}' +
           '.stels-online-source-entry .stels-online-source-icon{width:2.15em!important;height:2.15em!important;margin-right:.7em!important;object-fit:contain!important;flex-shrink:0!important;}' +
           '.stels-online-source-status-icon{font-weight:900!important;margin-left:.35em!important;font-size:1.05em!important;line-height:1!important;display:inline-block!important;vertical-align:-.05em!important;text-shadow:0 0 .22em rgba(0,0,0,.75)!important;}' +
-          '.stels-online-source-status-ok{color:#00d36f!important;}' +
-          '.stels-online-source-status-error{color:#ff3b30!important;}' +
-          '.stels-online-source-status-wait{color:#ffd400!important;}' +
+          '.stels-online-source-status-ok{color:#00d36f!important;-webkit-text-fill-color:#00d36f!important;}' +
+          '.stels-online-source-status-error{color:#ff3b30!important;-webkit-text-fill-color:#ff3b30!important;}' +
+          '.stels-online-source-status-wait{color:#ffd400!important;-webkit-text-fill-color:#ffd400!important;}' +
           '.stels-online-source-moving{outline:2px solid #23d160!important;background:rgba(35,209,96,.12)!important;border-radius:.45em;padding-left:.45em!important;padding-right:.45em!important;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*=\"subtitle\"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
           '.stels-online-ua-flag{width:1.25em;height:.84em;object-fit:cover;border-radius:.12em;display:inline-block;vertical-align:-.12em;margin-right:.45em;box-shadow:0 0 0 .05em rgba(255,255,255,.18);}' +
@@ -23959,13 +23959,48 @@
         return String(title || '').replace(/\s*[✅❌⏳✓✔✕✖]\s*$/g, '').trim();
       }
 
+      function stelsColorizeSourceStatusSymbols(root) {
+        try {
+          var scope = root ? $(root) : $(document.body);
+          var candidates = scope.find('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item, .filter--sort, .filter--sort *, .selectbox *').addBack('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item, .filter--sort, .selectbox');
+          candidates.each(function () {
+            var el = this;
+            if (!el || el.nodeType !== 1) return;
+            if ($(el).find('.stels-online-source-status-icon').length) return;
+            var text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            var m = text.match(/([✓✔✅✕✖❌⏳])\s*$/);
+            if (!m) return;
+            var sym = m[1];
+            var kind = /[✓✔✅]/.test(sym) ? 'ok' : (/[✕✖❌]/.test(sym) ? 'error' : 'wait');
+            var color = kind === 'ok' ? '#00d36f' : (kind === 'error' ? '#ff3b30' : '#ffd400');
+            var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+            var node = null, last = null;
+            while ((node = walker.nextNode())) {
+              if ((node.nodeValue || '').match(/[✓✔✅✕✖❌⏳]\s*$/)) last = node;
+            }
+            if (!last) return;
+            var value = last.nodeValue || '';
+            var mm = value.match(/([✓✔✅✕✖❌⏳])(\s*)$/);
+            if (!mm) return;
+            var before = value.slice(0, value.length - mm[0].length);
+            last.nodeValue = before;
+            var span = document.createElement('span');
+            span.className = 'stels-online-source-status-icon stels-online-source-status-' + kind;
+            span.textContent = kind === 'ok' ? '✓' : (kind === 'error' ? '✕' : '⏳');
+            span.setAttribute('style', 'color:' + color + '!important;-webkit-text-fill-color:' + color + '!important;font-weight:900!important;margin-left:.35em!important;text-shadow:0 0 .22em rgba(0,0,0,.75)!important');
+            last.parentNode && last.parentNode.insertBefore(span, last.nextSibling);
+            if (mm[2]) span.parentNode && span.parentNode.insertBefore(document.createTextNode(mm[2]), span.nextSibling);
+          });
+        } catch (e) {}
+      }
+
       function stelsSourceTitleWithStatusHtml(source) {
         var title = stelsStripSourceStatusTitle(stelsSourceTitleWithStatus(source));
         var kind = stelsSourceStatusKind(source);
         if (!kind) return stelsEscapeHtml(title);
-        if (kind === 'ok') return stelsEscapeHtml(title) + ' <span class="stels-online-source-status-icon stels-online-source-status-ok">✓</span>';
-        if (kind === 'error') return stelsEscapeHtml(title) + ' <span class="stels-online-source-status-icon stels-online-source-status-error">✕</span>';
-        if (kind === 'wait') return stelsEscapeHtml(title) + ' <span class="stels-online-source-status-icon stels-online-source-status-wait">⏳</span>';
+        if (kind === 'ok') return stelsEscapeHtml(title) + ' <span class="stels-online-source-status-icon stels-online-source-status-ok" style="color:#00d36f!important;-webkit-text-fill-color:#00d36f!important">✓</span>';
+        if (kind === 'error') return stelsEscapeHtml(title) + ' <span class="stels-online-source-status-icon stels-online-source-status-error" style="color:#ff3b30!important;-webkit-text-fill-color:#ff3b30!important">✕</span>';
+        if (kind === 'wait') return stelsEscapeHtml(title) + ' <span class="stels-online-source-status-icon stels-online-source-status-wait" style="color:#ffd400!important;-webkit-text-fill-color:#ffd400!important">⏳</span>';
         return stelsEscapeHtml(title);
       }
 
@@ -23994,6 +24029,9 @@
             if (target.length) target.html(map[txt].html);
             else el.html(map[txt].html);
           });
+          stelsColorizeSourceStatusSymbols(document.body);
+          setTimeout(function () { stelsColorizeSourceStatusSymbols(document.body); }, 60);
+          setTimeout(function () { stelsColorizeSourceStatusSymbols(document.body); }, 180);
           stelsPatchUaFlagIcons(document.body);
         } catch (e) {}
       }
