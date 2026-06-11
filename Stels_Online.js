@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.65';
+    var STELS_ONLINE_VERSION = '1.1.66';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -21234,6 +21234,76 @@
         });
       }
 
+      function lampauaIsMirageLike() {
+        return !!remoteOptions.voiceFromSimilar && (/mirage|pidtor/i.test(sourceTitle || '') || /pidtor/i.test(remoteOptions.directPath || remoteOptions.directBalanser || ''));
+      }
+
+      function lampauaPreferredSimilarVoiceIndex(voices) {
+        if (!(voices && voices.length) || !lampauaIsMirageLike()) return Math.max(0, parseInt(choice.voice || 0, 10) || 0);
+        var best = -1;
+        var bestScore = -999;
+        voices.forEach(function (v, i) {
+          var t = String(v && (v.title || v.text) || '').toLowerCase();
+          var score = 0;
+          if (/укра|ukr|ukrain/i.test(t)) score += 120;
+          if (/hdrezka|резка|rezka/i.test(t)) score += 70;
+          if (/alexfilm/i.test(t)) score += 25;
+          if (/lostfilm/i.test(t)) score += 10;
+          if (t.indexOf(',') >= 0) score -= 45;
+          if (t.indexOf('lostfilm, alexfilm, hdrezka') >= 0) score -= 30;
+          if (i === (parseInt(choice.voice || 0, 10) || 0)) score += 5;
+          if (score > bestScore) { bestScore = score; best = i; }
+        });
+        return best >= 0 ? best : 0;
+      }
+
+      function lampauaEnsureAudioAfterPlay(reason, play) {
+        if (!lampauaIsMirageLike()) return;
+        var attempts = 0;
+        function run() {
+          attempts++;
+          var result = { source: sourceTitle, reason: reason || '', attempt: attempts, found: false, muted_before: null, volume_before: null, audio_tracks: 0, selected_track: -1, selected_label: '', errors: [] };
+          try {
+            var video = null;
+            try { if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') video = Lampa.Player.video(); } catch (e0) { result.errors.push('player_video:' + (e0 && (e0.message || e0.toString()) || e0)); }
+            if (!video) {
+              var nodes = Array.prototype.slice.call(document.querySelectorAll('video'));
+              if (nodes.length) video = nodes[nodes.length - 1];
+            }
+            if (video) {
+              result.found = true;
+              result.muted_before = !!video.muted;
+              result.volume_before = video.volume;
+              try { video.muted = false; video.defaultMuted = false; video.removeAttribute('muted'); } catch (e1) { result.errors.push('unmute:' + (e1 && (e1.message || e1.toString()) || e1)); }
+              try { if (!video.volume || video.volume < 0.05) video.volume = 1; } catch (e2) { result.errors.push('volume:' + (e2 && (e2.message || e2.toString()) || e2)); }
+              try {
+                var tracks = video.audioTracks;
+                if (tracks && tracks.length) {
+                  result.audio_tracks = tracks.length;
+                  var want = String((play && play.voice_name) || choice.voice_name || '').toLowerCase();
+                  var idx = -1;
+                  for (var i = 0; i < tracks.length; i++) {
+                    var label = String(tracks[i].label || tracks[i].language || '').toLowerCase();
+                    if (want && label && (label.indexOf(want) >= 0 || want.indexOf(label) >= 0)) { idx = i; break; }
+                    if (idx < 0 && /укра|ukr|ukrain|uk/i.test(label)) idx = i;
+                  }
+                  if (idx < 0) idx = 0;
+                  for (var j = 0; j < tracks.length; j++) {
+                    try { tracks[j].enabled = (j === idx); } catch (e3) {}
+                  }
+                  result.selected_track = idx;
+                  result.selected_label = String(tracks[idx] && (tracks[idx].label || tracks[idx].language) || '');
+                }
+              } catch (e4) { result.errors.push('audioTracks:' + (e4 && (e4.message || e4.toString()) || e4)); }
+              try { if (video.paused && video.play) { var pr = video.play(); if (pr && pr.catch) pr.catch(function () {}); } } catch (e5) {}
+            }
+          } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+          stelsLog('lampaua-mirage-audio-ensure', result);
+          if (attempts < 8) setTimeout(run, 700);
+        }
+        setTimeout(run, 500);
+      }
+
       function lampauaRezkaVoiceovers(element, selected_index) {
         if (!lampauaSupportsVoiceFilter() || !(filter_find.voice && filter_find.voice.length > 1)) return false;
         return filter_find.voice.map(function (voice, index) {
@@ -21270,6 +21340,7 @@
                     url_preview: previewUrl(play.url || '')
                   });
                   Lampa.Player.play(play);
+                  lampauaEnsureAudioAfterPlay('voice-switch', play);
                   if (play.playlist) Lampa.Player.playlist(play.playlist);
                 } else {
                   stelsLog('lampaua-rezka720-voice-switch-empty', { source: sourceTitle, voice: voice.title, season: element.season, episode: element.episode });
@@ -21351,6 +21422,7 @@
                 } else playlist.push(first);
                 if (playlist.length > 1) first.playlist = playlist;
                 Lampa.Player.play(first);
+                lampauaEnsureAudioAfterPlay('start-play', first);
                 Lampa.Player.playlist(playlist);
                 if (first.subtitles_call) {
                   try {
@@ -21458,7 +21530,8 @@
                       active: index == (parseInt(choice.voice || 0, 10) || 0)
                     };
                   });
-                  var selected_voice = filter_find.voice[choice.voice] || filter_find.voice[0];
+                  var preferred_index = lampauaPreferredSimilarVoiceIndex(filter_find.voice);
+                  var selected_voice = filter_find.voice[preferred_index] || filter_find.voice[choice.voice] || filter_find.voice[0];
                   if (selected_voice) {
                     choice.voice = filter_find.voice.indexOf(selected_voice);
                     choice.voice_name = selected_voice.title;
@@ -27688,7 +27761,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.65: Mirage/PidTor endpoint fallback — серія відкривається напряму після timeout resolve; якість добирається з назви файлу.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.66: Mirage audio fix — пріоритет одиночної/української доріжки, розмороження audio/video після запуску, fallback endpoint залишено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
