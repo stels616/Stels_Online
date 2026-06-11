@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.87';
+    var STELS_ONLINE_VERSION = '1.1.85';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.87: Tartuga - виправлено VeoVeo parsed.json та додано стабільніший Alloha iframe/fileList.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.85: Tartuga/VeoVeo - прибрано службові Default-серії, виправлено HLS master-потік без втрати аудіодоріжок.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -11713,7 +11713,7 @@
           var origins = [];
           var current = originFromUrl(iframe);
           if (current) origins.push(current);
-          ['https://synthezoid-as.stloadi.live', 'https://synthezoid-as.allarknow.online', 'https://mars.stravers.live', 'https://astrid-as.stravers.live'].forEach(function (o) {
+          ['https://synthezoid-as.stloadi.live', 'https://synthezoid-as.allarknow.online', 'https://mars.stravers.live'].forEach(function (o) {
             if (origins.indexOf(o) === -1) origins.push(o);
           });
           origins.forEach(function (origin, idx) {
@@ -15276,22 +15276,14 @@
       }
       function parseJsonParseVariable(html, varName) {
         html = String(html || '');
-        var re = new RegExp("(?:const|let|var|window\\.)\\s*" + varName + "\\s*=\\s*JSON\\.parse\\(\\s*([\"'])", 'i');
+        var re = new RegExp('(?:const|let|var)\\s+' + varName + '\\s*=\\s*JSON\\.parse\\(\\s*(["\\\'])', 'i');
         var m = re.exec(html);
-        if (m) {
-          var raw = readQuotedJsString(html, m.index + m[0].length - 1);
-          var candidates = [raw, clean(raw), jsStringToText(raw), jsStringToText(clean(raw))];
-          for (var i = 0; i < candidates.length; i++) {
-            var c = String(candidates[i] || '').replace(/\\\//g, '/');
-            try { return JSON.parse(c); } catch (e) {}
-          }
-        }
-        // Деякі Alloha iframe віддають fileList вже як готовий JSON-об'єкт, без JSON.parse(...).
-        var objRe = new RegExp("(?:const|let|var|window\\.)\\s*" + varName + "\\s*=\\s*(\\{[\\s\\S]*?\\})\\s*;", 'i');
-        var om = objRe.exec(html);
-        if (om) {
-          try { return JSON.parse(om[1].replace(/\\\//g, '/')); } catch (e2) {}
-          try { return (new Function('return (' + om[1] + ');'))(); } catch (e3) {}
+        if (!m) return null;
+        var raw = readQuotedJsString(html, m.index + m[0].length - 1);
+        var candidates = [raw, clean(raw), jsStringToText(raw), jsStringToText(clean(raw))];
+        for (var i = 0; i < candidates.length; i++) {
+          var c = String(candidates[i] || '').replace(/\\\//g, '/');
+          try { return JSON.parse(c); } catch (e) {}
         }
         return null;
       }
@@ -15312,16 +15304,13 @@
           var key = [season || 0, episode || 0, voice || '', id || file].join('|');
           if (seen[key]) return;
           seen[key] = true;
-          var sNum = parseInt(season, 10) || 0;
-          var eNum = parseInt(episode, 10) || 0;
-          var vName = voice || media.translation || player && player.title || '';
           items.push({
-            title: eNum ? component.formatEpisodeTitle(sNum, eNum) : (select_title || movieObj().title || movieObj().name || vName || 'Tartuga'),
+            title: episode ? component.formatEpisodeTitle(season, episode) : (voice || select_title),
             quality: '360p ~ 1080p' + (quality ? ' / ' + quality : ''),
-            info: vName ? ' / ' + Lampa.Utils.shortText(vName, 50) : (player && player.title ? ' / ' + player.title : ''),
-            season: sNum,
-            episode: eNum,
-            voice: vName,
+            info: voice && episode ? ' / ' + Lampa.Utils.shortText(voice, 50) : (player && player.title ? ' / ' + player.title : ''),
+            season: parseInt(season, 10) || 0,
+            episode: parseInt(episode, 10) || 0,
+            voice: voice || media.translation || player && player.title || '',
             media: media,
             file_id: id,
             player: player,
@@ -15411,9 +15400,8 @@
             var key = [season, episode, voice, file].join('|');
             if (seen[key]) return;
             seen[key] = true;
-            var itemTitle = (season || episode) ? component.formatEpisodeTitle(season || 1, episode, ep.title || '') : (select_title || content && content.title || voice || player && player.title || 'Tartuga');
             items.push({
-              title: itemTitle,
+              title: component.formatEpisodeTitle(season, episode, ep.title || ''),
               // Не розбиваємо VeoVeo master.m3u8 на окремі quality URL: master містить
               // окремі AUDIO groups, і при виборі variant-playlist можна отримати відео без аудіо.
               quality: v.streamQuality || 'HLS',
@@ -15494,13 +15482,9 @@
           var current = variants[pos].url;
           var playerHeaders = {
             'User-Agent': headers['User-Agent'],
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': headers['Accept-Language'],
-            'Referer': ref,
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'iframe',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'cross-site'
+            'Referer': ref
           };
           requestText(current, function (html) {
             var fileList = parseJsonParseVariable(html, 'fileList');
@@ -15613,71 +15597,8 @@
         } catch (e) {}
         return Object.keys(quality).length ? quality : false;
       }
-      function tartugaStreamUrl(url, base) {
-        url = absolute(url || '', base || ref);
-        url = url.replace(/^https?:\/\/global\.temptcdn\.com\/content-router\/r\//i, 'https://video.mvapspdmpg.com/');
-        return url;
-      }
-      function tartugaExtractStreamsFromJson(data, baseUrl) {
-        data = safeJsonParse(data) || data;
-        var arr = [];
-        var seen = {};
-        function qnum(label) {
-          var m = String(label || '').match(/(2160|1440|1080|720|480|360|240|144)/);
-          return m ? parseInt(m[1], 10) : 0;
-        }
-        function add(label, url) {
-          url = String(url || '').split(/\s+or\s+/i)[0].trim();
-          if (!url || !/\.(?:m3u8|mp4)(?:$|[?#])/i.test(url)) return;
-          url = tartugaStreamUrl(url, baseUrl);
-          if (!url || seen[url]) return;
-          seen[url] = true;
-          label = clean(label || '') || (qnum(url) ? qnum(url) + 'p' : (/\.mp4/i.test(url) ? 'MP4' : 'HLS'));
-          arr.push({ label: label, quality: qnum(label) || qnum(url), file: url });
-        }
-        function addFromString(str, label) {
-          str = String(str || '').replace(/\\\//g, '/');
-          // PlayerJS format: [1080p]url,[720p]url
-          str.replace(/\[(\d{3,4}p?|[^\]]{1,40})\]\s*(https?:[^,"'\s]+)/ig, function (_, l, u) { add(l, u); return _; });
-          str.replace(/(https?:\/\/[^"'\s,]+?\.(?:m3u8|mp4)(?:\?[^"'\s,]*)?)/ig, function (_, u) { add(label, u); return _; });
-        }
-        function walk(x, label, depth) {
-          if (!x || depth > 6) return;
-          if (typeof x === 'string') { addFromString(x, label); return; }
-          if (Array.isArray(x)) { x.forEach(function (v) { walk(v, label, depth + 1); }); return; }
-          if (typeof x === 'object') {
-            var ownLabel = x.label || x.name || x.title || x.quality || label || '';
-            if (x.quality && typeof x.quality === 'object') Object.keys(x.quality).forEach(function (q) { add(q + (/^\d+$/.test(q) ? 'p' : ''), x.quality[q]); });
-            ['file','url','src','hls','hlsUrl','m3u8','stream','master','playlist'].forEach(function (k) { if (x[k]) walk(x[k], ownLabel || k, depth + 1); });
-            Object.keys(x).forEach(function (k) { if (!/^(file|url|src|hls|hlsUrl|m3u8|stream|master|playlist|quality)$/i.test(k)) walk(x[k], ownLabel || k, depth + 1); });
-          }
-        }
-        walk(data, '', 0);
-        arr.sort(function (a, b) { return (b.quality || 0) - (a.quality || 0); });
-        var qmap = false;
-        if (arr.length > 1) { qmap = {}; arr.forEach(function (it) { qmap[it.label] = it.file; }); }
-        return { stream: arr[0] && arr[0].file || '', qualitys: qmap, items: arr };
-      }
-      function loadJsonStream(element, call, error) {
-        var jsonUrl = element.stream || '';
-        log('json-stream-request', { url: preview(jsonUrl, 220), title: element.title || '', voice: element.voice || '' });
-        requestText(jsonUrl, function (txt) {
-          var parsed = tartugaExtractStreamsFromJson(txt, jsonUrl);
-          log('json-stream-response', { ok: !!parsed.stream, count: parsed.items.length, labels: parsed.items.map(function (it) { return it.label; }).slice(0, 12), sample: preview(parsed.stream, 220) });
-          if (!parsed.stream) { error && error(); return; }
-          element.stream = parsed.stream;
-          element.qualitys = parsed.qualitys;
-          element.skip_quality_probe = false;
-          call(element);
-        }, function (err) { log('json-stream-error', { url: preview(jsonUrl, 220), message: preview(err || '', 260) }); error && error(); }, { headers: { 'User-Agent': headers['User-Agent'], 'Accept': 'application/json,text/plain,*/*', 'Referer': element.player && element.player.url || ref }, dataType: 'text', timeout: 10000 });
-      }
-
       function getStream(element, call, error) {
         if (element.stream) {
-          if (/\.json(?:$|[?#])/i.test(element.stream || '')) {
-            loadJsonStream(element, call, error);
-            return;
-          }
           if (element.skip_quality_probe) {
             element.qualitys = false;
             call(element);
@@ -15758,7 +15679,7 @@
               var selectedVoice = ready.voice || ready.translate_voice || (filter_items.voice && filter_items.voice[choice.voice]) || '';
               var play = stelsSanitizeAndroidPlayable({
                 url: component.getDefaultQuality(ready.qualitys, ready.stream),
-                title: ready.season ? ready.title : (stelsIsZeroEpisodeTitle(ready.title) ? stelsMovieDisplayTitle(ready.title) : (ready.title || select_title)),
+                title: ready.season ? ready.title : (ready.title || select_title),
                 poster: ready.poster || '',
                 timeline: ready.timeline,
                 headers: ready.headers || false,
@@ -24566,20 +24487,7 @@
         }
       }
 
-      function stelsMovieDisplayTitle(fallback) {
-        var movie = object && object.movie || {};
-        var title = select_title || movie.title || movie.name || movie.original_title || movie.original_name || fallback || 'Фільм';
-        try { if (component && component.cleanTitle) title = component.cleanTitle(title); } catch (e) {}
-        return String(title || fallback || 'Фільм').replace(/\s+/g, ' ').trim();
-      }
-
-      function stelsIsZeroEpisodeTitle(title) {
-        title = stelsSafeDecodeHtml(title || '').replace(/\s+/g, ' ').trim();
-        return /^\s*(?:S\s*0\s*[:\/.]?\s*E\s*0|(?:Сезон|Season)\s*0\s*\/\s*(?:Серія|Серия|Episode|Епізод|Эпизод)\s*0)\s*$/i.test(title);
-      }
-
       function stelsCleanEpisodeTitle(title, season, episode) {
-        if ((parseInt(season, 10) || 0) === 0 && (parseInt(episode, 10) || 0) === 0 && stelsIsZeroEpisodeTitle(title)) return stelsMovieDisplayTitle(title);
         var out = stelsSafeDecodeHtml(title || '').replace(/\s+/g, ' ').trim();
         out = out.replace(/^\s*S\s*\d+\s*\/\s*/i, '');
         out = out.replace(/^\s*(?:Сезон|Season)\s*\d+\s*\/\s*/i, '');
@@ -29163,7 +29071,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.87: Tartuga - виправлено VeoVeo parsed.json та додано стабільніший Alloha iframe/fileList.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.85: Tartuga/VeoVeo - прибрано службові Default-серії, виправлено HLS master-потік без втрати аудіодоріжок.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
