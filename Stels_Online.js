@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.61';
+    var STELS_ONLINE_VERSION = '1.1.62';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -62,7 +62,7 @@
       eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
-      mirage: 'collaps', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
+      mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
       pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', kinoflix: 'videoseed', leproduction: 'videoseed',
       vkmovie: 'cdnvideohub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'cdnvideohub'
@@ -6414,56 +6414,138 @@
         return /^(kp|imdb)\//i.test(String(api || ''));
       }
 
-      function collaps_dataset_urls(api) {
+      function collaps_dataset_target(api) {
         var m = String(api || '').match(/^(kp|imdb)\/([^\/]+)/i);
-        if (!m) return [];
+        if (!m) return null;
         var kind = m[1].toLowerCase();
         var id = String(m[2] || '').replace(/^tt/i, '').replace(/\D+/g, '');
-        if (!id) return [];
-        var prefix = kind == 'kp' ? 'kp' : 'imdb';
-        return [
-          'https://api-movies.github.io/collaps/datasets/' + prefix + id + '.json',
-          'https://api-movies.gitlab.io/collaps/datasets/' + prefix + id + '.json'
-        ];
+        if (!id) return null;
+        return { kind: kind, id: id, key: kind + ':' + id };
       }
 
-      function collaps_dataset_id(json) {
-        if (!json) return '';
+      function collaps_dataset_cache_get(target) {
+        try {
+          var cache = Lampa.Storage.get('stels_online_collaps_dataset_cache', {});
+          return cache && cache[target.key] ? String(cache[target.key] || '') : '';
+        } catch (e) { return ''; }
+      }
+
+      function collaps_dataset_cache_set(target, id) {
+        try {
+          if (!(target && id)) return;
+          var cache = Lampa.Storage.get('stels_online_collaps_dataset_cache', {});
+          if (!cache || typeof cache !== 'object' || Array.isArray(cache)) cache = {};
+          cache[target.key] = String(id);
+          Lampa.Storage.set('stels_online_collaps_dataset_cache', cache);
+        } catch (e) {}
+      }
+
+      function collaps_dataset_items(json) {
+        if (!json) return [];
         if (typeof json == 'string') json = Lampa.Arrays.decodeJson(json, {});
-        var item = json;
-        if (json.results && json.results.length) item = json.results[0];
-        else if (json.result) item = json.result;
-        else if (json.data) item = json.data;
-        return item && item.id ? String(item.id) : '';
+        if (Array.isArray(json)) return json;
+        if (Array.isArray(json.results)) return json.results;
+        if (Array.isArray(json.data)) return json.data;
+        if (json.result && Array.isArray(json.result)) return json.result;
+        if (json.result && typeof json.result === 'object') return [json.result];
+        return [];
+      }
+
+      function collaps_dataset_match(item, target) {
+        if (!(item && target)) return false;
+        var field = target.kind == 'kp' ? 'kinopoisk_id' : 'imdb_id';
+        var value = String(item[field] || '').replace(/^tt/i, '').replace(/\D+/g, '');
+        if (value && value == target.id) return true;
+        var alt = target.kind == 'kp' ? String(item.kinopoisk || '') : String(item.imdb || '');
+        alt = alt.replace(/^tt/i, '').replace(/\D+/g, '');
+        return !!(alt && alt == target.id);
+      }
+
+      function collaps_dataset_page_urls() {
+        var urls = [];
+        for (var i = 1; i <= 260; i++) urls.push('https://api-movies.github.io/collaps/datasets/page-' + i + '.json');
+        return urls;
       }
 
       function collaps_dataset_search(api, callback, error) {
-        var urls = collaps_dataset_urls(api);
-        var index = 0;
-        stelsLog('collaps-dataset-fallback-start', { api: api, urls: urls });
-        function next() {
-          if (index >= urls.length) {
-            stelsLog('collaps-dataset-empty', { api: api });
-            if (callback) callback('');
-            return;
-          }
-          var url = urls[index++];
-          network.clear();
-          network.timeout(10000);
-          network[net_method](url, function (json) {
-            var id = collaps_dataset_id(json);
-            stelsLog('collaps-dataset-response', { api: api, url: url, id: id || '', type: json && json.type || '', name: json && json.name || json && json.title || '' });
-            if (id) collaps_api_search(id, callback, error, { dataset: false });
-            else next();
-          }, function (a, c) {
-            stelsLog('collaps-dataset-fail', { api: api, url: url, status: a && a.status, statusText: a && a.statusText });
-            next();
-          }, false, {
-            dataType: 'json',
-            headers: play_headers
-          });
+        var target = collaps_dataset_target(api);
+        if (!target) { if (callback) callback(''); return; }
+
+        var cached_id = collaps_dataset_cache_get(target);
+        if (cached_id) {
+          stelsLog('collaps-dataset-cache-hit', { api: api, id: cached_id });
+          collaps_api_search(cached_id, callback, error, { dataset: false });
+          return;
         }
-        next();
+
+        var urls = collaps_dataset_page_urls();
+        var index = 0;
+        var active = 0;
+        var checked = 0;
+        var finished = false;
+        var limit = 6;
+        stelsLog('collaps-dataset-fallback-start', { api: api, target: target, pages: urls.length, mode: 'page-scan' });
+
+        function finishWithId(id, item, url) {
+          if (finished) return;
+          finished = true;
+          collaps_dataset_cache_set(target, id);
+          stelsLog('collaps-dataset-hit', {
+            api: api,
+            id: String(id || ''),
+            page: url || '',
+            name: item && (item.name || item.title || ''),
+            origin_name: item && item.origin_name || '',
+            type: item && item.type || '',
+            year: item && item.year || ''
+          });
+          collaps_api_search(String(id), callback, error, { dataset: false });
+        }
+
+        function doneEmpty() {
+          if (finished) return;
+          if (checked >= urls.length && active <= 0) {
+            finished = true;
+            stelsLog('collaps-dataset-empty', { api: api, target: target, checked: checked });
+            if (callback) callback('');
+          }
+        }
+
+        function launch() {
+          if (finished) return;
+          while (active < limit && index < urls.length) {
+            (function (url) {
+              var req = new Lampa.Reguest();
+              active++;
+              req.timeout(9000);
+              req[net_method](url, function (json) {
+                active--;
+                checked++;
+                var items = collaps_dataset_items(json);
+                for (var i = 0; i < items.length; i++) {
+                  if (collaps_dataset_match(items[i], target)) {
+                    var id = items[i] && items[i].id ? String(items[i].id) : '';
+                    if (id) { finishWithId(id, items[i], url); return; }
+                  }
+                }
+                if (checked % 25 === 0) stelsLog('collaps-dataset-progress', { api: api, checked: checked, active: active });
+                launch();
+                doneEmpty();
+              }, function (a, c) {
+                active--;
+                checked++;
+                if (checked <= 12 || checked % 50 === 0) stelsLog('collaps-dataset-page-fail', { api: api, url: url, status: a && a.status, statusText: a && a.statusText });
+                launch();
+                doneEmpty();
+              }, false, {
+                dataType: 'json',
+                headers: play_headers
+              });
+            })(urls[index++]);
+          }
+          doneEmpty();
+        }
+        launch();
       }
 
       function collaps_api_search(api, callback, error, options) {
@@ -23632,6 +23714,13 @@
         kp: true,
         imdb: true
       }, {
+        name: 'rc-mirage',
+        title: 'Mirage',
+        source: new lampauaRemoteSource(this, object, ['mirage', 'мираж'], 'Mirage', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
         name: 'rc-collaps-dash',
         title: 'Collaps (DASH)',
         source: new lampauaRemoteSource(this, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
@@ -24131,6 +24220,7 @@
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
