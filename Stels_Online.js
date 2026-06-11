@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.50';
+    var STELS_ONLINE_VERSION = '1.1.51';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -11721,6 +11721,84 @@
         return items;
       }
 
+      function normalizeLegacyMovieInputData(data) {
+        var items = [];
+        var seen = {};
+        function walk(node) {
+          if (!node) return;
+          if (Array.isArray(node)) {
+            node.forEach(function (tr) {
+              tr = tr || {};
+              if (typeof tr != 'object') return;
+              var voiceId = tr.voice_id || tr.id || tr.translation_id || tr.voice || '';
+              var voiceName = tr.voice_name || tr.translation || tr.name || tr.title || (voiceId ? ('Озвучка ' + voiceId) : 'Alloha');
+              var key = [voiceId, voiceName, tr.video_id || tr.id || ''].join('|');
+              if (seen[key]) return;
+              seen[key] = true;
+              items.push({
+                title: select_title || 'Alloha',
+                quality: '360p ~ 1080p',
+                info: voiceName && voiceName !== 'Alloha' ? ' / ' + Lampa.Utils.shortText(voiceName, 50) : '',
+                season: 0,
+                episode: 0,
+                voice: voiceName,
+                legacy: true,
+                media: {
+                  season: 0,
+                  episode: 0,
+                  voice_id: voiceId,
+                  voice_name: voiceName,
+                  legacy: true,
+                  movie: true,
+                  raw: tr
+                }
+              });
+            });
+            return;
+          }
+          if (typeof node == 'object') Object.keys(node).forEach(function (k) { walk(node[k]); });
+        }
+        walk(data);
+        items.sort(function (a, b) { return String(a.voice || '').localeCompare(String(b.voice || '')); });
+        return items;
+      }
+
+      function requestLegacyMoviePage(url, success, fail) {
+        var rawOpts = {
+          kind: 'legacy-movie-raw',
+          raw: true,
+          headers: {
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://lomont.site/'
+          },
+          dataType: 'text',
+          timeout: 8500
+        };
+        var proxyOpts = {
+          kind: 'legacy-movie',
+          proxy: prox,
+          prox_enc: legacy_prox_enc,
+          enc: 'enc2t',
+          headers: rawOpts.headers,
+          dataType: 'text',
+          timeout: 8500
+        };
+        requestText(url, function (str) {
+          log('legacy-movie-page-raw-ok', { url: preview(url), len: String(str || '').length });
+          success(str || '', 'raw');
+        }, function (rawMessage) {
+          log('legacy-movie-page-raw-fail', { url: preview(url), message: preview(rawMessage || '', 300), note: 'trying proxy lomont request' });
+          requestText(url, function (str) {
+            log('legacy-movie-page-proxy-ok', { url: preview(url), len: String(str || '').length });
+            success(str || '', 'proxy');
+          }, function (message) {
+            log('legacy-movie-page-proxy-fail', { url: preview(url), message: preview(message || '', 300) });
+            fail && fail(message || rawMessage || 'legacy movie fail');
+          }, proxyOpts);
+        }, rawOpts);
+      }
+
       function loadLegacy(kp, callback, fail) {
         kp = String(kp || '').replace(/\D+/g, '');
         if (!kp) { fail && fail('no kp'); return; }
@@ -11763,16 +11841,30 @@
         legacy_id = kp;
         var url = legacyUrl(kp, 0, 0, '');
         log('legacy-movie-start', { kp: kp, url: preview(url) });
-        requestText(url, function (str) {
+        requestLegacyMoviePage(url, function (str, mode) {
           var parsed = parseLegacyPlayerConfig(str, url);
+          var data = parseLegacyInputData(str);
+          var movieItems = normalizeLegacyMovieInputData(data);
           log('legacy-movie-response', {
             kp: kp,
+            mode: mode || '',
             html_len: String(str || '').length,
             has_file: !!parsed.file,
             file: preview(parsed.file || '', 220),
+            input_items: movieItems.length,
             subtitles: parsed.subtitles && parsed.subtitles.length || 0,
-            debug: parsed.debug || {}
+            debug: parsed.debug || {},
+            samples: legacyContextSamples(str, /inputData|videoplayer|data-config|Playerjs|\.m3u8|hls/ig, 6, 130)
           });
+          if (movieItems.length) {
+            legacy_items = movieItems;
+            extract.fileList = null;
+            extract.iframe = '';
+            extract.info = { legacy: true, legacy_movie: true, kp: kp, mode: mode || '', inputData: true };
+            extract.items = legacy_items;
+            callback(legacy_items);
+            return;
+          }
           if (!parsed.file) { fail && fail('legacy movie empty'); return; }
           var item = {
             title: select_title || object.movie && (object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name) || 'Alloha',
@@ -11797,24 +11889,12 @@
           legacy_items = [item];
           extract.fileList = null;
           extract.iframe = '';
-          extract.info = { legacy: true, legacy_movie: true, kp: kp };
+          extract.info = { legacy: true, legacy_movie: true, kp: kp, mode: mode || '' };
           extract.items = legacy_items;
           callback(legacy_items);
         }, function (message) {
           log('legacy-movie-fail', { kp: kp, message: preview(message, 400) });
           fail && fail(message || 'legacy movie fail');
-        }, {
-          kind: 'legacy-movie',
-          proxy: prox,
-          prox_enc: legacy_prox_enc,
-          enc: 'enc2t',
-          headers: {
-            'User-Agent': user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Referer': 'https://lomont.site/'
-          },
-          dataType: 'text',
-          timeout: 12000
         });
       }
 
@@ -11949,12 +12029,16 @@
         if (element.stream) return call(element);
         var media = element.media || {};
         var raw = media.raw || {};
-        var url = legacyUrl(legacy_id, media.season || element.season || 1, media.episode || element.episode || 1, media.voice_id || '');
+        var isMovieLegacy = !!(media.movie || (!element.season && !element.episode));
+        var reqSeason = isMovieLegacy ? 0 : (media.season || element.season || 1);
+        var reqEpisode = isMovieLegacy ? 0 : (media.episode || element.episode || 1);
+        var url = legacyUrl(legacy_id, reqSeason, reqEpisode, media.voice_id || '');
         log('legacy-stream-start', {
           url: preview(url),
           kp: legacy_id,
-          season: media.season || element.season || 1,
-          episode: media.episode || element.episode || 1,
+          season: reqSeason,
+          episode: reqEpisode,
+          movie: isMovieLegacy,
           voice_id: media.voice_id || '',
           video_id: raw.video_id || ''
         });
@@ -12171,13 +12255,22 @@
             element.loading = true;
             getStream(element, function (element) {
               element.loading = false;
-              var first = {
+              var selectedVoice = element.voice || element.translate_voice || (filter_items.voice && filter_items.voice[choice.voice]) || '';
+              var firstTracks = allohaVoiceovers(element, selectedVoice) || [];
+              var first = stelsSanitizeAndroidPlayable({
                 url: component.getDefaultQuality(element.qualitys, element.stream),
                 quality: component.renameQualityMap(element.qualitys),
                 subtitles: element.subtitles,
                 timeline: element.timeline,
-                title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title)
-              };
+                title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title),
+                season: element.season || 0,
+                episode: element.episode || 0,
+                voice_name: selectedVoice,
+                translate_voice: selectedVoice,
+                translate: firstTracks && firstTracks.length ? { tracks: firstTracks } : undefined,
+                voiceovers: firstTracks && firstTracks.length ? firstTracks : false
+              }, 'alloha-first');
+              log('player-first', { season: element.season || 0, episode: element.episode || 0, voice: selectedVoice, voice_count: firstTracks.length, has_translate: !!(first.translate && first.translate.tracks && first.translate.tracks.length) });
               Lampa.Player.play(first);
               if (element.season && Lampa.Platform.version) {
                 var playlist = [];
@@ -12185,6 +12278,10 @@
                   if (elem == element) playlist.push(first);
                   else {
                     var cell = {
+                      season: elem.season || 0,
+                      episode: elem.episode || 0,
+                      voice_name: elem.voice || '',
+                      translate_voice: elem.voice || '',
                       url: function (ready) {
                         getStream(elem, function (elem) {
                           cell.url = component.getDefaultQuality(elem.qualitys, elem.stream);
@@ -12226,7 +12323,8 @@
             element: element,
             file: function (call) {
               getStream(element, function (element) {
-                call({ file: element.stream, quality: element.qualitys });
+                var tracks = allohaVoiceovers(element, element.voice || element.translate_voice || '') || [];
+                call({ file: element.stream, quality: element.qualitys, subtitles: element.subtitles || false, translate: tracks.length ? { tracks: tracks } : undefined, voiceovers: tracks.length ? tracks : false });
               }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
             }
           });
@@ -27192,7 +27290,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.49: Alloha - HLS з lomont.site віддається напряму без CDN/proxy, бо s8.lomont.site прив’язує тимчасові m3u8 до IP і proxy давав 404.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.51: Alloha - кнопка перекладів у плеєрі, direct fallback для legacy-фільмів lomont.site і підтримка movie inputData.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
