@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.63';
+    var STELS_ONLINE_VERSION = '1.1.64';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -20844,10 +20844,13 @@
       function getFileUrl(file, call) {
         if (!file) return call(false, {});
 
-        // Важливо: LampUA-джерела типу UAflix і Rezka ~ 720 віддають method=call.
-        // Їхній file.url — це НЕ відео, а endpoint, який треба спочатку викликати.
-        // У 1.0.17 через file.stream=true цей endpoint помилково передавався в плеєр як HLS/MP4.
-        if (file.method != 'call' && (file.method == 'play' || isRealStreamValue(file.stream) || isPlayableUrl(file.url))) {
+        // Важливо: LampUA/RC-джерела можуть повертати method=play не тільки для прямого
+        // HLS/MP4, але й для endpoint виду /lite/pidtor/s<hash>?tsid=... . Якщо такий
+        // endpoint передати в плеєр напряму, Mirage відкривається без нормального manifest/quality
+        // і може бути без звуку. Тому endpoint спочатку викликаємо, а напряму віддаємо тільки
+        // реальний stream.
+        var file_is_endpoint = remoteLooksLikeEndpoint(file);
+        if (file.method != 'call' && !file_is_endpoint && (file.method == 'play' || isRealStreamValue(file.stream) || isPlayableUrl(file.url))) {
           stelsLog('lampaua-getfile-direct', {
             source: sourceTitle,
             method: file.method,
@@ -20862,8 +20865,8 @@
           return call(file, file);
         }
 
-        if (file.method == 'call') {
-          stelsLog('lampaua-getfile-call-required', {
+        if (file.method == 'call' || file_is_endpoint) {
+          stelsLog(file_is_endpoint ? 'lampaua-getfile-endpoint-required' : 'lampaua-getfile-call-required', {
             source: sourceTitle,
             method: file.method,
             title: file.title || file.text,
