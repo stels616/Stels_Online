@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.95';
+    var STELS_ONLINE_VERSION = '1.1.94';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.95: Tartuga - виправлено неправильний KP через IMDb/Kinopoisk lookup і глобальні RU-назви без hardcode.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.94: Tartuga - прибрано hardcode під окремі серіали; пошук сторінки переведено на глобальний DLE ajax search.php з fallback на звичайний search.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15030,8 +15030,6 @@
       var filter_items = { player: [], season: [], season_num: [], voice: [] };
       var choice = { player: 0, player_name: '', season: 0, voice: 0, voice_name: '' };
       var hdvb_retry_global = 0;
-      var extra_title_variants = [];
-      var tried_kp_ids = {};
       var headers = {
         'User-Agent': Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -15115,7 +15113,6 @@
         var m = movieObj();
         var out = [];
         [object && object.search, select_title, m.title, m.name, m.original_title, m.original_name].forEach(function (v) { addUnique(out, v); });
-        extra_title_variants.forEach(function (v) { addUnique(out, v); });
         try {
           var alts = m.alternative_titles && (m.alternative_titles.results || m.alternative_titles.titles) || [];
           if (Array.isArray(alts)) alts.forEach(function (a) { addUnique(out, a && (a.title || a.name)); });
@@ -15150,68 +15147,12 @@
         var y = movieYear();
         var base = out.slice(0);
         base.forEach(function (t) {
-          if (y && !/(?:^|\D)(?:19|20)\d{2}(?:\D|$)/.test(t)) {
+          if (y && !/(?:19|20)\d{2}/.test(t)) {
             addUnique(out, t + ' ' + y);
             addUnique(out, t + ' (' + y + ')');
           }
         });
         return out.filter(Boolean).slice(0, 28);
-      }
-      function addKpTitleVariants(items) {
-        items = Array.isArray(items) ? items : (items ? [items] : []);
-        items.forEach(function (it) {
-          if (!it) return;
-          [it.nameRu, it.nameOriginal, it.nameEn, it.name, it.title, it.originalTitle, it.original_title].forEach(function (v) { addUnique(extra_title_variants, v); });
-          try {
-            var y = movieYear();
-            if (it.nameRu && y) addUnique(extra_title_variants, it.nameRu + ' ' + y);
-          } catch (e) {}
-        });
-      }
-      function kpIdFromItem(it) {
-        it = it || {};
-        return String(it.kinopoiskId || it.kinopoisk_id || it.kp_id || it.filmId || it.id || '').replace(/[^0-9]/g, '');
-      }
-      function lookupKinopoiskByImdb(success, fail) {
-        var imdb = String(movieObj().imdb_id || object && object.imdb_id || '').trim();
-        if (!imdb) { if (fail) fail('imdb empty'); return; }
-        var api = 'api/v2.2/films?imdbId=' + encodeURIComponent(imdb);
-        try {
-          log('kp-imdb-lookup-start', { imdb: imdb });
-          KP.clear();
-          KP.getFromCache(api, function (json) {
-            var items = [];
-            try { if (json.items && json.items.length) items = json.items; else if (json.films && json.films.length) items = json.films; } catch (e) {}
-            addKpTitleVariants(items);
-            var kp = '';
-            for (var i = 0; i < items.length; i++) { kp = kpIdFromItem(items[i]); if (kp) break; }
-            log('kp-imdb-lookup-result', { imdb: imdb, count: items.length, kp: kp, titles: extra_title_variants.slice(0, 12) });
-            if (kp) success(kp, items); else if (fail) fail('kp not found');
-          }, function (a, c) {
-            var msg = '';
-            try { msg = network.errorDecode(a, c); } catch (e2) {}
-            log('kp-imdb-lookup-fail', { imdb: imdb, message: msg || c || '' });
-            if (fail) fail(msg || c || 'kp lookup failed');
-          });
-        } catch (e3) { if (fail) fail(e3 && (e3.message || e3.toString()) || 'kp lookup failed'); }
-      }
-      function fallbackViaKpImdbOrSearch(currentKp) {
-        currentKp = String(currentKp || '').replace(/[^0-9]/g, '');
-        lookupKinopoiskByImdb(function (kp) {
-          if (destroyed) return;
-          if (kp && !tried_kp_ids[kp] && kp !== currentKp) {
-            tried_kp_ids[kp] = true;
-            var url = cdnUrlByKp(kp);
-            log('cdn-retry-with-kp-imdb', { old_kp: currentKp, new_kp: kp, titles: titleVariants().slice(0, 12) });
-            loadCdn(url, { page: ref, poster: object.movie && (object.movie.img || object.movie.poster_path || object.movie.poster) || '', cdn: url }, function () {
-              findBestTitlePage(titleVariants(), 0, function (link) { loadTitlePage(link); }, function () { searchByQuery(titleVariants(), 0); });
-            });
-            return;
-          }
-          findBestTitlePage(titleVariants(), 0, function (link) { loadTitlePage(link); }, function () { searchByQuery(titleVariants(), 0); });
-        }, function () {
-          findBestTitlePage(titleVariants(), 0, function (link) { loadTitlePage(link); }, function () { searchByQuery(titleVariants(), 0); });
-        });
       }
       function requestText(url, success, fail, opts) {
         opts = opts || {};
@@ -15308,13 +15249,6 @@
         var json = safeJson(text);
         var html = json && json.data != null ? json.data : text;
         html = String(html || '').replace(/\\\//g, '/').replace(/&amp;/g, '&');
-        // filmo.tartugi.net CDN повертає подвійно закодований HTML у JSON-полі data:
-        // після JSON.parse атрибути onclick містять \" і \' замість " і '.
-        // Регексп onclick\s*=\s*(['"])... не знаходить збіг через backslash перед лапкою.
-        // Тому знімаємо один рівень escaping перед парсингом.
-        if (html.indexOf('\\"') !== -1 || html.indexOf("\\'") !== -1) {
-          html = html.replace(/\\"/g, '"').replace(/\\'/g, "'");
-        }
         var out = [];
         var seen = {};
         function add(title, url) {
@@ -16275,13 +16209,12 @@
         if (data && data[0] && (data[0].url || data[0].link)) { loadTitlePage(data[0].url || data[0].link); return; }
         var kp = kinopoiskId(kinopoisk_id);
         if (kp) {
-          tried_kp_ids[kp] = true;
           loadCdn(cdnUrlByKp(kp), { page: ref, poster: object.movie && (object.movie.img || object.movie.poster_path || object.movie.poster) || '', cdn: cdnUrlByKp(kp) }, function () {
-            fallbackViaKpImdbOrSearch(kp);
+            findBestTitlePage(titleVariants(), 0, function (link) { loadTitlePage(link); }, function () { searchByQuery(titleVariants(), 0); });
           });
           return;
         }
-        fallbackViaKpImdbOrSearch('');
+        searchByQuery(titleVariants(), 0);
       };
       this.extendChoice = function (saved) {
         saved = saved || {};
@@ -29607,7 +29540,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.95: Tartuga - виправлено неправильний KP через IMDb/Kinopoisk lookup і глобальні RU-назви без hardcode.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.94: Tartuga - прибрано hardcode під окремі серіали; пошук сторінки переведено на глобальний DLE ajax search.php з fallback на звичайний search.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
