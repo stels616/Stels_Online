@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.58';
+    var STELS_ONLINE_VERSION = '1.1.61';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -6406,23 +6406,92 @@
         voice: 0
       };
 
-      function collaps_api_search(api, callback, error) {
+      function collaps_is_not_found(a) {
+        return a && (a.status == 404 && (!a.responseText || a.responseText.indexOf('видео недоступно') !== -1) || a.status == 0 && a.statusText !== 'timeout');
+      }
+
+      function collaps_is_dataset_candidate(api) {
+        return /^(kp|imdb)\//i.test(String(api || ''));
+      }
+
+      function collaps_dataset_urls(api) {
+        var m = String(api || '').match(/^(kp|imdb)\/([^\/]+)/i);
+        if (!m) return [];
+        var kind = m[1].toLowerCase();
+        var id = String(m[2] || '').replace(/^tt/i, '').replace(/\D+/g, '');
+        if (!id) return [];
+        var prefix = kind == 'kp' ? 'kp' : 'imdb';
+        return [
+          'https://api-movies.github.io/collaps/datasets/' + prefix + id + '.json',
+          'https://api-movies.gitlab.io/collaps/datasets/' + prefix + id + '.json'
+        ];
+      }
+
+      function collaps_dataset_id(json) {
+        if (!json) return '';
+        if (typeof json == 'string') json = Lampa.Arrays.decodeJson(json, {});
+        var item = json;
+        if (json.results && json.results.length) item = json.results[0];
+        else if (json.result) item = json.result;
+        else if (json.data) item = json.data;
+        return item && item.id ? String(item.id) : '';
+      }
+
+      function collaps_dataset_search(api, callback, error) {
+        var urls = collaps_dataset_urls(api);
+        var index = 0;
+        stelsLog('collaps-dataset-fallback-start', { api: api, urls: urls });
+        function next() {
+          if (index >= urls.length) {
+            stelsLog('collaps-dataset-empty', { api: api });
+            if (callback) callback('');
+            return;
+          }
+          var url = urls[index++];
+          network.clear();
+          network.timeout(10000);
+          network[net_method](url, function (json) {
+            var id = collaps_dataset_id(json);
+            stelsLog('collaps-dataset-response', { api: api, url: url, id: id || '', type: json && json.type || '', name: json && json.name || json && json.title || '' });
+            if (id) collaps_api_search(id, callback, error, { dataset: false });
+            else next();
+          }, function (a, c) {
+            stelsLog('collaps-dataset-fail', { api: api, url: url, status: a && a.status, statusText: a && a.statusText });
+            next();
+          }, false, {
+            dataType: 'json',
+            headers: play_headers
+          });
+        }
+        next();
+      }
+
+      function collaps_api_search(api, callback, error, options) {
+        options = options || {};
+        function fail_or_dataset(a, c, source) {
+          stelsLog('collaps-embed-fail', { api: api, source: source || '', status: a && a.status, statusText: a && a.statusText });
+          if (a && a.status == 422 && options.dataset !== false && collaps_is_dataset_candidate(api)) {
+            collaps_dataset_search(api, callback, error);
+          } else if (collaps_is_not_found(a)) {
+            if (callback) callback('');
+          } else if (error) error(network.errorDecode(a, c));
+        }
+        stelsLog('collaps-embed-request', { api: api, url: embed + api, dataset_allowed: options.dataset !== false });
         network.clear();
         network.timeout(10000);
         network[net_method](component.proxyLink(embed + api, prox, prox_enc, 'enc2t'), function (str) {
           if (callback) callback(str || '');
         }, function (a, c) {
-          if (a.status == 404 && (!a.responseText || a.responseText.indexOf('видео недоступно') !== -1)) {
+          if (collaps_is_not_found(a)) {
             if (callback) callback('');
           } else {
+            stelsLog('collaps-embed2-request', { api: api, url: embed2 + api });
             network.clear();
             network.timeout(10000);
             network[net_method](component.proxyLink(embed2 + api, prox, prox_enc, 'enc2t'), function (str) {
               if (callback) callback(str || '');
-            }, function (a, c) {
-              if (a.status == 404 && (!a.responseText || a.responseText.indexOf('видео недоступно') !== -1) || a.status == 0 && a.statusText !== 'timeout') {
-                if (callback) callback('');
-              } else if (error) error(network.errorDecode(a, c));
+            }, function (a2, c2) {
+              fail_or_dataset(a2, c2, 'embed2');
             }, false, {
               dataType: 'text',
               headers: play_headers
