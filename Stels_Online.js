@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.91';
+    var STELS_ONLINE_VERSION = '1.1.92';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.91: Tartuga/HDVB - виправлено fallback доменів iframe, прибрано прямий запуск HDVB при помилці, додано коректний movie/serial playlist.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.92: Tartuga - HDVB retry через сторінку фільму з правильним Referer; якщо KP-CDN повертає тільки Parlo, запускається пошук сторінки, щоб підтягнути VeoVeo/HDVB/інші плеєри.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15187,6 +15187,16 @@
         });
         return out;
       }
+      function shouldFallbackFromCdnPlayers(players, pageInfo) {
+        players = players || [];
+        if (!players.length) return false;
+        var onlyParlo = players.length === 1 && /parlo/i.test(String(players[0].title || '') + ' ' + String(players[0].url || ''));
+        var noRealPlayer = !players.some(function (p) {
+          return /veoveo|alloha|hdvb|turbo|collaps/i.test(String(p.title || '') + ' ' + String(p.url || ''));
+        });
+        var directKp = !pageInfo || !pageInfo.page || pageInfo.page === ref;
+        return directKp && (onlyParlo || noRealPlayer);
+      }
       function cdnUrlByKp(kp) {
         return host + '/CDN/ChangeCDN-RU.php?kpid=' + encodeURIComponent(kp) + '&all=yes&parlo=' + encodeURIComponent(kp) + '&veoveo=' + encodeURIComponent(kp) + '&ok=&ok2=&youtube=&vk=&youtube-ost=&youtube-list=&youtube-fakti=';
       }
@@ -15202,6 +15212,11 @@
         requestText(url, function (text) {
           var players = parsePlayers(text, pageInfo || { page: ref, poster: '' });
           log('cdn-response', { players: players.length, sample: players.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 100); }) });
+          if (players.length && shouldFallbackFromCdnPlayers(players, pageInfo || { page: ref, poster: '' }) && fail) {
+            log('cdn-fallback-search', { reason: 'only-parlo-or-no-real-player', players: players.length, sample: players.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 100); }) });
+            fail('players only Parlo');
+            return;
+          }
           if (players.length) renderPlayers(players, pageInfo || { page: ref, poster: '' });
           else if (fail) fail('players empty');
           else { component.loading(false); component.emptyForQuery(select_title); }
@@ -15233,6 +15248,38 @@
           if (results.length > 1 && !object.clarification) { component.loading(false); component.similars(results); return; }
           loadTitlePage((results[0] || {}).url || (results[0] || {}).link);
         }, function () { searchByQuery(queries, pos + 1); }, { post: post, headers: ajaxHeaders, timeout: 15000 });
+      }
+      function findBestTitlePage(queries, pos, success, fail) {
+        if (destroyed) return;
+        queries = queries || [];
+        if (pos >= queries.length) { if (fail) fail('title page not found'); return; }
+        var q = queries[pos];
+        var post = 'do=search&sortby=title&subaction=search&story=' + encodeURIComponent(q) + '&x=0&y=0';
+        log('title-page-retry-search', { query: q, pos: pos, total: queries.length });
+        requestText(host + '/index.php?do=search', function (html) {
+          var results = parseSearchItems(html);
+          log('title-page-retry-results', { query: q, count: results.length, best: results[0] && (results[0].title + '|' + results[0].url) || '' });
+          if (results.length && results[0] && (results[0].url || results[0].link)) {
+            success(results[0].url || results[0].link);
+            return;
+          }
+          findBestTitlePage(queries, pos + 1, success, fail);
+        }, function () { findBestTitlePage(queries, pos + 1, success, fail); }, { post: post, headers: ajaxHeaders, timeout: 15000 });
+      }
+      function retryHdvbViaTitlePage(player, lastError) {
+        if (!player || player._hdvb_page_retry) return false;
+        player._hdvb_page_retry = true;
+        log('hdvb-page-retry-start', { player: player.title || '', referer: player.referer || '', error: preview(lastError || '', 220) });
+        findBestTitlePage(titleVariants(), 0, function (link) {
+          log('hdvb-page-retry-found', { page: link });
+          loadTitlePage(link);
+        }, function (err) {
+          component.reset();
+          component.empty('HDVB: не вдалося завантажити відео або список серій');
+          component.loading(false);
+          log('hdvb-page-retry-fail', { message: preview(err || lastError || '', 260) });
+        });
+        return true;
       }
       function preview(value, n) {
         value = String(value || '');
@@ -15528,8 +15575,8 @@
       function hdvbCleanIframe(url) {
         url = absolute(url || '', ref);
         if (!url) return '';
-        if (/\/(movie|serial)\/[^?#\/]+(?:[?#]|$)/i.test(url) && url.indexOf('/iframe') === -1) {
-          url = url.replace(/([?#].*)?$/, '/iframe?d=tartugi.net');
+        if (/\/(movie|serial)\/[^?#\/]+\/?(?:[?#]|$)/i.test(url) && url.indexOf('/iframe') === -1) {
+          url = url.replace(/\/?([?#].*)?$/, '/iframe?d=tartugi.net');
         }
         return url;
       }
@@ -15669,9 +15716,13 @@
           var iframeOrigin = originFromUrl(iframe);
           var iframeHeaders = {
             'User-Agent': headers['User-Agent'],
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': headers['Accept-Language'],
-            'Referer': player && player.referer || ref
+            'Referer': player && player.referer && player.referer !== ref ? player.referer : ref,
+            'Sec-Fetch-Dest': 'iframe',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'cross-site',
+            'Upgrade-Insecure-Requests': '1'
           };
           log('hdvb-iframe-request', { pos: pos, total: variants.length, reason: variants[pos].reason, iframe: preview(iframe, 220) });
           requestText(iframe, function (html) {
@@ -15861,9 +15912,10 @@
         }, function (err) {
           buildFilter();
           if (isHdvbPlayer(p)) {
+            if ((!p.referer || p.referer === ref) && retryHdvbViaTitlePage(p, err)) return;
             component.reset();
             component.empty('HDVB: не вдалося завантажити відео або список серій');
-            log('hdvb-no-fallback', { player: p.title || '', message: preview(err || '', 260) });
+            log('hdvb-no-fallback', { player: p.title || '', referer: p.referer || '', message: preview(err || '', 260) });
           } else append(currentItems());
           component.loading(false);
         });
@@ -29356,7 +29408,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.91: Tartuga/HDVB - виправлено fallback доменів iframe, прибрано прямий запуск HDVB при помилці, додано коректний movie/serial playlist.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.92: Tartuga - HDVB retry через сторінку фільму з правильним Referer; якщо KP-CDN повертає тільки Parlo, запускається пошук сторінки, щоб підтягнути VeoVeo/HDVB/інші плеєри.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
