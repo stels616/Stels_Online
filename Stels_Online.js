@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.70';
+    var STELS_ONLINE_VERSION = '1.1.71';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5495,7 +5495,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.70: precheck показує максимальну якість джерела праворуч у меню джерел; Mirage групування збережено.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.71: precheck показує лише фактичну якість із play-елементів/URL, без якості за замовчуванням джерела.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -20815,7 +20815,7 @@
         if (!url || typeof url != 'string') return item;
         var label = lampauaQualityLabelFromText(item.text || item.title || item.info || '');
         if (!label && /mirage|pidtor/i.test(sourceTitle || '')) label = lampauaQualityLabelFromText((item.text || '') + ' ' + (item.title || ''));
-        if (!label && lampauaIsMirageSource()) label = remote_quality_hint || '';
+        // 1.1.71: remote_quality_hint із назви джерела або HTML-коментаря може бути лише максимальною/дефолтною можливістю джерела, а не фактичним stream.
         if (lampauaIsMirageSource()) item.url = lampauaNormalizeMirageUrl(item.url || '');
         if (label) {
           item.qualitys = {};
@@ -21496,6 +21496,18 @@
           var view = Lampa.Timeline.view(hash);
           element.timeline = view;
           var item = Lampa.Template.get('stels_online', element);
+          try {
+            var actual_q = Math.max(
+              stelsExtractMaxQualityFromAny(element.quality, 0, 'quality'),
+              stelsExtractMaxQualityFromAny(element.qualitys, 0, 'qualitys'),
+              stelsExtractMaxQualityFromAny(element.url || element.stream || element.file || '', 0, 'url'),
+              stelsExtractMaxQualityFromAny(element.text || element.title || '', 0, 'title')
+            );
+            if (actual_q) {
+              item.attr('data-stels-quality-value', actual_q);
+              item.attr('data-stels-quality-label', stelsQualityLabel(actual_q));
+            }
+          } catch (e) {}
           item.append(Lampa.Timeline.render(view));
           if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
           if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
@@ -24389,6 +24401,8 @@
           if (label == null || label === false || label === true) return 0;
           if (typeof label == 'number') return label > 100 && label < 9000 ? label : 0;
           var text = String(label || '').replace(/&nbsp;/g, ' ');
+          // 1.1.71: не вважаємо діапазони типу "360p ~ 4K" або "360p ~ 1080p" фактичною якістю.
+          if (/[~〜～]/.test(text)) return 0;
           var max = 0;
           text.replace(/\b(8|4|2)\s*k\b/ig, function (all, k) {
             var v = parseInt(k, 10);
@@ -24421,16 +24435,38 @@
         return value + 'p';
       }
 
+      function stelsExtractQualityFromRenderedItem(value) {
+        var max = 0;
+        try {
+          var isNode = value && value.nodeType === 1;
+          var isJq = value && value.jquery;
+          if (!isNode && !isJq) return 0;
+          var el = isJq ? value : $(value);
+          var explicit = el.attr('data-stels-quality-value') || el.attr('data-stels-quality-label') || '';
+          if (explicit) max = Math.max(max, stelsQualityToValue(explicit));
+          var qtext = (el.find('.online__quality').first().text() || '').replace(/\s+/g, ' ').trim();
+          if (qtext && !/[~〜～]/.test(qtext)) max = Math.max(max, stelsQualityToValue(qtext));
+          var title = (el.find('.online__title').first().text() || '').replace(/\s+/g, ' ').trim();
+          if (title) max = Math.max(max, stelsQualityToValue(title));
+        } catch (e) {}
+        return max;
+      }
+
       function stelsExtractMaxQualityFromAny(value, depth, keyHint) {
         var max = 0;
         try {
           if (depth == null) depth = 0;
           if (depth > 5 || value == null) return 0;
+          var rendered = stelsExtractQualityFromRenderedItem(value);
+          if (rendered) return rendered;
+          if (value && (value.jquery || value.nodeType === 1 || value.nodeType === 9)) return 0;
           keyHint = String(keyHint || '').toLowerCase();
           if (typeof value == 'number') return /quality|height|resolution|max|q/.test(keyHint) ? stelsQualityToValue(value) : 0;
           if (typeof value == 'string') {
-            if (/quality|height|resolution|max|q|file|url|stream|src|label|title|name/.test(keyHint) || /\b(?:8|4|2)\s*k\b|\b[1-9][0-9]{2,3}\s*p\b/i.test(value)) {
-              return stelsQualityToValue(value);
+            var text = value;
+            if (/[~〜～]/.test(text)) return 0;
+            if (/quality|height|resolution|max|q|file|url|stream|src|label|title|text/.test(keyHint) || /\b(?:8|4|2)\s*k\b|\b[1-9][0-9]{2,3}\s*p\b/i.test(text)) {
+              return stelsQualityToValue(text);
             }
             return 0;
           }
@@ -24441,7 +24477,7 @@
           if (typeof value == 'object') {
             Object.keys(value).forEach(function (k) {
               var lk = String(k || '').toLowerCase();
-              max = Math.max(max, stelsQualityToValue(k));
+              if (/quality|height|resolution|max|q|label|title|text/.test(lk)) max = Math.max(max, stelsQualityToValue(k));
               max = Math.max(max, stelsExtractMaxQualityFromAny(value[k], depth + 1, lk));
             });
           }
@@ -24569,6 +24605,7 @@
           }
         }
         var probeMaxQuality = 0;
+        var probeOkTimer = null;
         function rememberQuality(value, keyHint) {
           try { probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || '')); } catch (e) {}
         }
@@ -24589,9 +24626,16 @@
         probe.closeFilter = function () {};
         probe.contextmenu = function () {};
         probe.saveChoice = function () {};
+        function scheduleOkFinish() {
+          if (finished || token !== stelsPrecheckToken) return;
+          try { if (probeOkTimer) clearTimeout(probeOkTimer); } catch (e) {}
+          // Дочікуємось кількох append() з одного джерела, щоб максимальна якість
+          // рахувалась по всіх знайдених серіях/релізах, а не тільки по першій картці.
+          probeOkTimer = setTimeout(function () { finish('ok'); }, 220);
+        }
         probe.append = function (items) {
           rememberQuality(arguments, 'append');
-          finish('ok');
+          scheduleOkFinish();
         };
         probe.empty = function (msg) { finish(msg ? 'error' : 'empty', msg || ''); };
         probe.emptyForQuery = function (query) { finish('empty', query || ''); };
@@ -27982,7 +28026,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.70: precheck показує максимальну якість джерела праворуч у меню джерел; Mirage групування збережено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.71: precheck показує лише фактичну якість із play-елементів/URL, без якості за замовчуванням джерела.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
