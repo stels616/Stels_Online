@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.51';
+    var STELS_ONLINE_VERSION = '1.1.52';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5137,6 +5137,7 @@
       function loadIframe(list, index) {
         if (index >= list.length) { component.emptyForQuery(select_title); return; }
         var iframe = list[index];
+        log('player-iframe-request', { iframe: preview(iframe), proxy: !!prox2, referer: ref, ua: mars_user_agent, sec_fetch_dest: player_headers['Sec-Fetch-Dest'] || '' });
         requestText(iframe, function (html) {
           var nodes = parsePlayerFiles(html);
           if (nodes && nodes.length) {
@@ -11047,6 +11048,7 @@
       var prox = component.proxy('alloha');
       var prox2 = component.proxy('allohacdn') || component.proxy('iframe') || component.proxy('cookie2') || component.proxy('cookie3') || '';
       var user_agent = Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+      var mars_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
       var player_origin = '';
       var player_referer = '';
       var player_token = '';
@@ -11518,19 +11520,34 @@
         player_referer = iframe;
         player_token = tokenFromUrl(iframe);
         player_headers = {
-          'User-Agent': user_agent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Referer': ref
+          'User-Agent': mars_user_agent,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Referer': ref,
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'iframe',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'cross-site',
+          'Sec-Fetch-User': '?1',
+          'Sec-CH-UA': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+          'Sec-CH-UA-Mobile': '?0',
+          'Sec-CH-UA-Platform': '"Windows"'
         };
         player_prox_enc = '';
         stream_prox_enc = '';
         if (prox2) {
-          player_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+          player_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
+          player_prox_enc += 'param/Accept=' + encodeURIComponent('text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8') + '/';
+          player_prox_enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
           player_prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
-          if (player_origin) player_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
+          player_prox_enc += 'param/Upgrade-Insecure-Requests=' + encodeURIComponent('1') + '/';
+          player_prox_enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('iframe') + '/';
+          player_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('navigate') + '/';
+          player_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('cross-site') + '/';
+          player_prox_enc += 'param/Sec-Fetch-User=' + encodeURIComponent('?1') + '/';
         }
-        stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
-        stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_origin ? player_origin + '/' : iframe) + '/';
+        stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
+        stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin ? player_origin + '/' : iframe)) + '/';
         if (player_origin) stream_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
 
         function consume(html, mode) {
@@ -12183,21 +12200,33 @@
         var url = player_origin + '/bnsi/movies/' + encodeURIComponent(id);
         var post = 'token=' + encodeURIComponent(player_token) + '&av1=' + (av1_support ? 'true' : 'false') + '&autoplay=0&audio=&subtitle=';
         var headers = {
-          'User-Agent': user_agent,
-          'Accept': 'application/json,text/plain,*/*',
+          'User-Agent': mars_user_agent,
+          'Accept': '*/*',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
           'Origin': player_origin,
           'Referer': player_referer,
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin'
         };
         var api_prox_enc = '';
         if (prox2) {
-          api_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+          api_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
+          api_prox_enc += 'param/Accept=' + encodeURIComponent('*/*') + '/';
+          api_prox_enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
           api_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin + '/')) + '/';
           if (player_origin) api_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
           api_prox_enc += 'param/Content-Type=' + encodeURIComponent('application/x-www-form-urlencoded; charset=UTF-8') + '/';
+          api_prox_enc += 'param/X-Requested-With=' + encodeURIComponent('XMLHttpRequest') + '/';
+          api_prox_enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('empty') + '/';
+          api_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('cors') + '/';
+          api_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('same-origin') + '/';
         }
         requestText(url, function (json) {
           json = safeJsonParse(json) || json;
+          log('stream-response', { id: id, has_hls: !!(json && json.hlsSource && json.hlsSource.length), keys: json && typeof json == 'object' ? Object.keys(json).slice(0, 20) : [], sample: typeof json == 'string' ? preview(json, 300) : '' });
           if (!(json && json.hlsSource && json.hlsSource.length)) { error && error(); return; }
           var source = null;
           var voice = String(element.voice || '').toLowerCase();
@@ -27290,7 +27319,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.51: Alloha - кнопка перекладів у плеєрі, direct fallback для legacy-фільмів lomont.site і підтримка movie inputData.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.52: Alloha - mars.stravers.live відкривається з iframe-like headers; legacy lomont для серіалів лишився, для фільмів fallback через Kinobaza/Mars.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
