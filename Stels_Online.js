@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.82';
+    var STELS_ONLINE_VERSION = '1.1.83';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.82: Tartuga переведено на прямий парсер filmo.tartugi.net без LampUA groupdeny.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.83: Tartuga - плеєри винесено в окремий фільтр Плеєри, переклади більше не засмічуються назвами плеєрів.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15007,8 +15007,8 @@
       var select_title = '';
       var destroyed = false;
       var extract = [];
-      var filter_items = { voice: [] };
-      var choice = { voice: 0, voice_name: '' };
+      var filter_items = { player: [] };
+      var choice = { player: 0, player_name: '' };
       var headers = {
         'User-Agent': Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -15192,7 +15192,7 @@
         buildFilter();
         append(currentItems());
         component.loading(false);
-        log('render', { count: extract.length, selected: extract[choice.voice] && extract[choice.voice].title || '', sample: extract.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 80); }) });
+        log('render', { count: extract.length, selected_player: extract[choice.player] && extract[choice.player].title || '', sample: extract.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 80); }) });
       }
       function loadCdn(url, pageInfo, fail) {
         log('cdn-request', { url: url });
@@ -15232,17 +15232,17 @@
         }, function () { searchByQuery(queries, pos + 1); }, { post: post, headers: ajaxHeaders, timeout: 15000 });
       }
       function buildFilter() {
-        filter_items = { voice: extract.map(function (p) { return p.title || 'Плеєр'; }) };
-        if (choice.voice_name) {
-          var idx = filter_items.voice.indexOf(choice.voice_name);
-          if (idx >= 0) choice.voice = idx;
+        filter_items = { player: extract.map(function (p) { return p.title || 'Плеєр'; }) };
+        if (choice.player_name) {
+          var idx = filter_items.player.indexOf(choice.player_name);
+          if (idx >= 0) choice.player = idx;
         }
-        if (!filter_items.voice[choice.voice]) choice.voice = 0;
-        choice.voice_name = filter_items.voice[choice.voice] || '';
+        if (!filter_items.player[choice.player]) choice.player = 0;
+        choice.player_name = filter_items.player[choice.player] || '';
         component.filter(filter_items, choice);
       }
       function currentItems() {
-        var p = extract[choice.voice] || extract[0];
+        var p = extract[choice.player] || extract[0];
         if (!p) return [];
         return [{ title: select_title || p.title || 'Tartuga', quality: p.quality || 'iframe', info: p.title ? ' / ' + p.title : '', voice: p.title || '', stream: p.url, iframe: true, headers: iframeHeaders, poster: p.poster || '' }];
       }
@@ -15286,9 +15286,22 @@
         }
         searchByQuery(titleVariants(), 0);
       };
-      this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
-      this.reset = function () { choice = { voice: 0, voice_name: '' }; buildFilter(); append(currentItems()); component.saveChoice(choice); };
-      this.filter = function (type, a, b) { choice[a.stype] = b.index; if (a.stype === 'voice') choice.voice_name = filter_items.voice[b.index] || ''; buildFilter(); append(currentItems()); component.saveChoice(choice); setTimeout(component.closeFilter, 10); };
+      this.extendChoice = function (saved) {
+        Lampa.Arrays.extend(choice, saved, true);
+        if (choice.player == null && choice.voice != null) choice.player = choice.voice;
+        if (!choice.player_name && choice.voice_name) choice.player_name = choice.voice_name;
+        delete choice.voice;
+        delete choice.voice_name;
+      };
+      this.reset = function () { choice = { player: 0, player_name: '' }; buildFilter(); append(currentItems()); component.saveChoice(choice); };
+      this.filter = function (type, a, b) {
+        choice[a.stype] = b.index;
+        if (a.stype === 'player') choice.player_name = filter_items.player[b.index] || '';
+        buildFilter();
+        append(currentItems());
+        component.saveChoice(choice);
+        setTimeout(component.closeFilter, 10);
+      };
       this.destroy = function () { destroyed = true; try { network.clear(); } catch (e) {} extract = []; };
     }
 
@@ -24245,6 +24258,7 @@
       var filter_translate = {
         season: Lampa.Lang.translate('torrent_serial_season'),
         voice: Lampa.Lang.translate('torrent_parser_voice'),
+        player: 'Плеєр',
         source: Lampa.Lang.translate('settings_rest_source')
       };
       var disable_dbg = !Utils.isDebug();
@@ -26175,6 +26189,7 @@
           return stelsSourceTitleWithStatus(s);
         });
         add('source', Lampa.Lang.translate('stels_online_balanser'));
+        if (filter_items.player && filter_items.player.length) add('player', 'Плеєри');
         if (filter_items.voice && filter_items.voice.length) add('voice', Lampa.Lang.translate('torrent_parser_voice'));
         if (filter_items.season && filter_items.season.length) add('season', Lampa.Lang.translate('torrent_serial_season'));
         if (filter_items.server && filter_items.server.length) add('server', Lampa.Lang.translate('stels_online_server'));
@@ -28585,7 +28600,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.82: Tartuga переведено на прямий парсер filmo.tartugi.net без LampUA groupdeny.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.83: Tartuga - плеєри винесено в окремий фільтр Плеєри, переклади більше не засмічуються назвами плеєрів.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
