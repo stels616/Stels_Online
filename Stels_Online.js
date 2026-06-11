@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.73';
+    var STELS_ONLINE_VERSION = '1.1.74';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.73: виправлено відображення якості в меню джерел, вирівнювання прапора/назви та збір якості через contextmenu/element.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.74: точніше визначення фактичної якості, ігнор назв озвучок типу HDrezka 4K, оновлення якості з відрендерених карток.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -23786,6 +23786,7 @@
         var parts = raw.split(/\s*\/\s*/).filter(function(p) { return !!p; });
         var quality = parts[0] || raw || '';
         var voice = parts.slice(1).join(' / ');
+        try { stelsUpdateSourceQualityFromRenderedCard(quality); } catch (e) {}
         var left = '';
         if (dateText) left += '<span class="stels-online-date">' + stelsEscapeHtml(dateText) + '</span>';
         if (dateText && voice) left += '<span class="stels-online-meta-dot">•</span>';
@@ -24469,7 +24470,15 @@
           if (typeof value == 'number') return /quality|height|resolution|max|q/.test(keyHint) ? stelsQualityToValue(value) : 0;
           if (typeof value == 'string') {
             var text = value;
-            if (/quality|height|resolution|max|file|url|stream|src|label|title|text/.test(keyHint) || /(^|[^a-z0-9])(?:[842]\s*k|(?:4320|2160|1440|1080|720|576|480|360|240)\s*p)([^a-z0-9]|$)/i.test(text)) {
+            var lkHint = String(keyHint || '').toLowerCase();
+            // 1.1.74: не беремо якість із назв озвучок/фільтрів типу "HDrezka, 4K".
+            // Це не фактична якість потоку, а назва релізу/перекладу. Через це Filmix
+            // показував 4K у статусі, хоча фактичні картки були 480p.
+            if (/voice|translate|translation|studio|info|filter|source|selected|message|status|balanser|name/.test(lkHint)) return 0;
+            var hasQualityToken = /(^|[^a-z0-9])(?:[842]\s*k|(?:4320|2160|1440|1080|720|576|480|360|240)\s*p)([^a-z0-9]|$)/i.test(text);
+            var isTrustedTextKey = /quality|height|resolution|max|file|url|stream|src/.test(lkHint);
+            var isLooseTitleKey = /label|title|text/.test(lkHint) && /(?:\.|_|-|\s)(?:web|webrip|webdl|web-dl|bdrip|bluray|hdtv|hdrip|dvdrip|2160p|1080p|720p|480p|4k|8k)(?:\.|_|-|\s|$)/i.test(text);
+            if (isTrustedTextKey || isLooseTitleKey || (/^$/.test(lkHint) && hasQualityToken && /(?:\.m3u8|\.mp4|video|stream|hls|file|url)/i.test(text))) {
               return stelsQualityToValue(text);
             }
             return 0;
@@ -24492,6 +24501,36 @@
         var key = stelsNormalizeSourceKey(source && source.name || source);
         var info = stelsSourceStatus[key] || {};
         return info.quality || '';
+      }
+
+      var stelsRenderedSourceQuality = {};
+      var stelsRenderedSourceQualityTimer = null;
+      function stelsCurrentQualityKey(source) {
+        try {
+          var mid = object && object.movie && (object.movie.id || object.movie.tmdb_id || object.movie.kinopoisk_id || object.movie.imdb_id) || '';
+          return stelsNormalizeSourceKey(source || balanser) + ':' + mid;
+        } catch (e) {}
+        return stelsNormalizeSourceKey(source || balanser) + ':';
+      }
+      function stelsUpdateSourceQualityFromRenderedCard(value) {
+        try {
+          var source = stelsNormalizeSourceKey(balanser);
+          if (!source) return;
+          var q = stelsExtractMaxQualityFromAny(value, 0, 'quality');
+          if (!q) return;
+          var qkey = stelsCurrentQualityKey(source);
+          var rec = stelsRenderedSourceQuality[qkey] || { max: 0 };
+          rec.max = Math.max(rec.max || 0, q);
+          rec.time = Date.now();
+          stelsRenderedSourceQuality[qkey] = rec;
+          var qlabel = stelsQualityLabel(rec.max);
+          if (!qlabel) return;
+          var status = stelsSourceStatus[source] && stelsSourceStatus[source].status || 'ok';
+          if (status !== 'ok' && status !== 'wait') status = 'ok';
+          stelsSourceStatus[source] = { status: status, message: stelsSourceStatus[source] && stelsSourceStatus[source].message || '', quality: qlabel, time: Date.now() };
+          if (stelsRenderedSourceQualityTimer) clearTimeout(stelsRenderedSourceQualityTimer);
+          stelsRenderedSourceQualityTimer = setTimeout(function () { stelsRefreshSourceFilterTitles(); }, 120);
+        } catch (e) {}
       }
 
       function stelsMarkSourceStatus(source, status, message, quality) {
@@ -28035,7 +28074,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.73: виправлено відображення якості в меню джерел, вирівнювання прапора/назви та збір якості через contextmenu/element.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.74: точніше визначення фактичної якості, ігнор назв озвучок типу HDrezka 4K, оновлення якості з відрендерених карток.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
