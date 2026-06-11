@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.47';
+    var STELS_ONLINE_VERSION = '1.1.48';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -11749,25 +11749,111 @@
         });
       }
 
+      function decodeLegacyAttr(value) {
+        value = String(value || '');
+        try { value = component.decodeHtml(value); } catch (e) {}
+        value = value.replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&#x22;/gi, '"').replace(/&amp;/g, '&');
+        return value;
+      }
+
+      function legacyContextSamples(html, re, limit, radius) {
+        var out = [];
+        html = String(html || '');
+        re = re || /videoplayer|data-config|\.m3u8|hls|Playerjs/ig;
+        limit = limit || 8;
+        radius = radius || 180;
+        var m;
+        while ((m = re.exec(html)) && out.length < limit) {
+          out.push(preview(html.slice(Math.max(0, m.index - radius), Math.min(html.length, m.index + radius)), radius * 2));
+        }
+        return out;
+      }
+
+      function parseLegacyJsonLike(value) {
+        value = decodeLegacyAttr(value || '').trim();
+        if (!value) return null;
+        var json = null;
+        try { json = Lampa.Arrays.decodeJson(value, null); } catch (e) {}
+        if (!json) { try { json = JSON.parse(value); } catch (e2) {} }
+        if (!json && /^[\[{]/.test(value)) {
+          try { json = (0, eval)('"use strict"; (function(){ return ' + value + '; })();'); } catch (e3) {}
+        }
+        return json;
+      }
+
       function parseLegacyPlayerConfig(str, url) {
         str = String(str || '').replace(/\n/g, '');
-        var find = str.match(/<div id=["']videoplayer["'][^>]*data-config=[^>]*>/i);
-        var player = find && $(find[0]);
-        var result = { file: '', subtitles: false };
-        if (!player) return result;
-        var config = player.attr('data-config');
-        var json = null;
-        try { json = config && Lampa.Arrays.decodeJson(config, {}); } catch (e) {}
-        if (!json) {
-          try { json = config && JSON.parse(config); } catch (e2) {}
+        var result = { file: '', subtitles: false, debug: {} };
+
+        var find = str.match(/<div[^>]+id=["']videoplayer[^"']*["'][^>]*>/i) ||
+                   str.match(/<[^>]+data-config\s*=\s*(["'])[\s\S]*?\1[^>]*>/i);
+        var tag = find && find[0] || '';
+        var player = tag ? $(tag) : null;
+        var config = player && player.attr('data-config') || '';
+
+        if (!config) {
+          var attr = str.match(/data-config\s*=\s*(["'])([\s\S]*?)\1/i);
+          if (attr) config = attr[2] || '';
         }
-        if (json && json.hls) result.file = component.fixLink(json.hls, url);
+
+        var json = parseLegacyJsonLike(config);
+        result.debug.has_player_tag = !!tag;
+        result.debug.config_len = String(config || '').length;
+        result.debug.config_sample = preview(config || '', 240);
+        result.debug.json_keys = json && typeof json == 'object' ? Object.keys(json).slice(0, 20) : [];
+
+        function pickFileFrom(value) {
+          if (!value) return '';
+          if (typeof value == 'string') {
+            var first = value.split(/\s+or\s+/i).filter(Boolean)[0] || value;
+            return /^(https?:)?\/\//i.test(first) || /\.m3u8(?:\?|$)/i.test(first) ? component.fixLink(first, url) : '';
+          }
+          if (Array.isArray(value)) {
+            for (var i = 0; i < value.length; i++) {
+              var got = pickFileFrom(value[i] && (value[i].file || value[i].url || value[i].src || value[i].hls || value[i].link || value[i].quality || value[i]));
+              if (got) return got;
+            }
+          }
+          if (typeof value == 'object') {
+            var keys = ['hls', 'file', 'url', 'src', 'link', 'manifest'];
+            for (var k = 0; k < keys.length; k++) {
+              var got2 = pickFileFrom(value[keys[k]]);
+              if (got2) return got2;
+            }
+            if (value.hlsSource) {
+              var srcs = value.hlsSource;
+              if (!Array.isArray(srcs)) srcs = [srcs];
+              var best = '';
+              srcs.forEach(function (src) {
+                var q = src && src.quality || src || {};
+                ['2160','1440','1080','720','480','360','240'].forEach(function (label) {
+                  if (!best && q[label]) best = pickFileFrom(q[label]);
+                });
+              });
+              if (best) return best;
+            }
+          }
+          return '';
+        }
+
+        if (json) result.file = pickFileFrom(json);
+
+        if (!result.file) {
+          var m3u = str.match(/https?:\\?\/\\?\/[^"'<>\\\s]+\.m3u8[^"'<>\\\s]*/i) || str.match(/\/[^"'<>\\\s]+\.m3u8[^"'<>\\\s]*/i);
+          if (m3u) result.file = component.fixLink(String(m3u[0]).replace(/\\\//g, '/'), url);
+        }
+
         var subtitles = [];
         ['data-original_subtitle', 'data-ru_subtitle', 'data-en_subtitle', 'data-ua_subtitle'].forEach(function (sub) {
-          var link = player.attr(sub);
+          var link = player && player.attr(sub) || '';
+          if (!link) {
+            var r = new RegExp(sub + "\\s*=\\s*([\"'])([\\s\\S]*?)\\1", 'i').exec(str || '');
+            if (r) link = decodeLegacyAttr(r[2] || '');
+          }
           if (link) subtitles.push({ label: sub.replace('data-', '').replace('_subtitle', ''), url: component.processSubs(component.fixLink(link, url)) });
         });
         result.subtitles = subtitles.length ? subtitles : false;
+        if (!result.file) result.debug.contexts = legacyContextSamples(str);
         return result;
       }
 
@@ -11793,15 +11879,33 @@
       function getLegacyStream(element, call, error) {
         if (element.stream) return call(element);
         var media = element.media || {};
+        var raw = media.raw || {};
         var url = legacyUrl(legacy_id, media.season || element.season || 1, media.episode || element.episode || 1, media.voice_id || '');
+        log('legacy-stream-start', {
+          url: preview(url),
+          kp: legacy_id,
+          season: media.season || element.season || 1,
+          episode: media.episode || element.episode || 1,
+          voice_id: media.voice_id || '',
+          video_id: raw.video_id || ''
+        });
         requestText(url, function (str) {
           var parsed = parseLegacyPlayerConfig(str, url);
+          log('legacy-stream-response', {
+            url: preview(url),
+            html_len: String(str || '').length,
+            has_file: !!parsed.file,
+            file: preview(parsed.file || '', 220),
+            subtitles: parsed.subtitles && parsed.subtitles.length || 0,
+            debug: parsed.debug || {}
+          });
           if (!parsed.file) { error && error(); return; }
           element.stream = component.proxyLink(parsed.file, prox2, legacy_stream_prox_enc, 'enc2t');
           element.subtitles = parsed.subtitles;
           if (/\.m3u8(?:$|\?)/i.test(parsed.file)) {
             requestText(parsed.file, function (m3u) {
               var qitems = allohaExtractQuality(m3u, parsed.file).filter(function (it) { return it.quality > 0; });
+              log('legacy-quality-response', { file: preview(parsed.file), len: String(m3u || '').length, count: qitems.length, labels: qitems.map(function (it) { return it.label; }).slice(0, 12) });
               if (qitems.length) {
                 var qmap = {};
                 qitems.forEach(function (it) { qmap[it.label] = component.proxyLink(it.file, prox2, legacy_stream_prox_enc, 'enc2t'); });
@@ -11809,9 +11913,15 @@
                 element.qualitys = qmap;
               }
               call(element);
-            }, function () { call(element); }, { kind: 'legacy-quality', proxy: prox2, prox_enc: legacy_stream_prox_enc, enc: 'enc2t', dataType: 'text', timeout: 10000 });
+            }, function (msg) {
+              log('legacy-quality-fail-soft', { file: preview(parsed.file), message: preview(msg || '', 220), note: 'Потік знайдено, але master.m3u8 не розібрався на якості; віддаємо основний HLS.' });
+              call(element);
+            }, { kind: 'legacy-quality', proxy: prox2, prox_enc: legacy_stream_prox_enc, enc: 'enc2t', dataType: 'text', timeout: 10000, headers: { 'User-Agent': user_agent, 'Accept': '*/*', 'Referer': 'https://lomont.site/' } });
           } else call(element);
-        }, function () { error && error(); }, {
+        }, function (msg) {
+          log('legacy-stream-fail', { url: preview(url), message: preview(msg || '', 300) });
+          error && error();
+        }, {
           kind: 'legacy-stream',
           proxy: prox,
           prox_enc: legacy_prox_enc,
@@ -26928,7 +27038,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.47: Alloha - основний fallback через lomont.site/gt/<kp> для серій, Kinobaza/mars залишено резервом.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.48: Alloha - виправлено отримання HLS з lomont.site: ширший парсер videoplayer/data-config, fallback на прямий m3u8 і детальний лог legacy-stream.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
