@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.90';
+    var STELS_ONLINE_VERSION = '1.1.91';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.90: Tartuga - збережено робочу логіку VeoVeo 1.1.85, виправлено S0E0-назви фільмів та додано HDVB із сезонами/серіями/перекладами.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.91: Tartuga/HDVB - виправлено fallback доменів iframe, прибрано прямий запуск HDVB при помилці, додано коректний movie/serial playlist.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15522,6 +15522,89 @@
           'X-CSRF-TOKEN': cfg && cfg.key || ''
         };
       }
+      function isHdvbPlayer(player) {
+        return /hdvb|sevstar/i.test(String(player && player.title || '') + ' ' + String(player && player.url || ''));
+      }
+      function hdvbCleanIframe(url) {
+        url = absolute(url || '', ref);
+        if (!url) return '';
+        if (/\/(movie|serial)\/[^?#\/]+(?:[?#]|$)/i.test(url) && url.indexOf('/iframe') === -1) {
+          url = url.replace(/([?#].*)?$/, '/iframe?d=tartugi.net');
+        }
+        return url;
+      }
+      function hdvbIframeVariants(player) {
+        var original = hdvbCleanIframe(player && player.url || '');
+        var out = [];
+        var seen = {};
+        function add(url, reason) {
+          url = hdvbCleanIframe(url);
+          if (!url || seen[url]) return;
+          seen[url] = true;
+          out.push({ url: url, reason: reason || 'original' });
+        }
+        add(original, 'original');
+        var m = original.match(/^https?:\/\/([^\/]+)(\/.*)$/i);
+        if (m && /sevstar/i.test(m[1])) {
+          var path = m[2];
+          var hosts = [
+            'vid1781207278.sevstar933krop.com',
+            'vid1781206878.sevstar933krop.com',
+            'vid1781206191.sevstar933krop.com',
+            'vid1781202207.sevstar933krop.com',
+            'vid1781203092.sevstar933krop.com',
+            'vid1781203625.sevstar933krop.com',
+            'vid1781208551.sevstar933krop.com',
+            'vid1781201644.sevstar933krop.com'
+          ];
+          hosts.forEach(function (h) { if (h !== m[1]) add('https://' + h + path, 'host:' + h); });
+        }
+        return out;
+      }
+      function hdvbStreamFromText(text, baseUrl) {
+        var body = String(text || '').trim();
+        var json = safeJsonParse(body);
+        var stream = '';
+        if (Array.isArray(json)) return '';
+        if (json && typeof json === 'object') {
+          stream = json.url || json.file || json.src || json.hls || '';
+          if (!stream && json.sources) {
+            var s = Array.isArray(json.sources) ? json.sources[0] : json.sources;
+            if (s) stream = s.url || s.file || s.src || s.hls || '';
+          }
+        }
+        if (!stream) {
+          var m = body.match(/https?:\/\/[^\s"'<>]+/i);
+          stream = m ? m[0] : (/^https?:\/\//i.test(body) ? body.split(/\s+/)[0] : '');
+        }
+        return stream ? absolute(stream, baseUrl || ref) : '';
+      }
+      function hdvbMovieItem(player, cfg, stream, file) {
+        var item = {
+          title: tartugaMovieDisplayTitle('HDVB'),
+          quality: 'HDVB',
+          info: ' / HDVB',
+          season: 0,
+          episode: 0,
+          voice: 'HDVB',
+          media: { file: file || cfg && cfg.file || '', title: 'HDVB' },
+          hdvb_file: file || cfg && cfg.file || '',
+          player: player,
+          hdvb_config: cfg || {},
+          poster: player && player.poster || '',
+          headers: false,
+          skip_quality_probe: true
+        };
+        if (stream) {
+          item.stream = stream;
+          item.headers = {
+            'User-Agent': headers['User-Agent'],
+            'Referer': (player.hdvb_origin || originFromUrl(player.url) || ref) + '/',
+            'Origin': player.hdvb_origin || originFromUrl(player.url) || ''
+          };
+        }
+        return item;
+      }
       function hdvbNumber(value) {
         var m = String(value || '').match(/\d+/);
         return m ? (parseInt(m[0], 10) || 0) : 0;
@@ -15578,31 +15661,51 @@
         return items;
       }
       function loadHdvbSerial(player, success, fail) {
-        var iframe = absolute(player && player.url || '', ref);
-        var iframeOrigin = originFromUrl(iframe);
-        var iframeHeaders = {
-          'User-Agent': headers['User-Agent'],
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': headers['Accept-Language'],
-          'Referer': player && player.referer || ref
-        };
-        log('hdvb-load-start', { player: player && player.title || '', iframe: preview(iframe, 220) });
-        requestText(iframe, function (html) {
-          var cfg = parseHdvbConfig(html);
-          if (!cfg || !cfg.file) { fail && fail('HDVB config not found'); return; }
-          player.hdvb_origin = iframeOrigin;
-          player.hdvb_config = cfg;
-          var playlist = hdvbPlaylistUrl(player, cfg, cfg.file);
-          if (!playlist) { fail && fail('HDVB playlist url empty'); return; }
-          log('hdvb-playlist-request', { url: preview(playlist, 220), href: cfg.href || '', file: preview(cfg.file, 120), key_len: String(cfg.key || '').length });
-          requestText(playlist, function (text) {
-            var json = safeJsonParse(text);
-            if (!json) { fail && fail('HDVB playlist json empty'); return; }
-            var items = normalizeHdvbItems(json, player, cfg);
-            log('hdvb-loaded', { items: items.length, sample: items.slice(0, 8).map(function (it) { return it.title + '|' + it.voice; }) });
-            if (items.length) success(items); else fail && fail('HDVB playlist empty');
-          }, fail, { post: ' ', headers: hdvbHeaders(player, cfg, '*/*'), dataType: 'text', timeout: 18000 });
-        }, fail, { headers: iframeHeaders, dataType: 'text', timeout: 16000 });
+        var variants = hdvbIframeVariants(player);
+        log('hdvb-load-start', { player: player && player.title || '', count: variants.length, sample: variants.slice(0, 8).map(function (v) { return v.reason + '|' + preview(v.url, 140); }) });
+        function tryIframe(pos, lastError) {
+          if (pos >= variants.length) { fail && fail(lastError || 'HDVB config not found'); return; }
+          var iframe = variants[pos].url;
+          var iframeOrigin = originFromUrl(iframe);
+          var iframeHeaders = {
+            'User-Agent': headers['User-Agent'],
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': headers['Accept-Language'],
+            'Referer': player && player.referer || ref
+          };
+          log('hdvb-iframe-request', { pos: pos, total: variants.length, reason: variants[pos].reason, iframe: preview(iframe, 220) });
+          requestText(iframe, function (html) {
+            var cfg = parseHdvbConfig(html);
+            if (!cfg || !cfg.file) { log('hdvb-config-missing', { reason: variants[pos].reason, len: String(html || '').length, sample: preview(html, 320) }); tryIframe(pos + 1, 'HDVB config not found'); return; }
+            player.hdvb_origin = iframeOrigin;
+            player.hdvb_config = cfg;
+            player.hdvb_iframe = iframe;
+            var playlist = hdvbPlaylistUrl(player, cfg, cfg.file);
+            if (!playlist) { tryIframe(pos + 1, 'HDVB playlist url empty'); return; }
+            log('hdvb-playlist-request', { url: preview(playlist, 220), origin: iframeOrigin, href: cfg.href || '', file: preview(cfg.file, 120), key_len: String(cfg.key || '').length });
+            requestText(playlist, function (text) {
+              var json = safeJsonParse(text);
+              var stream = hdvbStreamFromText(text, playlist);
+              if (Array.isArray(json)) {
+                var items = normalizeHdvbItems(json, player, cfg);
+                log('hdvb-loaded', { mode: 'serial', items: items.length, sample: items.slice(0, 8).map(function (it) { return it.title + '|' + it.voice; }) });
+                if (items.length) { success(items); return; }
+              }
+              if (stream) {
+                var movieItems = [hdvbMovieItem(player, cfg, stream, cfg.file)];
+                log('hdvb-loaded', { mode: 'movie', items: movieItems.length, stream: preview(stream, 220) });
+                success(movieItems);
+                return;
+              }
+              log('hdvb-playlist-empty', { len: String(text || '').length, sample: preview(text, 320) });
+              tryIframe(pos + 1, 'HDVB playlist empty');
+            }, function (err) { tryIframe(pos + 1, err || 'HDVB playlist request failed'); }, { post: '', headers: hdvbHeaders(player, cfg, '*/*'), dataType: 'text', timeout: 18000 });
+          }, function (err) {
+            log('hdvb-iframe-fail', { reason: variants[pos].reason, iframe: preview(iframe, 220), message: preview(err || '', 260) });
+            tryIframe(pos + 1, err || 'HDVB iframe request failed');
+          }, { headers: iframeHeaders, dataType: 'text', timeout: 16000 });
+        }
+        tryIframe(0);
       }
       function loadHdvbStream(element, call, error) {
         var player = element.player || extract[choice.player] || {};
@@ -15611,15 +15714,7 @@
         if (!url) { error && error(); return; }
         log('hdvb-stream-request', { title: element.title || '', voice: element.voice || '', url: preview(url, 220) });
         requestText(url, function (text) {
-          var body = String(text || '').trim();
-          var stream = '';
-          var json = safeJsonParse(body);
-          if (json && (json.url || json.file)) stream = json.url || json.file;
-          if (!stream) {
-            var m = body.match(/https?:\/\/[^\s"'<>]+/i);
-            stream = m ? m[0] : (/^https?:\/\//i.test(body) ? body.split(/\s+/)[0] : '');
-          }
-          stream = absolute(stream, url);
+          var stream = hdvbStreamFromText(text, url);
           if (!stream) { error && error(); return; }
           element.stream = stream;
           element.headers = {
@@ -15630,7 +15725,7 @@
           element.qualitys = false;
           log('hdvb-stream-ready', { title: element.title || '', stream: preview(stream, 220) });
           call(element);
-        }, error, { post: ' ', headers: hdvbHeaders(player, cfg, '*/*'), dataType: 'text', timeout: 18000 });
+        }, error, { post: '', headers: hdvbHeaders(player, cfg, '*/*'), dataType: 'text', timeout: 18000 });
       }
       function playerIframeVariants(player) {
         var iframe = absolute(player && player.url || '', ref);
@@ -15700,7 +15795,7 @@
           fail && fail(message);
         }
         if (/temptcdn|veoveo/i.test(String(player.title || '') + ' ' + String(player.url || ''))) loadVeoVeoSerial(player, done, bad);
-        else if (/hdvb|sevstar/i.test(String(player.title || '') + ' ' + String(player.url || ''))) loadHdvbSerial(player, done, bad);
+        else if (isHdvbPlayer(player)) loadHdvbSerial(player, done, bad);
         else loadFileListSerial(player, done, bad);
       }
       function buildFilter() {
@@ -15763,9 +15858,13 @@
           buildFilter();
           append(currentItems());
           component.loading(false);
-        }, function () {
+        }, function (err) {
           buildFilter();
-          append(currentItems());
+          if (isHdvbPlayer(p)) {
+            component.reset();
+            component.empty('HDVB: не вдалося завантажити відео або список серій');
+            log('hdvb-no-fallback', { player: p.title || '', message: preview(err || '', 260) });
+          } else append(currentItems());
           component.loading(false);
         });
       }
@@ -29257,7 +29356,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.90: Tartuga - збережено робочу логіку VeoVeo 1.1.85, виправлено S0E0-назви фільмів та додано HDVB із сезонами/серіями/перекладами.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.91: Tartuga/HDVB - виправлено fallback доменів iframe, прибрано прямий запуск HDVB при помилці, додано коректний movie/serial playlist.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
