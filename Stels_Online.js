@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.48';
+    var STELS_ONLINE_VERSION = '1.1.49';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -11900,23 +11900,27 @@
             debug: parsed.debug || {}
           });
           if (!parsed.file) { error && error(); return; }
-          element.stream = component.proxyLink(parsed.file, prox2, legacy_stream_prox_enc, 'enc2t');
+          // Важливо: HLS-посилання lomont.site тимчасові та, схоже, прив'язані до IP клієнта.
+          // Якщо проганяти їх через CDN/CORS proxy, s8.lomont.site повертає 404, хоча сам HTML-плеєр
+          // видав валідний index.m3u8. Тому для legacy Alloha віддаємо stream напряму.
+          element.stream = parsed.file;
           element.subtitles = parsed.subtitles;
+          log('legacy-stream-direct', { file: preview(parsed.file), reason: 'no_proxy_for_ip_bound_lomont_hls' });
           if (/\.m3u8(?:$|\?)/i.test(parsed.file)) {
             requestText(parsed.file, function (m3u) {
               var qitems = allohaExtractQuality(m3u, parsed.file).filter(function (it) { return it.quality > 0; });
-              log('legacy-quality-response', { file: preview(parsed.file), len: String(m3u || '').length, count: qitems.length, labels: qitems.map(function (it) { return it.label; }).slice(0, 12) });
+              log('legacy-quality-response', { file: preview(parsed.file), len: String(m3u || '').length, count: qitems.length, labels: qitems.map(function (it) { return it.label; }).slice(0, 12), raw: true });
               if (qitems.length) {
                 var qmap = {};
-                qitems.forEach(function (it) { qmap[it.label] = component.proxyLink(it.file, prox2, legacy_stream_prox_enc, 'enc2t'); });
+                qitems.forEach(function (it) { qmap[it.label] = it.file; });
                 element.stream = qmap[qitems[0].label];
                 element.qualitys = qmap;
               }
               call(element);
             }, function (msg) {
-              log('legacy-quality-fail-soft', { file: preview(parsed.file), message: preview(msg || '', 220), note: 'Потік знайдено, але master.m3u8 не розібрався на якості; віддаємо основний HLS.' });
+              log('legacy-quality-fail-soft', { file: preview(parsed.file), message: preview(msg || '', 220), note: 'Потік знайдено; master.m3u8 напряму не розібрався на якості, віддаємо основний прямий HLS без proxy.' });
               call(element);
-            }, { kind: 'legacy-quality', proxy: prox2, prox_enc: legacy_stream_prox_enc, enc: 'enc2t', dataType: 'text', timeout: 10000, headers: { 'User-Agent': user_agent, 'Accept': '*/*', 'Referer': 'https://lomont.site/' } });
+            }, { kind: 'legacy-quality', raw: true, dataType: 'text', timeout: 10000, headers: { 'User-Agent': user_agent, 'Accept': '*/*', 'Referer': 'https://lomont.site/' } });
           } else call(element);
         }, function (msg) {
           log('legacy-stream-fail', { url: preview(url), message: preview(msg || '', 300) });
@@ -27038,7 +27042,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.48: Alloha - виправлено отримання HLS з lomont.site: ширший парсер videoplayer/data-config, fallback на прямий m3u8 і детальний лог legacy-stream.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.49: Alloha - HLS з lomont.site віддається напряму без CDN/proxy, бо s8.lomont.site прив’язує тимчасові m3u8 до IP і proxy давав 404.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
