@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.46';
+    var STELS_ONLINE_VERSION = '1.1.47';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -11065,12 +11065,21 @@
       var kinobaza_prox_enc = '';
       var player_prox_enc = '';
       var stream_prox_enc = '';
+      var legacy_id = '';
+      var legacy_embed = 'https://lomont.site/gt/';
+      var legacy_items = [];
+      var legacy_prox_enc = '';
+      var legacy_stream_prox_enc = '';
 
       if (prox) {
         kinobaza_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
         kinobaza_prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
         kinobaza_prox_enc += 'param/Origin=' + encodeURIComponent(host) + '/';
+        legacy_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+        legacy_prox_enc += 'param/Referer=' + encodeURIComponent('https://lomont.site/') + '/';
       }
+      legacy_stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+      legacy_stream_prox_enc += 'param/Referer=' + encodeURIComponent('https://lomont.site/') + '/';
 
       function preview(value, max) {
         value = String(value || '');
@@ -11639,6 +11648,184 @@
         return items;
       }
 
+
+      function kpFromArgs(kinopoisk_id) {
+        var kp = kinopoisk_id || object && (object.kinopoisk_id || object.kp_id || object.movie && (object.movie.kinopoisk_id || object.movie.kp_id)) || '';
+        return String(kp || '').replace(/\D+/g, '');
+      }
+
+      function legacyUrl(kp, season, episode, voice) {
+        var url = legacy_embed + encodeURIComponent(kp);
+        if (season) url = Lampa.Utils.addUrlComponent(url, 'season=' + encodeURIComponent(season));
+        if (episode) url = Lampa.Utils.addUrlComponent(url, 'episode=' + encodeURIComponent(episode));
+        if (voice) url = Lampa.Utils.addUrlComponent(url, 'voice=' + encodeURIComponent(voice));
+        url = Lampa.Utils.addUrlComponent(url, 'alloff=true');
+        return url;
+      }
+
+      function parseLegacyInputData(str) {
+        str = String(str || '').replace(/\n/g, '');
+        var find = str.match(/<div id=["']inputData["'][^>]*>(\{[\s\S]*?\})<\/div>/i);
+        var json = null;
+        try { json = find && Lampa.Arrays.decodeJson(find[1], {}); } catch (e) {}
+        if (!json) {
+          try { json = find && JSON.parse(find[1]); } catch (e2) {}
+        }
+        return json;
+      }
+
+      function normalizeLegacyInputData(data) {
+        var items = [];
+        var seen = {};
+        if (!data) return items;
+        Object.keys(data).forEach(function (sNum) {
+          var episodes = data[sNum] || {};
+          Object.keys(episodes).forEach(function (eNum) {
+            var translations = episodes[eNum] || [];
+            if (!Array.isArray(translations)) return;
+            translations.forEach(function (tr) {
+              tr = tr || {};
+              var voiceId = tr.voice_id || tr.id || tr.translation_id || '';
+              var voiceName = tr.voice_name || tr.translation || tr.name || ('Озвучка ' + voiceId);
+              var key = [sNum, eNum, voiceId, voiceName].join('|');
+              if (seen[key]) return;
+              seen[key] = true;
+              items.push({
+                title: component.formatEpisodeTitle(sNum, eNum),
+                quality: '360p ~ 1080p',
+                info: ' / ' + Lampa.Utils.shortText(voiceName, 50),
+                season: parseInt(sNum, 10) || sNum,
+                episode: parseInt(eNum, 10) || eNum,
+                voice: voiceName,
+                legacy: true,
+                media: {
+                  season: sNum,
+                  episode: eNum,
+                  voice_id: voiceId,
+                  voice_name: voiceName,
+                  legacy: true,
+                  raw: tr
+                }
+              });
+            });
+          });
+        });
+        items.sort(function (a, b) { return (parseInt(a.season, 10) || 0) - (parseInt(b.season, 10) || 0) || (parseInt(a.episode, 10) || 0) - (parseInt(b.episode, 10) || 0) || String(a.voice).localeCompare(String(b.voice)); });
+        return items;
+      }
+
+      function loadLegacy(kp, callback, fail) {
+        kp = String(kp || '').replace(/\D+/g, '');
+        if (!kp) { fail && fail('no kp'); return; }
+        legacy_id = kp;
+        var url = legacyUrl(kp, 1, 1, '');
+        log('legacy-start', { kp: kp, url: preview(url) });
+        requestText(url, function (str) {
+          var data = parseLegacyInputData(str);
+          var items = normalizeLegacyInputData(data);
+          log('legacy-loaded', { kp: kp, seasons: data ? Object.keys(data).length : 0, items: items.length, sample: items.slice(0, 8) });
+          if (!items.length) { fail && fail('legacy empty'); return; }
+          legacy_items = items;
+          extract.fileList = null;
+          extract.iframe = '';
+          extract.info = { legacy: true, kp: kp };
+          extract.items = items;
+          callback(items);
+        }, function (message) {
+          log('legacy-fail', { kp: kp, message: preview(message, 400) });
+          fail && fail(message || 'legacy fail');
+        }, {
+          kind: 'legacy',
+          proxy: prox,
+          prox_enc: legacy_prox_enc,
+          enc: 'enc2t',
+          headers: {
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://lomont.site/'
+          },
+          dataType: 'text',
+          timeout: 12000
+        });
+      }
+
+      function parseLegacyPlayerConfig(str, url) {
+        str = String(str || '').replace(/\n/g, '');
+        var find = str.match(/<div id=["']videoplayer["'][^>]*data-config=[^>]*>/i);
+        var player = find && $(find[0]);
+        var result = { file: '', subtitles: false };
+        if (!player) return result;
+        var config = player.attr('data-config');
+        var json = null;
+        try { json = config && Lampa.Arrays.decodeJson(config, {}); } catch (e) {}
+        if (!json) {
+          try { json = config && JSON.parse(config); } catch (e2) {}
+        }
+        if (json && json.hls) result.file = component.fixLink(json.hls, url);
+        var subtitles = [];
+        ['data-original_subtitle', 'data-ru_subtitle', 'data-en_subtitle', 'data-ua_subtitle'].forEach(function (sub) {
+          var link = player.attr(sub);
+          if (link) subtitles.push({ label: sub.replace('data-', '').replace('_subtitle', ''), url: component.processSubs(component.fixLink(link, url)) });
+        });
+        result.subtitles = subtitles.length ? subtitles : false;
+        return result;
+      }
+
+      function allohaExtractQuality(str, url) {
+        if (!str) return [];
+        try {
+          var items = component.parseM3U(str).filter(function (item) { return item.xstream; }).map(function (item) {
+            var quality = item.height || 0;
+            if (quality > 1440 && quality <= 2160) quality = 2160;
+            else if (quality > 1080 && quality <= 1440) quality = 1440;
+            else if (quality > 720 && quality <= 1080) quality = 1080;
+            else if (quality > 480 && quality <= 720) quality = 720;
+            else if (quality > 360 && quality <= 480) quality = 480;
+            else if (quality > 240 && quality <= 360) quality = 360;
+            return { label: quality ? quality + 'p' : '360p ~ 1080p', quality: quality, bandwidth: item.bandwidth || 0, file: component.fixLink(item.link, url) };
+          });
+          items.sort(function (a, b) { return (b.quality - a.quality) || (b.bandwidth - a.bandwidth); });
+          return items;
+        } catch (e) {}
+        return [];
+      }
+
+      function getLegacyStream(element, call, error) {
+        if (element.stream) return call(element);
+        var media = element.media || {};
+        var url = legacyUrl(legacy_id, media.season || element.season || 1, media.episode || element.episode || 1, media.voice_id || '');
+        requestText(url, function (str) {
+          var parsed = parseLegacyPlayerConfig(str, url);
+          if (!parsed.file) { error && error(); return; }
+          element.stream = component.proxyLink(parsed.file, prox2, legacy_stream_prox_enc, 'enc2t');
+          element.subtitles = parsed.subtitles;
+          if (/\.m3u8(?:$|\?)/i.test(parsed.file)) {
+            requestText(parsed.file, function (m3u) {
+              var qitems = allohaExtractQuality(m3u, parsed.file).filter(function (it) { return it.quality > 0; });
+              if (qitems.length) {
+                var qmap = {};
+                qitems.forEach(function (it) { qmap[it.label] = component.proxyLink(it.file, prox2, legacy_stream_prox_enc, 'enc2t'); });
+                element.stream = qmap[qitems[0].label];
+                element.qualitys = qmap;
+              }
+              call(element);
+            }, function () { call(element); }, { kind: 'legacy-quality', proxy: prox2, prox_enc: legacy_stream_prox_enc, enc: 'enc2t', dataType: 'text', timeout: 10000 });
+          } else call(element);
+        }, function () { error && error(); }, {
+          kind: 'legacy-stream',
+          proxy: prox,
+          prox_enc: legacy_prox_enc,
+          enc: 'enc2t',
+          headers: {
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://lomont.site/'
+          },
+          dataType: 'text',
+          timeout: 12000
+        });
+      }
+
       function parseSubs(tracks) {
         if (!(tracks && tracks.forEach)) return false;
         var out = [];
@@ -11651,6 +11838,7 @@
       }
 
       function getStream(element, call, error) {
+        if (element && element.legacy) return getLegacyStream(element, call, error);
         if (element.stream) return call(element);
         var id = element.alloha_id || element.media && (element.media.id || element.media.id_file || element.media.file_id) || '';
         if (!id || !player_origin || !player_token) return error && error();
@@ -11810,19 +11998,33 @@
         select_title = object.search || object.movie.title || object.movie.name || object.movie.original_title || object.movie.original_name || '';
         component.loading(true);
         var variants = queryVariants();
-        log('search-start', { title: select_title, variants: variants, tmdb_id: movieTmdbId(), imdb_id: movieImdbId(), year: movieYear(), serial: isSerialObject() });
+        var kp = kpFromArgs(kinopoisk_id);
+        log('search-start', { title: select_title, variants: variants, tmdb_id: movieTmdbId(), imdb_id: movieImdbId(), kinopoisk_id: kp, year: movieYear(), serial: isSerialObject() });
+        function finishLegacy(items) {
+          component.loading(false);
+          buildFilter(items);
+          append(filtred());
+        }
         function fromPage(pageUrl) {
           getInfoFromPage(pageUrl, successInfo, function (message) {
             log('page-info-fail', { page: pageUrl, message: preview(message, 400) });
             getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
           });
         }
-        tryKinopoiskPage(fromPage, function () {
-          searchKinobaza(variants, 0, [], fromPage, function () {
-            log('search-no-page', { title: select_title });
-            getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
+        function kinobazaFallback() {
+          tryKinopoiskPage(fromPage, function () {
+            searchKinobaza(variants, 0, [], fromPage, function () {
+              log('search-no-page', { title: select_title });
+              getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
+            });
           });
-        });
+        }
+        if (kp && isSerialObject()) {
+          loadLegacy(kp, finishLegacy, function (message) {
+            log('legacy-to-kinobaza-fallback', { message: preview(message, 400) });
+            kinobazaFallback();
+          });
+        } else kinobazaFallback();
       };
 
       this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
@@ -26726,7 +26928,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.46: Alloha - прямий fallback для player iframe без proxy, пріоритет RU/KP-пошуку та виправлення підвантаження серій.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.47: Alloha - основний fallback через lomont.site/gt/<kp> для серій, Kinobaza/mars залишено резервом.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
