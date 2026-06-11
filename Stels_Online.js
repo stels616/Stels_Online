@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.85';
+    var STELS_ONLINE_VERSION = '1.1.86';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.85: Tartuga/VeoVeo - прибрано службові Default-серії, виправлено HLS master-потік без втрати аудіодоріжок.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.86: Tartuga/VeoVeo - фільми з season=0/episode=0 більше не показуються як Сезон 0 / Серія 0.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15400,8 +15400,9 @@
             var key = [season, episode, voice, file].join('|');
             if (seen[key]) return;
             seen[key] = true;
+            var itemTitle = (season || episode) ? component.formatEpisodeTitle(season || 1, episode, ep.title || '') : (select_title || content && content.title || voice || player && player.title || 'Tartuga');
             items.push({
-              title: component.formatEpisodeTitle(season, episode, ep.title || ''),
+              title: itemTitle,
               // Не розбиваємо VeoVeo master.m3u8 на окремі quality URL: master містить
               // окремі AUDIO groups, і при виборі variant-playlist можна отримати відео без аудіо.
               quality: v.streamQuality || 'HLS',
@@ -15679,7 +15680,7 @@
               var selectedVoice = ready.voice || ready.translate_voice || (filter_items.voice && filter_items.voice[choice.voice]) || '';
               var play = stelsSanitizeAndroidPlayable({
                 url: component.getDefaultQuality(ready.qualitys, ready.stream),
-                title: ready.season ? ready.title : (ready.title || select_title),
+                title: ready.season ? ready.title : (stelsIsZeroEpisodeTitle(ready.title) ? stelsMovieDisplayTitle(ready.title) : (ready.title || select_title)),
                 poster: ready.poster || '',
                 timeline: ready.timeline,
                 headers: ready.headers || false,
@@ -24487,7 +24488,20 @@
         }
       }
 
+      function stelsMovieDisplayTitle(fallback) {
+        var movie = object && object.movie || {};
+        var title = select_title || movie.title || movie.name || movie.original_title || movie.original_name || fallback || 'Фільм';
+        try { if (component && component.cleanTitle) title = component.cleanTitle(title); } catch (e) {}
+        return String(title || fallback || 'Фільм').replace(/\s+/g, ' ').trim();
+      }
+
+      function stelsIsZeroEpisodeTitle(title) {
+        title = stelsSafeDecodeHtml(title || '').replace(/\s+/g, ' ').trim();
+        return /^\s*(?:S\s*0\s*[:\/.]?\s*E\s*0|(?:Сезон|Season)\s*0\s*\/\s*(?:Серія|Серия|Episode|Епізод|Эпизод)\s*0)\s*$/i.test(title);
+      }
+
       function stelsCleanEpisodeTitle(title, season, episode) {
+        if ((parseInt(season, 10) || 0) === 0 && (parseInt(episode, 10) || 0) === 0 && stelsIsZeroEpisodeTitle(title)) return stelsMovieDisplayTitle(title);
         var out = stelsSafeDecodeHtml(title || '').replace(/\s+/g, ' ').trim();
         out = out.replace(/^\s*S\s*\d+\s*\/\s*/i, '');
         out = out.replace(/^\s*(?:Сезон|Season)\s*\d+\s*\/\s*/i, '');
@@ -29071,7 +29085,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.85: Tartuga/VeoVeo - прибрано службові Default-серії, виправлено HLS master-потік без втрати аудіодоріжок.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.86: Tartuga/VeoVeo - фільми з season=0/episode=0 більше не показуються як Сезон 0 / Серія 0.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
