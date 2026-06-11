@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.96';
+    var STELS_ONLINE_VERSION = '1.1.97';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.96: Tartuga - Alloha stream отримується через той самий proxy/headers як у джерелі Alloha; додано fallback id_file для /bnsi/movies.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.97: Tartuga-Alloha: багаторівневий stream fallback (raw/proxy, альтернативні iframe-домени, fallback на базовий id/all ids і iframe).' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -16015,6 +16015,8 @@
             player.player_origin = originFromUrl(current);
             player.player_referer = current;
             player.player_token = tokenFromUrl(current);
+            player.player_iframe_variants = variants;
+            player.player_iframe_reason = variants[pos] && variants[pos].reason || '';
             var items = normalizeFileListItems(fileList, player);
             log('filelist-loaded', { player: player.title, type: fileList.type, items: items.length, origin: player.player_origin, token_len: String(player.player_token || '').length, sample: items.slice(0, 8).map(function (it) { return it.title + '|' + it.voice; }) });
             if (items.length) success(items); else fail && fail('fileList empty');
@@ -16154,17 +16156,63 @@
         addId(media.id_file);
         addId(media.file_id);
         addId(element.alloha_id);
-        var origin = player.player_origin || originFromUrl(player.url) || '';
+        // Alloha часто повертає переклади як окремі id, але фактичний HLS може віддаватись тільки з базового id/id_file.
+        // Якщо у вибраного перекладу немає id_file (наприклад Dragon Money Studio), пробуємо всі id цього ж фільму/серії.
+        try {
+          (player.serial_items || []).forEach(function (it) {
+            if (!it) return;
+            if ((element.season || element.episode) && ((it.season || 0) !== (element.season || 0) || (it.episode || 0) !== (element.episode || 0))) return;
+            addId(it.file_id);
+            addId(it.alloha_id);
+            addId(it.media && it.media.id);
+            addId(it.media && it.media.id_file);
+            addId(it.media && it.media.file_id);
+          });
+        } catch (eids) {}
+        // Не допускаємо довгий перебір: спочатку вибраний id, потім базовий id_file/активний id і ще кілька запасних.
+        if (ids.length > 6) ids = ids.slice(0, 6);
         var token = player.player_token || tokenFromUrl(player.url) || '';
-        var referer = player.player_referer || player.url || ref;
-        if (!ids.length || !origin || !token) { error && error(); return; }
-        function streamEnc() {
+        var baseReferer = player.player_referer || player.url || ref;
+        if (!ids.length || !token) { error && error(); return; }
+        function buildStreamAttempts() {
+          var out = [];
+          var seen = {};
+          function add(origin, referer, proxy, reason) {
+            origin = String(origin || '').replace(/\/$/, '');
+            referer = String(referer || '').trim();
+            if (!origin) return;
+            var key = origin + '|' + referer + '|' + (proxy ? 'p' : 'r');
+            if (seen[key]) return;
+            seen[key] = true;
+            out.push({ origin: origin, referer: referer || (origin + '/'), proxy: !!proxy, reason: reason || '' });
+          }
+          var primaryOrigin = player.player_origin || originFromUrl(player.url) || '';
+          add(primaryOrigin, baseReferer, false, 'raw-current');
+          if (allohaProxy) add(primaryOrigin, baseReferer, true, 'proxy-current');
+          try {
+            (player.player_iframe_variants || playerIframeVariants(player)).forEach(function (v) {
+              var u = v && v.url || '';
+              var o = originFromUrl(u);
+              if (!o) return;
+              add(o, u, false, 'raw-' + (v.reason || 'variant'));
+              if (allohaProxy) add(o, u, true, 'proxy-' + (v.reason || 'variant'));
+            });
+          } catch (ea) {}
+          ['https://mars.stravers.live', 'https://astrid-as.stravers.live', 'https://synthezoid-as.stloadi.live', 'https://synthezoid-as.allarknow.online'].forEach(function (o) {
+            var u = o + '/?token_movie=' + encodeURIComponent(tokenMovieFromUrl(player.url) || '') + '&token=' + encodeURIComponent(token);
+            add(o, u, false, 'raw-host:' + o);
+            if (allohaProxy) add(o, u, true, 'proxy-host:' + o);
+          });
+          return out;
+        }
+        var attempts = buildStreamAttempts().slice(0, 10);
+        function streamEnc(attempt) {
           var enc = '';
           enc += 'param/User-Agent=' + encodeURIComponent(allohaUserAgent) + '/';
           enc += 'param/Accept=' + encodeURIComponent('*/*') + '/';
           enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
-          enc += 'param/Referer=' + encodeURIComponent(referer || (origin + '/')) + '/';
-          enc += 'param/Origin=' + encodeURIComponent(origin) + '/';
+          enc += 'param/Referer=' + encodeURIComponent(attempt.referer || (attempt.origin + '/')) + '/';
+          enc += 'param/Origin=' + encodeURIComponent(attempt.origin) + '/';
           enc += 'param/Content-Type=' + encodeURIComponent('application/x-www-form-urlencoded; charset=UTF-8') + '/';
           enc += 'param/X-Requested-With=' + encodeURIComponent('XMLHttpRequest') + '/';
           enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('empty') + '/';
@@ -16173,7 +16221,7 @@
           return enc;
         }
         function allohaPlayableUrl(url, enc) {
-          url = absolute(String(url || '').split(/\s+or\s+/i)[0], referer);
+          url = absolute(String(url || '').split(/\s+or\s+/i)[0], baseReferer || ref);
           return url && allohaProxy ? component.proxyLink(url, allohaProxy, enc) : url;
         }
         function parseTracks(tracks, enc) {
@@ -16219,34 +16267,49 @@
           element.qualitys = quality;
           element.subtitles = parseTracks(json.tracks || json.subtitles || [], enc);
           element.headers = false;
+          element.iframe = false;
           return true;
         }
+        function fallbackIframe(lastError) {
+          var iframe = baseReferer || player.url || '';
+          if (!iframe) { error && error(lastError); return; }
+          element.stream = iframe;
+          element.qualitys = false;
+          element.subtitles = false;
+          element.headers = iframeHeaders;
+          element.iframe = true;
+          element.skip_quality_probe = true;
+          log('alloha-stream-iframe-fallback', { iframe: preview(iframe, 220), error: preview(lastError || '', 260) });
+          call(element);
+        }
         function tryAllohaStream(pos, lastError) {
-          if (pos >= ids.length) { log('alloha-stream-all-fail', { ids: ids, message: preview(lastError || '', 260), proxy: !!allohaProxy }); error && error(lastError); return; }
-          var id = ids[pos];
-          var url = origin + '/bnsi/movies/' + encodeURIComponent(id);
+          var total = Math.min(ids.length * attempts.length, 18);
+          if (pos >= total) { log('alloha-stream-all-fail', { ids: ids, attempts: attempts.map(function (a) { return a.reason; }).slice(0, 20), message: preview(lastError || '', 260), proxy: !!allohaProxy }); fallbackIframe(lastError); return; }
+          var id = ids[Math.floor(pos / attempts.length)];
+          var attempt = attempts[pos % attempts.length] || attempts[0] || { origin: player.player_origin || originFromUrl(player.url) || '', referer: baseReferer, proxy: false, reason: 'fallback' };
+          var url = attempt.origin + '/bnsi/movies/' + encodeURIComponent(id);
           var post = 'token=' + encodeURIComponent(token) + '&av1=true&autoplay=0&audio=&subtitle=';
-          var enc = streamEnc();
+          var enc = streamEnc(attempt);
           var h = {
             'User-Agent': allohaUserAgent,
             'Accept': '*/*',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Origin': origin,
-            'Referer': referer,
+            'Origin': attempt.origin,
+            'Referer': attempt.referer || (attempt.origin + '/'),
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
             'X-Requested-With': 'XMLHttpRequest',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin'
           };
-          log('alloha-stream-request', { id: id, pos: pos, total: ids.length, url: preview(url, 220), origin: origin, referer: preview(referer, 220), token_len: String(token || '').length, proxy: !!allohaProxy });
+          log('alloha-stream-request', { id: id, pos: pos, total: total, reason: attempt.reason || '', url: preview(url, 220), origin: attempt.origin, referer: preview(attempt.referer, 220), token_len: String(token || '').length, proxy: !!(attempt.proxy && allohaProxy) });
           requestText(url, function (jsonText) {
             if (extractStream(jsonText, id, enc)) call(element);
-            else tryAllohaStream(pos + 1, 'empty stream for id ' + id);
+            else tryAllohaStream(pos + 1, 'empty stream for id ' + id + ' via ' + (attempt.reason || ''));
           }, function (msg) {
-            log('alloha-stream-fail', { id: id, message: preview(msg || '', 260), proxy: !!allohaProxy });
+            log('alloha-stream-fail', { id: id, reason: attempt.reason || '', message: preview(msg || '', 260), proxy: !!(attempt.proxy && allohaProxy) });
             tryAllohaStream(pos + 1, msg || 'stream fail');
-          }, { post: post, headers: h, dataType: 'text', timeout: 18000, proxy: allohaProxy, prox_enc: enc, enc: 'enc2t' });
+          }, { post: post, headers: h, dataType: 'text', timeout: 7000, proxy: attempt.proxy ? allohaProxy : '', prox_enc: enc, enc: 'enc2t', raw: !attempt.proxy });
         }
         tryAllohaStream(0);
       }
@@ -29670,7 +29733,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.96: Tartuga - Alloha stream отримується через той самий proxy/headers як у джерелі Alloha; додано fallback id_file для /bnsi/movies.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.97: Tartuga-Alloha: багаторівневий stream fallback (raw/proxy, альтернативні iframe-домени, fallback на базовий id/all ids і iframe).' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
