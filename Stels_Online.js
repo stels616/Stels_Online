@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.105';
+    var STELS_ONLINE_VERSION = '1.1.107';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -21,13 +21,13 @@
     var STELS_REQUESTED_SOURCE_NAMES = [
       'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'uaserials', 'rezka720',
       'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
-      'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'zetflixnet', 'collaps',
+      'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'zetflixnet',
       'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'zerx', 'uafilm', 'kinotochka', 'iremux', 'remux',
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
-      'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
+      'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
       'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
-      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie',
-      'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
+      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'showytor', 'kinobase', 'phantom', 'spectre', 'nenetflixbd', 'collaps', 'rutube',
+      'kinoflix', 'leproduction', 'vkmovie', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
       'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
       'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
     ];
@@ -36,14 +36,14 @@
       uaflix: 'UAflix', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', jacktor: 'JackTor', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
       mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
       rezka: 'Rezka', pizdatoehd: 'PizdatoeHD', getstv: 'GetsTV', kinopub: 'KinoPub', zetflixdb: 'ZetflixDB', zetflixnet: 'ZetflixNet',
-      collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
+      showytor: 'ShowyTOR', collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
       kinoukr: 'KinoUkr', zerx: 'Zerx', uafilm: 'UAFilm', kinotochka: 'KinoTochka', iremux: 'iRemux', remux: 'Remux', anilibria: 'AniLibria',
       animedia: 'Animedia', animego: 'AnimeGo', animevost: 'AnimeVost', animebesst: 'AnimeBesst', alloha: 'Alloha',
-      mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
+      mirage: 'Mirage', phantom: 'Phantom', spectre: 'Spectre', nenetflixbd: 'NeNetflix bd', rutube: 'Rutube', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
       videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
-      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe',
+      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobase', asiage: 'AsiaGe',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
@@ -51,7 +51,7 @@
     };
 
     var STELS_SOURCE_ENGINE_ALIAS = {
-      lumex: 'lumex', lumex2: 'lumex2', rezka2: 'rezka2', kinobase: 'kinobase', collaps: 'collaps',
+      lumex: 'lumex', lumex2: 'lumex2', rezka2: 'rezka2', showytor: 'showytor', kinobase: 'kinobase', phantom: 'phantom', spectre: 'spectre', nenetflixbd: 'nenetflixbd', collaps: 'collaps', rutube: 'rutube',
       'collaps-dash': 'collaps-dash', cdnmovies: 'cdnmovies', filmix: 'filmix', zetflix: 'zetflix', zetflixnet: 'zetflixnet',
       fancdn: 'fancdn', fancdn2: 'fancdn2', fanserials: 'fanserials', videoseed: 'videoseed', vibix: 'vibix',
       redheadsound: 'redheadsound', 'redheadsound-dash': 'redheadsound-dash', cdnvideohub: 'cdnvideohub',
@@ -62,7 +62,7 @@
       eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
-      mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
+      mirage: 'rc-mirage', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
       pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', kinoflix: 'videoseed', leproduction: 'videoseed',
       vkmovie: 'cdnvideohub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'cdnvideohub'
@@ -5629,7 +5629,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.105: Tartuga швидше відкриває список плеєрів без глобального title-refresh; Alloha ізольовано пробує HAR-origin astrid першим і Android HLS через headers/proxy.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.107: додано Showy remote-джерела ShowyTOR/Kinobase/Phantom/Spectre/NeNetflix bd/Collaps/Rutube; standalone Alloha переведено на Showy endpoint, Tortuga не змінювалась.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -16391,7 +16391,7 @@
           });
           return out;
         }
-        var baseAttempts = buildStreamAttempts().slice(0, 6);
+        var baseAttempts = buildStreamAttempts().slice(0, 2);
         var attempts = [];
         function pushAttempt(a, av1, includeTrackParams, suffix, autoplayValue) {
           var x = {};
@@ -16500,14 +16500,25 @@
           return true;
         }
         function fallbackIframe(lastError) {
-          // 1.1.104: Alloha більше не перемикається автоматично на HDVB/VeoVeo/Turbo/Collaps.
-          // Інакше користувач бачить, що вибрав Alloha/переклад Alloha, але фактично грає інший плеєр.
-          // Інші плеєри Tartuga доступні тільки через фільтр "Плеєри" і їхня логіка тут не чіпається.
-          log('alloha-stream-no-cross-player-fallback', { error: preview(lastError || '', 260), reason: 'alloha-isolated' });
+          // 1.1.106: якщо прямий /bnsi/movies не віддав HLS, не перемикаємося на HDVB/VeoVeo,
+          // а відкриваємо саме Alloha iframe. Так користувач бачить Alloha, а робочі плеєри Tartuga не чіпаються.
+          var iframeUrl = player.player_referer || player.url || element.stream || '';
+          if (iframeUrl) {
+            element.stream = iframeUrl;
+            element.iframe = true;
+            element.method = 'iframe';
+            element.headers = iframeHeaders;
+            element.qualitys = false;
+            element.skip_quality_probe = true;
+            log('alloha-stream-iframe-fallback', { error: preview(lastError || '', 260), iframe: preview(iframeUrl, 220), reason: 'alloha-own-iframe' });
+            call(element);
+            return;
+          }
+          log('alloha-stream-no-cross-player-fallback', { error: preview(lastError || '', 260), reason: 'alloha-isolated-no-iframe' });
           error && error(lastError || 'Alloha stream failed');
         }
         function tryAllohaStream(pos, lastError) {
-          var total = Math.min(ids.length * attempts.length, 24);
+          var total = Math.min(ids.length * attempts.length, 8);
           if (pos >= total) { log('alloha-stream-all-fail', { ids: ids, attempts: attempts.map(function (a) { return a.reason; }).slice(0, 20), message: preview(lastError || '', 260), proxy: !!allohaProxy }); fallbackIframe(lastError); return; }
           var id = ids[Math.floor(pos / attempts.length)];
           var attempt = attempts[pos % attempts.length] || attempts[0] || { origin: player.player_origin || originFromUrl(player.url) || '', referer: baseReferer, proxy: false, reason: 'fallback' };
@@ -22116,6 +22127,10 @@
           var nws_id = Lampa.Storage.get('lampac_nws_id', '');
           if (nws_id) url = Lampa.Utils.addUrlComponent(url, 'nws_id=' + encodeURIComponent(nws_id));
         }
+        if ((remoteOptions.showyToken || /showypro\.com/i.test(host || '')) && url.indexOf('showy_token=') == -1) {
+          var showy_token = Lampa.Storage.get('showy_token', '');
+          if (showy_token) url = Lampa.Utils.addUrlComponent(url, 'showy_token=' + encodeURIComponent(showy_token));
+        }
         return url;
       }
 
@@ -22336,6 +22351,7 @@
         query.push('original_language=' + (movie.original_language || ''));
         query.push('year=' + ((movie.release_date || movie.first_air_date || '0000') + '').slice(0, 4));
         query.push('source=' + card_source);
+        if (card_source == 'tmdb' || card_source == 'cub') query.push('external_ids=true');
         query.push('clarification=' + (object.clarification ? 1 : 0));
         query.push('similar=' + (object.similar ? true : false));
         var rch_state = remoteRchEnsure();
@@ -25793,6 +25809,41 @@
         kp: true,
         imdb: true
       }, {
+        name: 'showytor',
+        title: 'ShowyTOR',
+        source: new lampauaRemoteSource(this, object, ['showytor', 'showy tor', 'pidtor'], 'ShowyTOR', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'pidtor' }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
+        name: 'phantom',
+        title: 'Phantom',
+        source: new lampauaRemoteSource(this, object, ['phantom'], 'Phantom', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'phantom', voiceFromSimilar: true }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
+        name: 'spectre',
+        title: 'Spectre',
+        source: new lampauaRemoteSource(this, object, ['spectre'], 'Spectre', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'spectre', voiceFromSimilar: true }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
+        name: 'nenetflixbd',
+        title: 'NeNetflix bd',
+        source: new lampauaRemoteSource(this, object, ['nenetflix bd', 'nenetflixbd', 'ne netflix bd', 'zetflixdb'], 'NeNetflix bd', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'zetflixdb' }),
+        search: false,
+        kp: true,
+        imdb: true
+      }, {
+        name: 'rutube',
+        title: 'Rutube',
+        source: new lampauaRemoteSource(this, object, ['rutube', 'rutubemovie', 'rutube movie'], 'Rutube', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'rutubemovie' }),
+        search: false,
+        kp: true,
+        imdb: true
+      }, {
         name: 'rc-collaps-dash',
         title: 'Collaps (DASH)',
         source: new lampauaRemoteSource(this, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
@@ -25861,20 +25912,20 @@
         imdb: false
       }, {
         name: 'kinobase',
-        title: 'Kinobaza',
-        source: new kinobase(this, object),
+        title: 'Kinobase',
+        source: new lampauaRemoteSource(this, object, ['kinobase', 'kino base'], 'Kinobase', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'kinobase' }),
         search: true,
-        kp: false,
+        kp: true,
         imdb: true,
         disabled: false
       }, {
         name: 'collaps',
         title: 'Collaps',
-        source: new collaps(this, object, false),
+        source: new lampauaRemoteSource(this, object, ['collaps'], 'Collaps', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'collaps' }),
         search: false,
         kp: true,
         imdb: true,
-        disabled: collapsBlocked
+        disabled: false
       }, {
         name: 'collaps-dash',
         title: 'Collaps (DASH)',
@@ -26009,11 +26060,11 @@
       }, {
         name: 'alloha',
         title: 'Alloha',
-        source: new alloha(this, object),
+        source: new lampauaRemoteSource(this, object, ['alloha'], 'Alloha', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'alloha' }),
         search: false,
         kp: true,
         imdb: true,
-        disabled: true
+        disabled: false
       }, {
         name: 'kinopub',
         title: 'KinoPub',
@@ -30040,7 +30091,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.105: Tartuga швидше відкриває список плеєрів без глобального title-refresh; Alloha ізольовано пробує HAR-origin astrid першим і Android HLS через headers/proxy.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.107: додано Showy remote-джерела ShowyTOR/Kinobase/Phantom/Spectre/NeNetflix bd/Collaps/Rutube; standalone Alloha переведено на Showy endpoint, Tortuga не змінювалась.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
