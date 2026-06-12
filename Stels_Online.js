@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.117';
+    var STELS_ONLINE_VERSION = '1.1.118';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.117: додано Filmix 4K через прямий backend із Filmix 4K.har: http://130.49.219.60:9118/lite/fxapi без showypro/showy_token; Spectre/NeNetflix/Alloha/Collaps/Tartuga не чіпав.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.118: виправлено Filmix 4K: HAR показав, що робочий fxapi був не на прямому backend, а на showypro.com/lite/fxapi із showy_token; додано передачу showy_token зі Storage. Без Showy-авторизації Filmix 4K не відкривається. Інші джерела не чіпав.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -20676,6 +20676,13 @@
           var nws_id = Lampa.Storage.get('lampac_nws_id', '');
           if (nws_id) url = Lampa.Utils.addUrlComponent(url, 'nws_id=' + encodeURIComponent(nws_id));
         }
+        // 1.1.118: Showy premium endpoints (зокрема Filmix 4K/fxapi) не працюють
+        // через прямий backend без авторизації. Якщо у Lampa вже є showy_token
+        // від Showy-плагіна, додаємо його так само, як у Showy m.js.
+        if ((remoteOptions.showyToken || /showypro\.com/i.test(host || '')) && url.indexOf('showy_token=') == -1) {
+          var showy_token = Lampa.Storage.get('showy_token', '');
+          if (showy_token) url = Lampa.Utils.addUrlComponent(url, 'showy_token=' + encodeURIComponent(showy_token));
+        }
         return url;
       }
 
@@ -24486,10 +24493,10 @@
       }, {
         name: 'filmix4k',
         title: 'Filmix 4K',
-        // 1.1.117: за Filmix 4K.har робочий backend — showy.pro localhost
-        // http://130.49.219.60:9118/lite/fxapi. Він повертає багато videos__item з прямими mp4
-        // і quality 2160p/1440p/1080p; movieVoiceFilter групує їх в одну картку з перекладами у фільтрі.
-        source: new lampauaRemoteSource(this, object, ['filmix4k', 'filmix 4k', 'fxapi', 'filmix'], 'Filmix 4K', { host: 'http://130.49.219.60:9118/', token: false, showyToken: false, directPath: 'fxapi', preferDirect: true, movieVoiceFilter: true }),
+        // 1.1.118: Filmix 4K.har НЕ містить робочого безавторизаційного backend для fxapi.
+        // В HAR робочий запит був showypro.com/lite/fxapi із showy_token; прямий 130.49.219.60:9118 повертає "Не авторизован".
+        // Тому використовуємо showypro.com + showy_token зі Storage; без Showy-авторизації Filmix 4K не відкриється.
+        source: new lampauaRemoteSource(this, object, ['filmix4k', 'filmix 4k', 'fxapi', 'filmix'], 'Filmix 4K', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'fxapi', preferDirect: true, movieVoiceFilter: true }),
         search: false,
         kp: true,
         imdb: true
@@ -25163,7 +25170,7 @@
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino');
           if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
-          if (name === 'filmix4k' || engine === 'filmix4k') return new lampauaRemoteSource(fake, object, ['filmix4k', 'filmix 4k', 'fxapi', 'filmix'], 'Filmix 4K', { host: 'http://130.49.219.60:9118/', token: false, showyToken: false, directPath: 'fxapi', preferDirect: true, movieVoiceFilter: true });
+          if (name === 'filmix4k' || engine === 'filmix4k') return new lampauaRemoteSource(fake, object, ['filmix4k', 'filmix 4k', 'fxapi', 'filmix'], 'Filmix 4K', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'fxapi', preferDirect: true, movieVoiceFilter: true });
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
@@ -28638,7 +28645,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.117: додано Filmix 4K через прямий backend із Filmix 4K.har: http://130.49.219.60:9118/lite/fxapi без showypro/showy_token; Spectre/NeNetflix/Alloha/Collaps/Tartuga не чіпав.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.118: виправлено Filmix 4K: HAR показав, що робочий fxapi був не на прямому backend, а на showypro.com/lite/fxapi із showy_token; додано передачу showy_token зі Storage. Без Showy-авторизації Filmix 4K не відкривається. Інші джерела не чіпав.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
