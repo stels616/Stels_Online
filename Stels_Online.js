@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.126';
+    var STELS_ONLINE_VERSION = '1.1.127';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -67,6 +67,73 @@
       pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', kinoflix: 'videoseed', leproduction: 'videoseed',
       vkmovie: 'cdnvideohub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
     };
+
+    // 1.1.127: глобальні helpers якості. Частина джерел і ZetflixNet знаходяться
+    // поза внутрішнім scope, де раніше була така функція, через що в логах було
+    // "stelsQualityToValue is not defined" і quality-prefetch перекладів обривався.
+    function stelsQualityToValue(label) {
+      try {
+        if (label == null || label === false || label === true) return 0;
+        if (typeof label == 'number') return label > 100 && label < 9000 ? label : 0;
+        var text = String(label || '').replace(/&nbsp;/g, ' ');
+        try { text = decodeURIComponent(text); } catch (e) {}
+        try { text = text.replace(/\\u([0-9a-f]{4})/ig, function (all, h) { return String.fromCharCode(parseInt(h, 16)); }); } catch (e2) {}
+        var max = 0;
+        var low = text.toLowerCase();
+        if (/(^|[^a-z0-9])(?:uhd|ultra\s*hd)([^a-z0-9]|$)/i.test(low)) max = Math.max(max, 2160);
+        if (/(^|[^a-z0-9])(?:fhd|full\s*hd)([^a-z0-9]|$)/i.test(low)) max = Math.max(max, 1080);
+        if (/(^|[^a-z0-9])hd([^a-z0-9]|$)/i.test(low)) max = Math.max(max, 720);
+        text.replace(/(^|[^a-z0-9])([842])\s*k([^a-z0-9]|$)/ig, function (all, pre, k) {
+          var v = parseInt(k, 10);
+          if (v === 8) max = Math.max(max, 4320);
+          else if (v === 4) max = Math.max(max, 2160);
+          else if (v === 2) max = Math.max(max, 1440);
+          return all;
+        });
+        text.replace(/(^|[^a-z0-9])((?:4320|2160|1440|1080|720|576|480|360|240|144))\s*p([^a-z0-9]|$)/ig, function (all, pre, q) {
+          var v = parseInt(q, 10);
+          if (v >= 144 && v <= 4320) max = Math.max(max, v);
+          return all;
+        });
+        text.replace(/(?:quality|height|max_quality|res|resolution)[^0-9]{0,12}((?:4320|2160|1440|1080|720|576|480|360|240|144))/ig, function (all, q) {
+          var v = parseInt(q, 10);
+          if (v >= 144 && v <= 4320) max = Math.max(max, v);
+          return all;
+        });
+        return max;
+      } catch (e3) {}
+      return 0;
+    }
+
+    function stelsQualityLabel(value) {
+      value = parseInt(value, 10) || 0;
+      if (!value) return '';
+      if (value >= 4320) return '8K';
+      if (value >= 2160) return '4K';
+      if (value >= 1440) return '2K';
+      return value + 'p';
+    }
+
+    function stelsExtractMaxQualityFromAny(value, depth, keyHint) {
+      depth = depth || 0;
+      if (depth > 5 || value == null) return 0;
+      try {
+        if (typeof value == 'number') return /quality|height|resolution|max|q/i.test(keyHint || '') ? stelsQualityToValue(value) : 0;
+        if (typeof value == 'string') return stelsQualityToValue(value);
+        var max = 0;
+        if (Array.isArray(value)) {
+          value.forEach(function (v) { max = Math.max(max, stelsExtractMaxQualityFromAny(v, depth + 1, keyHint)); });
+          return max;
+        }
+        if (typeof value == 'object') {
+          Object.keys(value).forEach(function (k) {
+            max = Math.max(max, stelsQualityToValue(k), stelsExtractMaxQualityFromAny(value[k], depth + 1, k));
+          });
+          return max;
+        }
+      } catch (e) {}
+      return 0;
+    }
 
     function stelsNormalizeSourceKey(value) {
       return (value == null ? '' : String(value)).trim().toLowerCase();
@@ -18498,184 +18565,23 @@
       }
 
       function zetflixnetInstallVoiceMenuObserver() {
-        try {
-          if (zetflixnetVoiceMenuObserver || typeof MutationObserver === 'undefined' || !document.body) return;
-          zetflixnetVoiceMenuObserver = new MutationObserver(function () {
-            if (!zetflixnetLastSelectedVoiceName || zetflixnetVoiceCheckApplying) return;
-            if (Date.now() < zetflixnetVoiceCheckMuteUntil) return;
-            clearTimeout(zetflixnetVoiceMenuTimer);
-            zetflixnetVoiceMenuTimer = setTimeout(function () {
-              if (!zetflixnetLastSelectedVoiceName || Date.now() < zetflixnetVoiceCheckMuteUntil) return;
-              zetflixnetRefreshVisibleVoiceCheckmark(zetflixnetLastSelectedVoiceName, 'mutation-observer');
-            }, 140);
-          });
-          zetflixnetVoiceMenuObserver.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['class', 'style', 'aria-selected', 'data-selected', 'disabled']
-          });
-          stelsLog('zetflixnet-voice-menu-observer-installed', { platform_tizen: zetflixnetIsTizenPlatform(), ua: (navigator && navigator.userAgent || '').slice(0, 180) });
-        } catch (e) {
-          stelsLog('zetflixnet-voice-menu-observer-error', { error: e && (e.message || e.toString()) || '' });
-        }
+        // 1.1.127: вимкнено DOM-observer для галочок. Він сканував увесь document.body,
+        // чіпав рядки фільтра/меню джерел і міг блокувати відкриття фільтра.
+        try { stelsLog('zetflixnet-voice-menu-observer-disabled', { reason: 'native-filter-selection-only' }); } catch (e) {}
+        return false;
       }
 
       function zetflixnetRefreshVisibleVoiceCheckmark(voiceName, reason) {
-        var result = { voice: voiceName || '', reason: reason || '', rows: 0, target_rows: 0, removed: 0, forced: 0, errors: [] };
+        var result = { voice: voiceName || '', reason: reason || '', rows: 0, target_rows: 0, removed: 0, forced: 0, disabled: true, errors: [] };
         try {
-          voiceName = cleanText(voiceName || '');
-          if (!voiceName) return result;
-          zetflixnetLastSelectedVoiceName = voiceName;
-          zetflixnetInstallVoiceCheckStyle();
-          zetflixnetInstallVoiceMenuObserver();
-          zetflixnetVoiceCheckApplying = true;
-          var wanted = voiceName.toLowerCase();
-          var voiceNames = [];
-          var voiceDetect = [];
-          function addDetect(match, raw) {
-            match = cleanText(match || '').toLowerCase();
-            raw = cleanText(raw || match || '').toLowerCase();
-            if (!match) return;
-            for (var ai = 0; ai < voiceDetect.length; ai++) if (voiceDetect[ai].match === match) return;
-            voiceDetect.push({ match: match, raw: raw });
+          // Не форсуємо checked/active класами. Lampa сама ставить галочку по choice.voice.
+          // Прибираємо тільки раніше додані наші штучні галочки, якщо вони лишились у DOM.
+          var old = document.querySelectorAll ? document.querySelectorAll('.stels-zetflixnet-voice-check') : [];
+          for (var i = old.length - 1; i >= 0; i--) {
+            try { old[i].parentNode.removeChild(old[i]); result.removed++; } catch (er) {}
           }
-          try {
-            var rawList = filter_items && filter_items.voice_raw && filter_items.voice_raw.length ? filter_items.voice_raw : filter_items && filter_items.voice || [];
-            var displayList = filter_items && filter_items.voice || [];
-            for (var vi = 0; vi < rawList.length; vi++) {
-              var rawName = cleanText(rawList[vi] || '');
-              var displayName = cleanText(displayList[vi] || rawName || '');
-              if (rawName && voiceNames.indexOf(rawName.toLowerCase()) === -1) voiceNames.push(rawName.toLowerCase());
-              addDetect(displayName, rawName);
-              addDetect(rawName, rawName);
-            }
-          } catch (ev) {}
-          if (!voiceDetect.length) { voiceNames.push(wanted); addDetect(wanted, wanted); }
-
-          function textOf(el) { try { return cleanText(el && el.textContent || '').toLowerCase(); } catch (e) { return ''; } }
-          function directTextOf(el) {
-            try {
-              var out = '';
-              for (var i = 0; i < el.childNodes.length; i++) {
-                if (el.childNodes[i].nodeType === 3) out += ' ' + el.childNodes[i].nodeValue;
-              }
-              return cleanText(out).toLowerCase();
-            } catch (e) { return ''; }
-          }
-          function containsOtherVoice(text, currentVoice) {
-            var found = {};
-            for (var i = 0; i < voiceDetect.length; i++) {
-              var vn = voiceDetect[i].match;
-              if (!vn) continue;
-              if (text === vn || text.indexOf(vn) >= 0) found[voiceDetect[i].raw || vn] = true;
-            }
-            return Object.keys(found).length > 1;
-          }
-          function detectVoiceForElement(el) {
-            var text = textOf(el);
-            var dtext = directTextOf(el);
-            var best = '';
-            var bestRaw = '';
-            var bestLen = 0;
-            for (var i = 0; i < voiceDetect.length; i++) {
-              var vn = voiceDetect[i].match;
-              if (!vn) continue;
-              if (dtext === vn || text === vn || text.indexOf(vn) >= 0) {
-                if (vn.length > bestLen) { best = vn; bestRaw = voiceDetect[i].raw || vn; bestLen = vn.length; }
-              }
-            }
-            if (!best) return '';
-            if (text.length > 220 || containsOtherVoice(text, bestRaw)) return '';
-            return bestRaw || best;
-          }
-          function rowFor(el) {
-            if (!el) return null;
-            var selectors = '.selectbox-item,.selectbox__item,.selector,.selector__item,.menu__item,.simple-button,.player-panel__button,.player-panel__item,.player__select-item,.player-tracks__item,.tracks__item,li,div';
-            var row = null;
-            try { row = el.closest && el.closest(selectors); } catch (e) { row = null; }
-            if (!row) row = el;
-            var txt = textOf(row);
-            if (txt.length > 260 || containsOtherVoice(txt, detectVoiceForElement(el))) row = el;
-            return row;
-          }
-          var rows = [];
-          var seen = [];
-          function addRow(row, vname) {
-            if (!row || !vname) return;
-            if (seen.indexOf(row) !== -1) return;
-            seen.push(row);
-            rows.push({ row: row, voice: vname });
-          }
-
-          var selector = '.selectbox-item,.selectbox__item,.selector,.selector__item,.menu__item,.simple-button,.player-panel__button,.player-panel__item,.player__select-item,.player-tracks__item,.tracks__item,li,span,div';
-          var nodes = [];
-          try { nodes = Array.prototype.slice.call(document.querySelectorAll(selector)); } catch (eq) { nodes = []; }
-          for (var ni = 0; ni < nodes.length; ni++) {
-            var el = nodes[ni];
-            if (!el || !el.textContent) continue;
-            var v = detectVoiceForElement(el);
-            if (!v) continue;
-            addRow(rowFor(el), v);
-          }
-
-          // На Tizen меню плеєра іноді малюється без стабільних класів. Тому робимо резервний прохід по всіх видимих leaf-вузлах.
-          if (!rows.length || rows.filter(function (r) { return r.voice === wanted; }).length === 0) {
-            try {
-              var all = Array.prototype.slice.call(document.body.querySelectorAll('*'));
-              all.forEach(function (el2) {
-                if (!el2 || !el2.textContent) return;
-                if (el2.children && el2.children.length > 3) return;
-                var v2 = detectVoiceForElement(el2);
-                if (v2) addRow(rowFor(el2), v2);
-              });
-            } catch (efallback) { result.errors.push('fallback-scan:' + (efallback && (efallback.message || efallback.toString()) || efallback)); }
-          }
-
-          rows.forEach(function (entry) {
-            var el = entry.row;
-            var selected = entry.voice === wanted;
-            result.rows++;
-            try { el.classList.add('stels-zetflixnet-voice-row'); } catch (c0) {}
-            try { el.setAttribute('data-stels-voice-name', entry.voice || ''); } catch (c00) {}
-            try { el.classList.toggle('stels-zetflixnet-voice-current', selected); } catch (c1) {}
-            ['active','selected','focus','checked','current','selector--active','selector--selected','selectbox-item--active','selectbox__item--active','selectbox-item--checked','selectbox__item--checked'].forEach(function (cls) {
-              try { el.classList.toggle(cls, selected); } catch (cx) {}
-            });
-            try { el.setAttribute('data-selected', selected ? 'true' : 'false'); } catch (c9) {}
-            try { el.setAttribute('aria-selected', selected ? 'true' : 'false'); } catch (c10) {}
-            try { el.removeAttribute('disabled'); el.removeAttribute('aria-disabled'); } catch (c11) {}
-            try {
-              var old = el.querySelectorAll ? el.querySelectorAll('.stels-zetflixnet-voice-check') : [];
-              for (var oi = old.length - 1; oi >= 0; oi--) { try { old[oi].parentNode.removeChild(old[oi]); result.removed++; } catch (or) {} }
-            } catch (erem) {}
-            // Ховаємо лише ймовірні нативні галочки у неактивних рядках, щоб стара галочка Lampa не лишалась видимою.
-            try {
-              var checks = el.querySelectorAll ? el.querySelectorAll('[class*=check],[class*=checked],svg') : [];
-              for (var ci = 0; ci < checks.length; ci++) {
-                var chk0 = checks[ci];
-                if (chk0.classList && chk0.classList.contains('stels-zetflixnet-voice-check')) continue;
-                var t = textOf(chk0);
-                var looks = /✓|✔|check|checked/i.test((chk0.className && String(chk0.className)) || '') || t === '✓' || t === '✔' || (chk0.tagName || '').toLowerCase() === 'svg';
-                if (!looks) continue;
-                chk0.style.opacity = selected ? '' : '0';
-                chk0.style.visibility = selected ? '' : 'hidden';
-              }
-            } catch (ehide) {}
-            if (selected) {
-              try {
-                var mark = document.createElement('span');
-                mark.className = 'stels-zetflixnet-voice-check';
-                mark.textContent = '✓';
-                el.appendChild(mark);
-                result.target_rows++;
-              } catch (ea) { result.errors.push('append:' + (ea && (ea.message || ea.toString()) || ea)); }
-            }
-          });
-          result.forced = rows.length;
         } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
-        try { zetflixnetVoiceCheckApplying = false; zetflixnetVoiceCheckMuteUntil = Date.now() + 350; } catch (emute) {}
-        stelsLog('zetflixnet-visible-voice-checkmark-updated', result);
+        stelsLog('zetflixnet-visible-voice-checkmark-disabled', result);
         return result;
       }
 
@@ -18732,33 +18638,8 @@
             }
           } catch (epd) { result.errors.push('playdata:' + (epd && (epd.message || epd.toString()) || epd)); }
 
-          // Якщо меню перекладів на Tizen лишається відкритим, Lampa не перебудовує його, бо ми не викликаємо Lampa.Player.play().
-          // Тому м'яко оновлюємо видимий стан рядків: прибираємо checked/active зі старого перекладу і ставимо на новий.
-          try {
-            var normWanted = cleanText(voiceName).toLowerCase();
-            var candidates = document.querySelectorAll('.selector, .settings-param, .selectbox-item, .simple-button, .player-panel__button, .menu__item, li, div');
-            for (var i = 0; i < candidates.length; i++) {
-              var el = candidates[i];
-              if (!el || !el.textContent) continue;
-              var text = cleanText(el.textContent).toLowerCase();
-              var isVoiceRow = false;
-              if (filter_items && filter_items.voice) {
-                for (var vi = 0; vi < filter_items.voice.length; vi++) {
-                  var vn = cleanText(filter_items.voice[vi] || '').toLowerCase();
-                  if (vn && text === vn) { isVoiceRow = true; break; }
-                }
-              }
-              if (!isVoiceRow) continue;
-              var selected = text === normWanted;
-              try { el.classList.toggle('active', selected); } catch (c1) {}
-              try { el.classList.toggle('focus', selected); } catch (c2) {}
-              try { el.classList.toggle('selected', selected); } catch (c3) {}
-              try { el.classList.toggle('check', selected); } catch (c4) {}
-              try { el.setAttribute('data-selected', selected ? 'true' : 'false'); } catch (c5) {}
-              result.dom_updated++;
-            }
-          } catch (ed) { result.errors.push('dom:' + (ed && (ed.message || ed.toString()) || ed)); }
-          try { zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'state-update'); } catch (ed2) { result.errors.push('visible-check:' + (ed2 && (ed2.message || ed2.toString()) || ed2)); }
+          // 1.1.127: не міняємо DOM-класи вручну. Видимий стан фільтра/плеєра має йти через choice і voiceovers.
+          result.dom_updated = 0;
         } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
         stelsLog('zetflixnet-voice-selection-state-updated', result);
         return result;
@@ -30111,7 +29992,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.126: база 1.1.125; ZetflixNet тепер перед першим рендером фільму префетчить якість озвучок і будує список перекладів уже з 4K/1080p; додано захист від помилки у success-callback quality prefetch.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.127: база 1.1.126; виправлено undefined stelsQualityToValue у prefetch якості ZetflixNet; вимкнено DOM-форсування галочок, щоб фільтр перекладів відкривався штатно, а якість біля перекладу бралась із video/{vkId}.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
