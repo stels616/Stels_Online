@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.125';
+    var STELS_ONLINE_VERSION = '1.1.126';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -17777,13 +17777,27 @@
           };
           stelsLog('zetflixnet-playlist', { kp: kp_id, title: extract.title_name, count: items.length, seasons: seasons.length, pub: pub_id });
           stelsLog('zetflixnet-playlist-items-sample', { kp: kp_id, sample: items.slice(0, 12).map(function (it) { return { cvhId: it.cvhId || '', vkId: it.vkId || '', id: it.id || '', voiceStudio: it.voiceStudio || '', voiceType: it.voiceType || '', season: it.season || 0, episode: it.episode || 0, name: it.name || '' }; }) });
-          filter();
-          append(filtred());
-          // 1.1.125: запускати prefetch якості саме тут, у ZetflixNet,
-          // після формування extract. У 1.1.124 виклик випадково опинився в Lumex,
-          // тому в лозі не було zetflixnet-voice-quality-request і біля перекладів
-          // не з'являлись 4K/1080p.
-          zetflixnetStartVoiceQualityPrefetch();
+
+          function renderAfterVoiceQualityPrefetch() {
+            try {
+              filter();
+              append(filtred());
+              zetflixnetRefreshVisibleVoiceCheckmark(choice.voice_name || zetflixnetVoiceRaw(choice.voice), 'after-render-prefetch');
+            } catch (er) {
+              stelsLog('zetflixnet-render-after-quality-error', { error: er && (er.message || er.toString()) || '' });
+              try { filter(); append(filtred()); } catch (er2) {}
+            }
+          }
+
+          // 1.1.126: для фільмів ZetflixNet спочатку швидко отримуємо якість кожної озвучки,
+          // і тільки після цього будуємо filter_items.voice. Інакше меню перекладів відкривалось
+          // раніше, ніж встигав async-prefetch, і користувач бачив тільки чисті назви без 4K/1080p.
+          if (!(seasons && seasons.length) && items.length > 1) {
+            zetflixnetPrefetchMovieVoiceQualitiesBeforeRender(renderAfterVoiceQualityPrefetch);
+          } else {
+            renderAfterVoiceQualityPrefetch();
+            zetflixnetStartVoiceQualityPrefetch();
+          }
         } else component.emptyForQuery(select_title);
       }
 
@@ -17886,26 +17900,85 @@
         headers.Referer = api_ref || ref;
         qnet.timeout(12000);
         stelsLog('zetflixnet-voice-quality-request', { voice: candidate.voice || '', season: candidate.season || 0, data_id: data_id, direct: !!force_direct });
-        qnet['native'](final_url, function (json) {
+        var finished = false;
+        function finish(label) {
+          if (finished) return;
+          finished = true;
           delete zetflixnetVoiceQualityPending[key];
-          if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, null);
-          var quality = false;
-          if (json && json.sources) {
-            var items = extractItems(json.sources, { data_id: data_id, quality_probe: true });
-            if (items && items.length) {
-              quality = {};
-              items.forEach(function (item) { quality[item.label] = item.file; });
-            }
-          }
-          var label = zetflixnetRememberVoiceQuality(candidate.voice, candidate.season || 0, quality);
-          stelsLog('zetflixnet-voice-quality-ready', { voice: candidate.voice || '', season: candidate.season || 0, data_id: data_id, quality: label || '', quality_keys: quality ? Object.keys(quality) : [] });
           done && done(label || '');
+        }
+        qnet['native'](final_url, function (json) {
+          try {
+            if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, null);
+            var quality = false;
+            var maxQuality = 0;
+            if (json && json.sources) {
+              var qitems = extractItems(json.sources, { data_id: data_id, quality_probe: true });
+              if (qitems && qitems.length) {
+                quality = {};
+                qitems.forEach(function (qitem) {
+                  quality[qitem.label] = qitem.file;
+                  maxQuality = Math.max(maxQuality, parseInt(qitem.quality || 0, 10) || stelsQualityToValue(qitem.label || '') || 0);
+                });
+              }
+            }
+            var label = '';
+            if (maxQuality) {
+              label = stelsQualityLabel(maxQuality);
+              var vkey = zetflixnetVoiceQualityKey(candidate.voice, candidate.season || 0);
+              var prev = stelsQualityToValue(zetflixnetVoiceQualityCache[vkey] || '');
+              if (maxQuality > prev) zetflixnetVoiceQualityCache[vkey] = label;
+              label = zetflixnetVoiceQualityCache[vkey] || label;
+            } else {
+              label = zetflixnetRememberVoiceQuality(candidate.voice, candidate.season || 0, quality);
+            }
+            stelsLog('zetflixnet-voice-quality-ready', { voice: candidate.voice || '', season: candidate.season || 0, data_id: data_id, quality: label || '', max_quality: maxQuality || 0, quality_keys: quality ? Object.keys(quality) : [] });
+            finish(label || '');
+          } catch (e) {
+            stelsLog('zetflixnet-voice-quality-success-error', { voice: candidate.voice || '', season: candidate.season || 0, data_id: data_id, direct: !!force_direct, error: e && (e.message || e.toString()) || '' });
+            finish('');
+          }
         }, function (a, c) {
           delete zetflixnetVoiceQualityPending[key];
           stelsLog('zetflixnet-voice-quality-error', { voice: candidate.voice || '', season: candidate.season || 0, data_id: data_id, direct: !!force_direct, status: a && a.status || 0, message: qnet.errorDecode ? qnet.errorDecode(a, c) : '' });
           if (!force_direct && prox_api) zetflixnetFetchVoiceQuality(candidate, done, true);
-          else done && done('');
+          else finish('');
         }, false, { headers: headers });
+      }
+
+      function zetflixnetPrefetchMovieVoiceQualitiesBeforeRender(done) {
+        var candidates = zetflixnetQualityProbeCandidates();
+        if (!candidates.length) return done && done();
+        var runId = ++zetflixnetVoiceQualityRunId;
+        var i = 0;
+        var completed = false;
+        var limit = Math.min(candidates.length, 8);
+        var timeout = setTimeout(function () {
+          if (completed) return;
+          completed = true;
+          stelsLog('zetflixnet-voice-quality-prerender-timeout', { done: i, total: limit });
+          done && done();
+        }, 4500);
+        function finishAll() {
+          if (completed) return;
+          completed = true;
+          clearTimeout(timeout);
+          stelsLog('zetflixnet-voice-quality-prerender-done', {
+            total: limit,
+            voices: (filter_items && filter_items.voice_raw || candidates.slice(0, limit).map(function (c) { return c.voice || ''; })).slice(0, 12),
+            cache: candidates.slice(0, limit).map(function (c) { return { voice: c.voice || '', season: c.season || 0, quality: zetflixnetVoiceQualityLabel(c.voice, c.season || 0) || '' }; })
+          });
+          done && done();
+        }
+        function step() {
+          if (completed) return;
+          if (runId !== zetflixnetVoiceQualityRunId || !(extract && extract.items)) return finishAll();
+          if (i >= limit) return finishAll();
+          var c = candidates[i++];
+          zetflixnetFetchVoiceQuality(c, function () { setTimeout(step, 25); });
+        }
+        stelsLog('zetflixnet-voice-quality-prerender-start', { total: limit, voices: candidates.slice(0, limit).map(function (c) { return c.voice || ''; }) });
+        step();
       }
 
       function zetflixnetStartVoiceQualityPrefetch() {
@@ -30038,7 +30111,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.125: повернуто робочу логіку Tartuga з 1.1.94; для ZetflixNet виправлено запуск prefetch якості перекладів у правильному місці, щоб у фільтрі з\'являлись 4K/1080p біля назв озвучок.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.126: база 1.1.125; ZetflixNet тепер перед першим рендером фільму префетчить якість озвучок і будує список перекладів уже з 4K/1080p; додано захист від помилки у success-callback quality prefetch.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
