@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.115';
+    var STELS_ONLINE_VERSION = '1.1.116';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -22976,8 +22976,12 @@
         return norm(sourceTitle || '') == norm('Rezka ~ 720') || wanted.indexOf('rezka720') !== -1 || wanted.indexOf('pizdatoehd') !== -1;
       }
 
+      function lampauaIsMovieVoiceFilterSource() {
+        return !!remoteOptions.movieVoiceFilter;
+      }
+
       function lampauaSupportsVoiceFilter() {
-        return lampauaIsRezka720() || !!remoteOptions.voiceFromSimilar;
+        return lampauaIsRezka720() || !!remoteOptions.voiceFromSimilar || lampauaIsMovieVoiceFilterSource();
       }
 
       function lampauaVoiceLogPrefix() {
@@ -23179,7 +23183,7 @@
       }
 
       function lampauaShouldGroupMirageMovieVideos(videos) {
-        return lampauaIsMirageLike() && videos && videos.length > 1 && videos.every(function (v) { return v && !parseInt(v.season || 0, 10); });
+        return (lampauaIsMirageLike() || lampauaIsMovieVoiceFilterSource()) && videos && videos.length > 1 && videos.every(function (v) { return v && !parseInt(v.season || 0, 10); });
       }
 
       function lampauaMirageMovieVoiceTitle(item, index) {
@@ -23208,7 +23212,7 @@
           choice.voice_name = voice.title;
           choice.voice_url = voice.url || '';
           component.saveChoice(choice);
-          stelsLog('lampaua-mirage-movie-voices-grouped', {
+          stelsLog(lampauaIsMovieVoiceFilterSource() ? 'lampaua-movie-voices-grouped' : 'lampaua-mirage-movie-voices-grouped', {
             source: sourceTitle,
             count: filter_find.voice.length,
             selected: voice.title,
@@ -25821,7 +25825,7 @@
       }, {
         name: 'lampaua-klonfun',
         title: 'KlonFun',
-        source: new lampauaRemoteSource(this, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun'),
+        source: new lampauaRemoteSource(this, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun', { movieVoiceFilter: true }),
         search: true,
         kp: true,
         imdb: true
@@ -26677,7 +26681,7 @@
         var engine = stelsNormalizeSourceKey(entry && (entry.engine || entry.name));
         try {
           if (name === 'uaflix' || engine === 'lampaua-uaflix') return new lampauaRemoteSource(fake, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix');
-          if (name === 'klonfun' || engine === 'lampaua-klonfun') return new lampauaRemoteSource(fake, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun');
+          if (name === 'klonfun' || engine === 'lampaua-klonfun') return new lampauaRemoteSource(fake, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun', { movieVoiceFilter: true });
           if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno');
           if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino');
@@ -30155,7 +30159,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.115: база 1.1.114; видалено 4 проблемні джерела. Інші джерела не змінювались.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.116: KlonFun фільми групуються в одну картку; переклади винесено у фільтр і кнопку доріжок плеєра. База 1.1.115.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
