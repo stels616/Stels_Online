@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.128';
+    var STELS_ONLINE_VERSION = '1.1.129';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -17502,6 +17502,11 @@
       var zetflixnetLastSelectedVoiceName = '';
       var zetflixnetVoiceMenuObserver = null;
       var zetflixnetVoiceMenuTimer = 0;
+      // 1.1.129: ці змінні мають бути саме у scope ZetflixNet.
+      // У 1.1.128 вони випадково були оголошені в lumex2(), тому підсвітка якості падала з
+      // `zetflixnetVoiceQualityColorObserver is not defined` і текст лишався білим.
+      var zetflixnetVoiceQualityColorObserver = null;
+      var zetflixnetVoiceQualityColorTimer = 0;
       var zetflixnetVoiceCheckApplying = false;
       var zetflixnetVoiceCheckMuteUntil = 0;
 
@@ -30092,7 +30097,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.128: база 1.1.127; для ZetflixNet якість у списку перекладів підсвічується жовтим через безпечне DOM-оформлення тільки текстового префікса якості, без втручання в галочки/active-класи.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.129: база 1.1.128; виправлено scope змінних ZetflixNet для DOM-підсвітки якості перекладів, щоб 1080p/4K у списку перекладів реально фарбувались жовтим.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
