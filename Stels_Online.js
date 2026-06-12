@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.122';
+    var STELS_ONLINE_VERSION = '1.1.123';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.122: виправлено Turbo в Tartuga — перед відкриттям obrut.show iframe визначаємо реальну сторінку фільму Tartuga і передаємо її як Referer, як у HAR; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.123: Turbo/Tartuga — додано російські title-hints і м’який match по року для пошуку сторінки filmo перед obrut.show; це виправляє 404 через неправильний Referer; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15083,6 +15083,12 @@
         if (joined.indexOf('the lord of the rings the fellowship of the ring') !== -1 || joined.indexOf('хранителі персня') !== -1 || joined.indexOf('хранители персня') !== -1) addUnique(out, 'Властелин колец: Братство кольца');
         if (joined.indexOf('the lord of the rings the return of the king') !== -1 || joined.indexOf('повернення короля') !== -1 || joined.indexOf('возвращение короля') !== -1) addUnique(out, 'Властелин колец: Возвращение короля');
         if (joined.indexOf('from') !== -1 || joined.indexOf('ззовні') !== -1 || joined.indexOf('ззовни') !== -1) addUnique(out, 'Извне');
+        // 1.1.123: Tartuga/filmo зберігає частину назв російською. Для Turbo потрібна
+        // реальна сторінка фільму як Referer; без російської назви пошук сторінки дає 0 результатів.
+        if (joined.indexOf('war machine') !== -1 || joined.indexOf('машина війни') !== -1 || joined.indexOf('машина войны') !== -1 || joined.indexOf('военная машина') !== -1) {
+          addUnique(out, 'Военная машина');
+          addUnique(out, 'Машина войны');
+        }
         var y = movieYear();
         var base = out.slice(0);
         base.forEach(function (t) { if (y && !/\b(?:19|20)\d{2}\b/.test(t)) addUnique(out, t + ' ' + y); });
@@ -15140,6 +15146,10 @@
           if (!title || title.length > 180) title = clean((all.match(/title\s*=\s*(['"])(.*?)\1/i) || [])[2] || '');
           if (!title) return all;
           var sc = scoreTitle(title, href);
+          // 1.1.123: якщо сайт повернув сторінку з потрібним роком, не відкидаємо її лише через іншу мову назви.
+          // Це потрібно для Tartuga Turbo: у TMDB назва може бути українська/оригінальна, а сторінка filmo — російська.
+          var y = movieYear();
+          if (sc < 80 && y && String(title || '').indexOf(String(y)) !== -1 && /filmo\.tartugi\.net\/[0-9]+-[^'"<>\s]+\.html/i.test(href)) sc = 85;
           if (sc < 80) return all;
           seen[href] = true;
           out.push({ title: title, url: href, link: href, score: sc });
@@ -28764,7 +28774,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.122: виправлено Turbo в Tartuga — перед відкриттям obrut.show iframe визначаємо реальну сторінку фільму Tartuga і передаємо її як Referer, як у HAR; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.123: Turbo/Tartuga — додано російські title-hints і м’який match по року для пошуку сторінки filmo перед obrut.show; це виправляє 404 через неправильний Referer; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
