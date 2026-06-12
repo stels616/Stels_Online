@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.131';
+    var STELS_ONLINE_VERSION = '1.1.132';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -11442,6 +11442,9 @@
       var extract = { fileList: null, iframe: '', info: null, items: [] };
       var filter_items = {};
       var choice = { season: 0, voice: 0, voice_name: '' };
+      var allohaVoiceQualityCache = {};
+      var allohaVoiceQualityPending = {};
+      var allohaVoiceQualityRunId = 0;
       var page_headers = {
         'User-Agent': user_agent,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -12085,6 +12088,100 @@
         return items;
       }
 
+      function allohaCurrentSeasonForQuality() {
+        try {
+          return filter_items && filter_items.season_num && filter_items.season_num[choice.season] || 0;
+        } catch (e) {}
+        return 0;
+      }
+
+      function allohaVoiceQualityKey(voice, season) {
+        var mid = object && object.movie && (object.movie.id || object.movie.tmdb_id || object.movie.kinopoisk_id || object.movie.imdb_id) || legacy_id || '';
+        return [mid, 'Alloha', season || 0, String(voice || '')].join('|');
+      }
+
+      function allohaVoiceQualityLabel(voice, season) {
+        return allohaVoiceQualityCache[allohaVoiceQualityKey(voice, season != null ? season : allohaCurrentSeasonForQuality())] || '';
+      }
+
+      function allohaRememberVoiceQuality(voice, season, quality) {
+        voice = String(voice || '').trim();
+        if (!voice) return '';
+        var q = stelsExtractMaxQualityFromAny(quality, 0, 'quality');
+        if (!q) return '';
+        var key = allohaVoiceQualityKey(voice, season || 0);
+        var prev = stelsQualityToValue(allohaVoiceQualityCache[key] || '');
+        if (q > prev) allohaVoiceQualityCache[key] = stelsQualityLabel(q);
+        return allohaVoiceQualityCache[key] || '';
+      }
+
+      function allohaCloneItem(item) {
+        var out = {};
+        for (var k in (item || {})) out[k] = item[k];
+        if (item && item.media) {
+          out.media = {};
+          for (var mk in item.media) out.media[mk] = item.media[mk];
+        }
+        delete out.stream;
+        delete out.qualitys;
+        delete out.subtitles;
+        delete out.loading;
+        return out;
+      }
+
+      function allohaVoiceQualityCandidates() {
+        var out = [];
+        var seen = {};
+        var items = extract.items || [];
+        var season = allohaCurrentSeasonForQuality();
+        var voices = filter_items.voice || [];
+        if (!(items.length && voices.length)) return out;
+        items.forEach(function (it) {
+          var voice = it && (it.voice || it.translate_voice || it.voice_name) || '';
+          if (!voice || voices.indexOf(voice) == -1) return;
+          if (season && it.season != season) return;
+          var key = allohaVoiceQualityKey(voice, season || 0);
+          if (seen[key]) return;
+          seen[key] = true;
+          if (allohaVoiceQualityCache[key] || allohaVoiceQualityPending[key]) return;
+          var known = stelsExtractMaxQualityFromAny(it.qualitys || it.quality || '', 0, 'quality');
+          if (known) {
+            allohaRememberVoiceQuality(voice, season || 0, known);
+            return;
+          }
+          out.push({ voice: voice, season: season || 0, item: it });
+        });
+        return out.slice(0, 10);
+      }
+
+      function allohaStartVoiceQualityPrefetch(reason) {
+        var candidates = allohaVoiceQualityCandidates();
+        if (!candidates.length) return;
+        var runId = ++allohaVoiceQualityRunId;
+        var i = 0;
+        log('voice-quality-prefetch-start', { reason: reason || '', total: candidates.length, season: allohaCurrentSeasonForQuality(), voices: candidates.map(function (c) { return c.voice || ''; }) });
+        function step() {
+          if (runId !== allohaVoiceQualityRunId || !(extract && extract.items)) return;
+          if (i >= candidates.length) return;
+          var c = candidates[i++];
+          var key = allohaVoiceQualityKey(c.voice, c.season || 0);
+          allohaVoiceQualityPending[key] = true;
+          var item = allohaCloneItem(c.item);
+          getStream(item, function (ready) {
+            delete allohaVoiceQualityPending[key];
+            var label = allohaRememberVoiceQuality(c.voice, c.season || 0, ready && (ready.qualitys || ready.quality || ready.stream) || ready);
+            log('voice-quality-ready', { voice: c.voice || '', season: c.season || 0, quality: label || '', quality_keys: ready && ready.qualitys ? Object.keys(ready.qualitys) : [] });
+            try { buildFilter(extract.items || []); } catch (e) { log('voice-quality-filter-error', { error: e && (e.message || e.toString()) || '' }); }
+            setTimeout(step, 60);
+          }, function () {
+            delete allohaVoiceQualityPending[key];
+            log('voice-quality-fail', { voice: c.voice || '', season: c.season || 0 });
+            setTimeout(step, 60);
+          });
+        }
+        setTimeout(step, 120);
+      }
+
       function buildFilter(items) {
         filter_items = { season: [], season_num: [], voice: [], voice_info: [] };
         items.forEach(function (it) {
@@ -12107,7 +12204,10 @@
           var inx = filter_items.voice.indexOf(choice.voice_name);
           if (inx >= 0) choice.voice = inx;
         }
+        filter_items.voice_quality = (filter_items.voice || []).map(function (v) { return allohaVoiceQualityLabel(v, currentSeason); });
+        log('voice-filter-build', { voices: filter_items.voice || [], voice_quality: filter_items.voice_quality || [], season: currentSeason || 0 });
         component.filter(filter_items, choice);
+        allohaStartVoiceQualityPrefetch('filter-build');
       }
 
       function filtred() {
@@ -12589,10 +12689,15 @@
         if (!(voices && voices.length > 1)) return false;
         selectedVoice = selectedVoice || element && (element.voice || element.translate_voice || element.voice_name) || voices[choice.voice] || '';
         return voices.map(function (voiceName, index) {
+          var displayName = stelsVoiceDisplayName(voiceName, allohaVoiceQualityLabel(voiceName, element && element.season || allohaCurrentSeasonForQuality()));
           return {
             index: index,
-            language: voiceName,
-            name: voiceName,
+            language: displayName,
+            name: displayName,
+            title: displayName,
+            voice: voiceName,
+            _stels_voice_raw: voiceName,
+            _stels_quality: allohaVoiceQualityLabel(voiceName, element && element.season || allohaCurrentSeasonForQuality()),
             label: 'Alloha',
             selected: voiceName === selectedVoice,
             active: voiceName === selectedVoice,
@@ -17514,12 +17619,15 @@
         return voices.map(function (voiceName, index) {
           voiceName = cleanText(voiceName || ('Переклад ' + (index + 1)));
           var isSelected = voiceName === selectedVoice;
+          var displayName = stelsVoiceDisplayName(voiceName, cdnVoiceQualityLabel(voiceName, element && element.season || cdnCurrentSeasonForQuality()));
           return {
             index: index,
-            language: voiceName,
-            name: voiceName,
-            title: voiceName,
+            language: displayName,
+            name: displayName,
+            title: displayName,
             voice: voiceName,
+            _stels_voice_raw: voiceName,
+            _stels_quality: cdnVoiceQualityLabel(voiceName, element && element.season || cdnCurrentSeasonForQuality()),
             label: cdnSourceTitle,
             selected: isSelected,
             active: isSelected,
@@ -22259,6 +22367,9 @@
       var current_videos = [];
       var current_source = null;
       var remote_quality_hint = '';
+      var lampauaVoiceQualityCache = {};
+      var lampauaVoiceQualityPending = {};
+      var lampauaVoiceQualityRunId = 0;
 
       function remoteDirectUrl() {
         var direct = remoteOptions.directPath || remoteOptions.directBalanser || '';
@@ -23060,6 +23171,96 @@
         return lampauaIsRezka720() || !!remoteOptions.voiceFromSimilar || lampauaIsMovieVoiceFilterSource();
       }
 
+      function lampauaVoiceQualityEnabled() {
+        var titleKey = norm(sourceTitle || '');
+        var allowed = ['rezka720', 'uakino', 'uafilmme', 'klonfun', 'batkomakhno'];
+        if (allowed.indexOf(titleKey) !== -1) return true;
+        return wanted.some(function (w) {
+          return allowed.indexOf(w) !== -1 || w.indexOf('rezka720') !== -1 || w.indexOf('pizdatoehd') !== -1 || w.indexOf('uakino') !== -1 || w.indexOf('uafilmme') !== -1 || w.indexOf('klonfun') !== -1 || w.indexOf('batkomakhno') !== -1;
+        });
+      }
+
+      function lampauaVoiceQualityKey(voice, season) {
+        var mid = object && object.movie && (object.movie.id || object.movie.tmdb_id || object.movie.kinopoisk_id || object.movie.imdb_id) || '';
+        return [mid, sourceTitle || 'LampUA', season || 0, String(voice || '')].join('|');
+      }
+
+      function lampauaVoiceRawTitle(voice) {
+        return String(voice && (voice.raw_title || voice.title || voice.text || voice.name) || '').trim();
+      }
+
+      function lampauaVoiceQualityLabel(voice, index) {
+        var raw = lampauaVoiceRawTitle(voice);
+        var season = current_videos && current_videos[0] && current_videos[0].season || 0;
+        var key = lampauaVoiceQualityKey(raw, season || 0);
+        var cached = lampauaVoiceQualityCache[key] || '';
+        if (cached) return cached;
+        try {
+          var q = stelsExtractMaxQualityFromAny(voice && (voice.quality || voice.qualitys || voice.item || voice.url || ''), 0, 'quality');
+          return q ? stelsQualityLabel(q) : '';
+        } catch (e) {}
+        return '';
+      }
+
+      function lampauaRememberVoiceQuality(voice, season, quality) {
+        var raw = typeof voice == 'string' ? voice : lampauaVoiceRawTitle(voice);
+        raw = String(raw || '').trim();
+        if (!raw) return '';
+        var q = stelsExtractMaxQualityFromAny(quality, 0, 'quality');
+        if (!q) return '';
+        var key = lampauaVoiceQualityKey(raw, season || 0);
+        var prev = stelsQualityToValue(lampauaVoiceQualityCache[key] || '');
+        if (q > prev) lampauaVoiceQualityCache[key] = stelsQualityLabel(q);
+        return lampauaVoiceQualityCache[key] || '';
+      }
+
+      function lampauaRenderFilter(reason) {
+        var rawVoices = (filter_find.voice || []).map(function (b) { return b.title; });
+        var qualities = (filter_find.voice || []).map(function (b, i) { return lampauaVoiceQualityLabel(b, i); });
+        stelsLog('lampaua-voice-quality-filter-build', { source: sourceTitle, reason: reason || '', voices: rawVoices, voice_quality: qualities, season: current_videos && current_videos[0] && current_videos[0].season || 0 });
+        component.filter({ season: filter_find.season.map(function (s) { return s.title; }), voice: rawVoices, voice_quality: qualities }, choice);
+      }
+
+      function lampauaVoiceQualityCandidates() {
+        var out = [];
+        if (!lampauaVoiceQualityEnabled() || !(filter_find.voice && filter_find.voice.length)) return out;
+        var base = current_videos && current_videos[0] ? current_videos[0] : {};
+        var season = parseInt(base.season || 0, 10) || 0;
+        var seen = {};
+        (filter_find.voice || []).forEach(function (voice, index) {
+          var raw = lampauaVoiceRawTitle(voice);
+          if (!raw) return;
+          var key = lampauaVoiceQualityKey(raw, season || 0);
+          if (seen[key] || lampauaVoiceQualityCache[key] || lampauaVoiceQualityPending[key]) return;
+          seen[key] = true;
+          out.push({ voice: voice, raw: raw, index: index, season: season || 0, base: base });
+        });
+        return out.slice(0, 10);
+      }
+
+      function lampauaStartVoiceQualityPrefetch(reason) {
+        var candidates = lampauaVoiceQualityCandidates();
+        if (!candidates.length) return;
+        var runId = ++lampauaVoiceQualityRunId;
+        var i = 0;
+        stelsLog('lampaua-voice-quality-prefetch-start', { source: sourceTitle, reason: reason || '', total: candidates.length, season: candidates[0] && candidates[0].season || 0, voices: candidates.map(function (c) { return c.raw || ''; }) });
+        function step() {
+          if (runId !== lampauaVoiceQualityRunId) return;
+          if (i >= candidates.length) return;
+          var c = candidates[i++];
+          var key = lampauaVoiceQualityKey(c.raw, c.season || 0);
+          lampauaVoiceQualityPending[key] = true;
+          lampauaResolveVoicePlayable(c.base || {}, c.voice, function (play) {
+            delete lampauaVoiceQualityPending[key];
+            var label = lampauaRememberVoiceQuality(c.raw, c.season || 0, play && (play.quality || play.url || play) || '');
+            stelsLog('lampaua-voice-quality-ready', { source: sourceTitle, voice: c.raw || '', season: c.season || 0, quality: label || '', quality_keys: play && play.quality ? Object.keys(play.quality) : [] });
+            try { lampauaRenderFilter('quality-ready'); } catch (e) { stelsLog('lampaua-voice-quality-filter-error', { source: sourceTitle, error: e && (e.message || e.toString()) || '' }); }
+            setTimeout(step, 70);
+          });
+        }
+        setTimeout(step, 120);
+      }
+
       function lampauaVoiceLogPrefix() {
         return remoteOptions.voiceFromSimilar ? 'lampaua-remote' : 'lampaua-rezka720';
       }
@@ -23075,10 +23276,10 @@
           var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
           var cs = parseInt(current.season || 0, 10);
           var ce = parseInt(current.episode || 0, 10);
-          if (cs) out.season = cs;
-          if (ce) out.episode = ce;
-          if (current.title) out.title = current.title;
-          if (current.voice_name) out.voice_name = current.voice_name;
+          if (!out.season && cs) out.season = cs;
+          if (!out.episode && ce) out.episode = ce;
+          if (!out.title && current.title) out.title = current.title;
+          if (!out.voice_name && current.voice_name) out.voice_name = current.voice_name;
         } catch (e) {}
         return out;
       }
@@ -23364,10 +23565,16 @@
       function lampauaRezkaVoiceovers(element, selected_index) {
         if (!lampauaSupportsVoiceFilter() || !(filter_find.voice && filter_find.voice.length > 1)) return false;
         return filter_find.voice.map(function (voice, index) {
+          var rawTitle = voice.title || ('Voice ' + (index + 1));
+          var displayTitle = stelsVoiceDisplayName(rawTitle, lampauaVoiceQualityLabel(voice, index));
           return {
             index: index,
-            language: voice.title || ('Voice ' + (index + 1)),
-            name: voice.title || ('Voice ' + (index + 1)),
+            language: displayTitle,
+            name: displayTitle,
+            title: displayTitle,
+            voice: rawTitle,
+            _stels_voice_raw: rawTitle,
+            _stels_quality: lampauaVoiceQualityLabel(voice, index),
             label: sourceTitle,
             selected: index == selected_index,
             enabled: index == selected_index,
@@ -23524,7 +23731,8 @@
             }
           });
         });
-        component.filter({ season: filter_find.season.map(function (s) { return s.title; }), voice: filter_find.voice.map(function (b) { return b.title; }) }, choice);
+        lampauaRenderFilter('display');
+        lampauaStartVoiceQualityPrefetch('display');
         component.loading(false);
         component.start(true);
       }
@@ -30338,7 +30546,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.131: глобальна підтримка badge якості у списку перекладів; компонент фільтра показує voice_quality/voice_info без зміни raw-значень, жовте підсвічування стало загальним; додано якість перекладів для CDNVideoHub-подібних джерел і Filmix-серіалів.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.132: додано quality-prefetch для перекладів Alloha та LampUA-джерел Rezka~720/UAKino/UafilmMe/KlonFun/BatkoMakhno; у player voiceovers якість тепер показується також для ZetflixNet/CDNVideoHub-подібних/Alloha/LampUA без зміни raw-назв.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
