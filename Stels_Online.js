@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.120';
+    var STELS_ONLINE_VERSION = '1.1.121';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -16262,6 +16262,36 @@
         return cleanText(element && (element.voice_name || element.translate_voice) || filter_items.voice && filter_items.voice[choice.voice] || '');
       }
 
+      function cdnPauseActiveMediaBeforeSwitch(reason) {
+        var result = { source: cdnSourceTitle, reason: reason || '', player_pause: false, player_stop: false, total: 0, stopped: 0, removed_sources: 0, errors: [] };
+        try { if (Lampa && Lampa.Player && typeof Lampa.Player.pause === 'function') { Lampa.Player.pause(); result.player_pause = true; } } catch (e0) { result.errors.push('player_pause:' + (e0 && (e0.message || e0.toString()) || e0)); }
+        try { if (Lampa && Lampa.Player && typeof Lampa.Player.stop === 'function') { Lampa.Player.stop(); result.player_stop = true; } } catch (e1) { result.errors.push('player_stop:' + (e1 && (e1.message || e1.toString()) || e1)); }
+        try {
+          var media = Array.prototype.slice.call(document.querySelectorAll('video,audio'));
+          result.total = media.length;
+          media.forEach(function (m) {
+            if (!m) return;
+            try { if (m.pause) m.pause(); } catch (x1) {}
+            try { m.muted = true; m.volume = 0; } catch (x2) {}
+            try { m.removeAttribute('autoplay'); } catch (x2b) {}
+            try { m.removeAttribute('src'); } catch (x3) {}
+            try { m.src = ''; } catch (x4) {}
+            try { m.srcObject = null; } catch (x5) {}
+            try {
+              var srcs = m.querySelectorAll ? m.querySelectorAll('source') : [];
+              for (var si = srcs.length - 1; si >= 0; si--) {
+                try { srcs[si].removeAttribute('src'); result.removed_sources++; } catch (xs1) {}
+                try { if (srcs[si].parentNode) srcs[si].parentNode.removeChild(srcs[si]); } catch (xs2) {}
+              }
+            } catch (x6) {}
+            try { if (m.load) m.load(); } catch (x7) {}
+            result.stopped++;
+          });
+        } catch (e2) { result.errors.push('media:' + (e2 && (e2.message || e2.toString()) || e2)); }
+        stelsLog('cdnvideohub-voice-switch-force-stop-media', result);
+        return result;
+      }
+
       function cdnVoiceovers(element, selectedVoice) {
         var voices = filter_items.voice || [];
         if (!(voices && voices.length > 1)) return false;
@@ -16309,11 +16339,14 @@
                   translate_voice: voiceName,
                   translate: { tracks: tracks },
                   voiceovers: tracks,
-                  audio_tracks: tracks
+                  audio_tracks: false
                 }, 'cdnvideohub-voice-switch');
-                Lampa.Player.play(play);
-                try { Lampa.Player.playlist([play]); } catch (e3) {}
-                stelsLog('cdnvideohub-voice-switch-play', { source: cdnSourceTitle, voice: voiceName, data_id: item.data_id || '', quality_keys: play.quality ? Object.keys(play.quality) : [], url: stelsPreviewUrl(play.url || '') });
+                cdnPauseActiveMediaBeforeSwitch('voice-switch');
+                setTimeout(function () {
+                  try { Lampa.Player.play(play); } catch (e3p) { stelsLog('cdnvideohub-voice-switch-play-error', { source: cdnSourceTitle, voice: voiceName, error: e3p && (e3p.message || e3p.toString()) || '' }); }
+                  try { Lampa.Player.playlist([play]); } catch (e3) {}
+                  stelsLog('cdnvideohub-voice-switch-play', { source: cdnSourceTitle, voice: voiceName, data_id: item.data_id || '', quality_keys: play.quality ? Object.keys(play.quality) : [], url: stelsPreviewUrl(play.url || '') });
+                }, 320);
               }, function () {
                 try { Lampa.Player.loading(false); } catch (e4) {}
                 stelsLog('cdnvideohub-voice-switch-fail', { source: cdnSourceTitle, voice: voiceName, data_id: target && target.data_id || '' });
@@ -16364,7 +16397,7 @@
                 translate_voice: selectedVoice || '',
                 translate: voiceTracks.length ? { tracks: voiceTracks } : undefined,
                 voiceovers: voiceTracks.length ? voiceTracks : false,
-                audio_tracks: voiceTracks.length ? voiceTracks : false
+                audio_tracks: false
               }, 'cdnvideohub-first');
               stelsLog('cdnvideohub-player-first', { source: cdnSourceTitle, data_id: element.data_id || '', voice: selectedVoice || '', voice_count: voiceTracks.length, quality_keys: first.quality ? Object.keys(first.quality) : [] });
               Lampa.Player.play(first);
@@ -16393,7 +16426,7 @@
                       voice_name: cdnSelectedVoice(elem),
                       translate: cdnVoiceovers(elem, cdnSelectedVoice(elem)) ? { tracks: cdnVoiceovers(elem, cdnSelectedVoice(elem)) } : undefined,
                       voiceovers: cdnVoiceovers(elem, cdnSelectedVoice(elem)) || false,
-                      audio_tracks: cdnVoiceovers(elem, cdnSelectedVoice(elem)) || false
+                      audio_tracks: false
                     };
                     playlist.push(cell);
                   }
@@ -16428,7 +16461,7 @@
                   quality: element.qualitys,
                   translate: tracks.length ? { tracks: tracks } : undefined,
                   voiceovers: tracks.length ? tracks : false,
-                  audio_tracks: tracks.length ? tracks : false
+                  audio_tracks: false
                 });
               }, function () {
                 Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
@@ -24934,6 +24967,10 @@
           try { text = decodeURIComponent(text); } catch (e) {}
           try { text = text.replace(/\u([0-9a-f]{4})/ig, function (all, h) { return String.fromCharCode(parseInt(h, 16)); }); } catch (e) {}
           var max = 0;
+          var low = text.toLowerCase();
+          if (/(^|[^a-z0-9])(?:uhd|ultra\s*hd)([^a-z0-9]|$)/i.test(low)) max = Math.max(max, 2160);
+          if (/(^|[^a-z0-9])(?:fhd|full\s*hd)([^a-z0-9]|$)/i.test(low)) max = Math.max(max, 1080);
+          if (/(^|[^a-z0-9])hd([^a-z0-9]|$)/i.test(low)) max = Math.max(max, 720);
           text.replace(/(^|[^a-z0-9])([842])\s*k([^a-z0-9]|$)/ig, function (all, pre, k) {
             var v = parseInt(k, 10);
             if (v === 8) max = Math.max(max, 4320);
@@ -25076,10 +25113,31 @@
       function stelsMarkSourceStatus(source, status, message, quality) {
         source = stelsNormalizeSourceKey(source || balanser);
         if (!source) return;
-        // 1.1.72: не переносимо стару якість на новий precheck.
-        // Якщо для поточного контенту фактичну якість не визначено — очищаємо badge,
-        // щоб не залишався 4K/1080p від попередньої картки.
-        stelsSourceStatus[source] = { status: status, message: message || '', quality: quality || '', time: Date.now() };
+        message = message || '';
+        var prev = stelsSourceStatus[source] || {};
+        var qvalue = 0;
+        try {
+          var incomingQ = stelsQualityToValue(quality || '');
+          var prevQ = stelsQualityToValue(prev.quality || '');
+          var renderedRec = stelsRenderedSourceQuality[stelsCurrentQualityKey(source)] || null;
+          qvalue = Math.max(incomingQ || 0, prevQ || 0, renderedRec && renderedRec.max || 0);
+        } catch (e) {}
+
+        // 1.1.121: timeout у precheck — це невизначений стан, а не доказ що джерело мертве.
+        // Через це UafilmMe показувався з хрестиком, хоча при відкритті працював.
+        if ((status === 'empty' || status === 'error') && /timeout/i.test(message)) {
+          status = prev.status === 'ok' ? 'ok' : 'wait';
+          quality = qvalue ? stelsQualityLabel(qvalue) : (quality || prev.quality || '');
+        }
+        // 1.1.121: для ok/wait ніколи не знижуємо badge якості джерела в межах поточного фільму.
+        else if (status === 'ok' || status === 'wait') {
+          quality = qvalue ? stelsQualityLabel(qvalue) : (quality || '');
+        }
+        // Для реального empty/error без timeout стару якість чистимо, щоб не лишався badge від іншого контенту.
+        else if (status === 'empty' || status === 'error') {
+          quality = quality || '';
+        }
+        stelsSourceStatus[source] = { status: status, message: message, quality: quality || '', time: Date.now() };
         stelsSaveSourceStatus();
       }
       function stelsSourceTitleWithStatus(source) {
@@ -28828,7 +28886,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.120: для Makhno/Midnight/CDNVideoHub додано реальні voiceovers/audio_tracks у плеєрі; badge якості джерела більше не знижується з 4K до 1080p після запуску нижчої якості. ZetflixNet також зберігає максимальну якість precheck.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.121: виправлено перемикання перекладів Midnight/CDNVideoHub/Makhno без накладання звуку: переклади лишаються stream-switch, а не audio_tracks; badge якості джерела не знижується після запуску 1080p; timeout precheck більше не ставить помилковий хрестик UafilmMe, додано розпізнавання HD/FHD якості.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
