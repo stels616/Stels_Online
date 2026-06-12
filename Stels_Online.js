@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.118';
+    var STELS_ONLINE_VERSION = '1.1.119';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -60,7 +60,7 @@
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'kinoukr', zerx: 'zerx',
       eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
-      fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
+      fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'starlight',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
@@ -15848,6 +15848,7 @@
       var network = new Lampa.Reguest();
       var cdnOptions = _options || {};
       var cdnMovieVoiceFilter = !!cdnOptions.movieVoiceFilter;
+      var cdnPrecheckAllVoices = !!cdnOptions.precheckAllVoices;
       var cdnSourceTitle = cdnOptions.sourceTitle || 'CDNVideoHub';
       var extract = {};
       var object = _object;
@@ -16054,7 +16055,9 @@
             var selected_voice = filter_items.voice[choice.voice] || filter_items.voice[0] || '';
             extract.items.forEach(function (data) {
               var voice = data.voiceStudio || data.voiceType || '';
-              if (voice == selected_voice) {
+              // 1.1.119: у звичайному UI лишаємо одну картку за вибраною озвучкою,
+              // а під час precheck можемо пройтись по всіх voice/stream, щоб не занижувати 4K до 1080p.
+              if (cdnPrecheckAllVoices || voice == selected_voice) {
                 filtred.push({
                   title: extract.title_name || select_title,
                   quality: cdnOptions.movieQualityHint || '360p ~ 1080p',
@@ -16309,8 +16312,10 @@
     }
 
 
-    function zetflixnet(component, _object) {
+    function zetflixnet(component, _object, _options) {
       var network = new Lampa.Reguest();
+      var zetflixnetOptions = _options || {};
+      var zetflixnetPrecheckAllVoices = !!zetflixnetOptions.precheckAllVoices;
       var extract = { items: [], seasons: [] };
       var object = _object;
       var select_title = '';
@@ -16729,22 +16734,38 @@
           });
         } else if (extract.items && extract.items.length) {
           var selected_voice = filter_items.voice[choice.voice] || '';
-          var selected = null;
-          extract.items.forEach(function (data) {
-            var voice = data.voiceStudio || data.voiceType || '';
-            if (!selected && (!selected_voice || voice == selected_voice)) selected = data;
-          });
-          if (!selected) selected = extract.items[0];
-          if (selected) {
-            var movie_voice = selected.voiceStudio || selected.voiceType || selected_voice || '';
-            out.push({
-              title: extract.title_name || select_title,
-              quality: '360p ~ 1080p',
-              info: movie_voice ? ' / ' + Lampa.Utils.shortText(movie_voice, 50) : '',
-              data_id: selected.vkId,
-              translate_voice: movie_voice,
-              media: selected
+          if (zetflixnetPrecheckAllVoices) {
+            // 1.1.119: для перевірки стану/якості ZetflixNet перевіряємо всі озвучки,
+            // бо 4K може бути не в першому voiceStudio.
+            extract.items.forEach(function (data) {
+              var mv = data.voiceStudio || data.voiceType || '';
+              out.push({
+                title: extract.title_name || select_title,
+                quality: '360p ~ 1080p',
+                info: mv ? ' / ' + Lampa.Utils.shortText(mv, 50) : '',
+                data_id: data.vkId,
+                translate_voice: mv,
+                media: data
+              });
             });
+          } else {
+            var selected = null;
+            extract.items.forEach(function (data) {
+              var voice = data.voiceStudio || data.voiceType || '';
+              if (!selected && (!selected_voice || voice == selected_voice)) selected = data;
+            });
+            if (!selected) selected = extract.items[0];
+            if (selected) {
+              var movie_voice = selected.voiceStudio || selected.voiceType || selected_voice || '';
+              out.push({
+                title: extract.title_name || select_title,
+                quality: '360p ~ 1080p',
+                info: movie_voice ? ' / ' + Lampa.Utils.shortText(movie_voice, 50) : '',
+                data_id: selected.vkId,
+                translate_voice: movie_voice,
+                media: selected
+              });
+            }
           }
         }
         stelsLog('zetflixnet-filtered-items', { count: out.length, is_movie: !(extract.seasons && extract.seasons.length), selected_voice: filter_items.voice && filter_items.voice[choice.voice] || '', sample: out.slice(0, 5).map(function (it) { return { title: it.title || '', data_id: it.data_id || '', voice: it.translate_voice || it.info || '', season: it.season || '', episode: it.episode || '' }; }) });
@@ -24359,6 +24380,15 @@
         kp: true,
         imdb: false
       }, {
+        name: 'starlight',
+        title: 'Midnight',
+        // 1.1.119: окремий CDNVideoHub-екземпляр для Midnight.
+        // Фільми групуються в одну картку, переклади — у фільтр Озвучка.
+        source: new cdnvideohub(this, object, { movieVoiceFilter: true, sourceTitle: 'Midnight' }),
+        search: false,
+        kp: true,
+        imdb: false
+      }, {
         name: 'rc-kinotochka',
         title: 'KinoTochka',
         source: new lampauaRemoteSource(this, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka' }),
@@ -24575,7 +24605,7 @@
       }, {
         name: 'cdnvideohub',
         title: 'CDNVideoHub',
-        source: new cdnvideohub(this, object),
+        source: new cdnvideohub(this, object, { movieVoiceFilter: true, sourceTitle: 'CDNVideoHub' }),
         search: false,
         kp: true,
         imdb: false
@@ -25072,6 +25102,11 @@
         } catch (e) {}
       }
 
+      function stelsIsDeepVoiceQualitySource(sourceName) {
+        sourceName = stelsNormalizeSourceKey(sourceName || '');
+        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub';
+      }
+
       function stelsMakeProbeComponent(sourceName, token, done) {
         var real = this;
         var finished = false;
@@ -25087,7 +25122,8 @@
         var probeFileCount = 0;
         var probeFileActive = 0;
         var probeResolveStarted = 0;
-        var probeFileLimit = sourceName === 'makhno' ? 8 : 2;
+        var probeDeepVoiceQuality = stelsIsDeepVoiceQualitySource(sourceName);
+        var probeFileLimit = probeDeepVoiceQuality ? 8 : 2;
         function rememberQuality(value, keyHint) {
           try { probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || '')); } catch (e) {}
         }
@@ -25096,7 +25132,7 @@
         }
         function finish(status, message, quality) {
           if (finished || token !== stelsPrecheckToken) return;
-          if (!quality && probeFileActive > 0 && probeResolveStarted && Date.now() - probeResolveStarted < (sourceName === 'makhno' ? 5200 : 2600)) {
+          if (!quality && probeFileActive > 0 && probeResolveStarted && Date.now() - probeResolveStarted < (probeDeepVoiceQuality ? 5200 : 2600)) {
             try { if (probeOkTimer) clearTimeout(probeOkTimer); } catch (e) {}
             probeOkTimer = setTimeout(function () { finish(status, message, quality); }, 260);
             return;
@@ -25146,7 +25182,7 @@
           try { if (probeOkTimer) clearTimeout(probeOkTimer); } catch (e) {}
           // Дочікуємось кількох append() з одного джерела, щоб максимальна якість
           // рахувалась по всіх знайдених серіях/релізах, а не тільки по першій картці.
-          probeOkTimer = setTimeout(function () { finish('ok'); }, probeFileActive > 0 ? (sourceName === 'makhno' ? 1600 : 900) : 520);
+          probeOkTimer = setTimeout(function () { finish('ok'); }, probeFileActive > 0 ? (probeDeepVoiceQuality ? 1600 : 900) : 520);
         }
         probe.append = function (items) {
           rememberQuality(items, 'append-item');
@@ -25172,7 +25208,8 @@
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino', { movieVoiceFilter: true });
           if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
-          if (name === 'makhno' || engine === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', precheckAllVoices: true });
+          if (name === 'makhno' || engine === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', movieVoiceFilter: true, precheckAllVoices: true });
+          if (name === 'starlight' || engine === 'starlight') return new cdnvideohub(fake, object, { sourceTitle: 'Midnight', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
@@ -25199,7 +25236,8 @@
           if (engine === 'vibix') return new vibix(fake, object);
           if (engine === 'redheadsound') return new redheadsound(fake, object, false);
           if (engine === 'redheadsound-dash') return new redheadsound(fake, object, true);
-          if (engine === 'zetflixnet') return new zetflixnet(fake, object);
+          if (name === 'zetflixnet' || engine === 'zetflixnet') return new zetflixnet(fake, object, { precheckAllVoices: true });
+          if (name === 'cdnvideohub') return new cdnvideohub(fake, object, { sourceTitle: 'CDNVideoHub', movieVoiceFilter: true, precheckAllVoices: true });
           if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
           if (engine === 'anilibria') return new anilibria(fake, object);
           if (engine === 'anilibria2') return new anilibria2(fake, object);
@@ -28645,7 +28683,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.118: Makhno фільми групуються в одну картку з перекладами у фільтрі; precheck для Makhno перевіряє кілька голосів/stream-ів, щоб не занижувати 4K до 1080p. KlonFun/BatkoMakhno/UAKino movieVoiceFilter збережено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.119: Midnight, ZetflixNet і CDNVideoHub отримали таку саму логіку: фільми з кількома озвучками групуються в одну картку, переклади йдуть у фільтр/кнопку плеєра, а precheck перевіряє кілька voice/stream, щоб не занижувати 4K до 1080p. Попередні правки Makhno/KlonFun/BatkoMakhno/UAKino збережено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
