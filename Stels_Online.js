@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.129';
+    var STELS_ONLINE_VERSION = '1.1.130';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -2286,7 +2286,7 @@
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
-            element.translate_voice = zetflixnetVoiceRaw(choice.voice);
+            element.translate_voice = filter_items.voice && filter_items.voice[choice.voice] || choice.voice_name || '';
           }
 
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
@@ -2501,12 +2501,7 @@
 
       this.filter = function (type, a, b) {
         choice[a.stype] = b.index;
-        if (a.stype == 'voice') {
-          // filter_items.voice може бути display-рядком "4K  DniproFilm",
-          // але у choice зберігаємо чисту назву перекладу для пошуку stream.
-          choice.voice_name = zetflixnetVoiceRaw(b.index);
-          choice.voice_quality = filter_items.voice_quality && filter_items.voice_quality[b.index] || '';
-        }
+        if (a.stype == 'voice') choice.voice_name = filter_items.voice && filter_items.voice[b.index] || '';
         component.reset();
         filter();
         append(filtred());
@@ -2707,7 +2702,7 @@
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
-            element.translate_voice = zetflixnetVoiceRaw(choice.voice);
+            element.translate_voice = filter_items.voice && filter_items.voice[choice.voice] || choice.voice_name || '';
           }
 
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
@@ -17032,7 +17027,7 @@
           extract.items.forEach(function (data) {
             var voice = data.voiceStudio || data.voiceType || '';
 
-            if (data.season == season_id && voice == zetflixnetVoiceRaw(choice.voice)) {
+            if (data.season == season_id && voice == (filter_items.voice && filter_items.voice[choice.voice] || '')) {
               filtred.push({
                 title: component.formatEpisodeTitle(season_id, data.episode),
                 quality: '360p ~ 1080p',
@@ -17629,12 +17624,24 @@
       };
 
       this.filter = function (type, a, b) {
-        choice[a.stype] = b.index;
-        if (a.stype == 'voice') choice.voice_name = zetflixnetVoiceRaw(b.index) || zetflixnetStripVoiceQuality(filter_items.voice[b.index] || '');
+        var changedType = a && a.stype || '';
+        choice[changedType] = b.index;
+        if (changedType == 'voice') {
+          choice.voice_name = zetflixnetVoiceRaw(b.index) || zetflixnetStripVoiceQuality(filter_items.voice[b.index] || '');
+          choice.voice_quality = filter_items.voice_quality && filter_items.voice_quality[b.index] || '';
+        }
         component.reset();
         filter();
         append(filtred());
         component.saveChoice(choice);
+        // 1.1.130: для серіалів якість озвучок залежить від сезону.
+        // При зміні сезону одразу запускаємо той самий video/{vkId}-prefetch,
+        // який використовується для фільмів/перевірки джерел, але вже для нового сезону.
+        if (changedType == 'season') {
+          try { zetflixnetStartVoiceQualityPrefetch('season-change'); } catch (e) { stelsLog('zetflixnet-season-quality-prefetch-error', { error: e && (e.message || e.toString()) || '' }); }
+        } else {
+          try { zetflixnetScheduleVoiceQualityColor('filter-change'); } catch (e2) {}
+        }
       };
 
       this.destroy = function () {
@@ -17870,7 +17877,7 @@
             zetflixnetPrefetchMovieVoiceQualitiesBeforeRender(renderAfterVoiceQualityPrefetch);
           } else {
             renderAfterVoiceQualityPrefetch();
-            zetflixnetStartVoiceQualityPrefetch();
+            zetflixnetStartVoiceQualityPrefetch('after-render');
           }
         } else component.emptyForQuery(select_title);
       }
@@ -17915,7 +17922,7 @@
 
       function zetflixnetVoiceRaw(index) {
         if (filter_items.voice_raw && filter_items.voice_raw[index] != null) return filter_items.voice_raw[index];
-        return filter_items.voice && filter_items.voice[index] || '';
+        return zetflixnetStripVoiceQuality(filter_items.voice && filter_items.voice[index] || '');
       }
 
       function zetflixnetVoiceIndex(voiceName) {
@@ -18055,11 +18062,15 @@
         step();
       }
 
-      function zetflixnetStartVoiceQualityPrefetch() {
+      function zetflixnetStartVoiceQualityPrefetch(reason) {
         var candidates = zetflixnetQualityProbeCandidates();
-        if (!candidates.length) return;
+        if (!candidates.length) {
+          stelsLog('zetflixnet-voice-quality-prefetch-skip', { reason: reason || '', season: zetflixnetCurrentSeasonForQuality(), voices: filter_items && filter_items.voice_raw || [] });
+          return;
+        }
         var runId = ++zetflixnetVoiceQualityRunId;
         var i = 0;
+        stelsLog('zetflixnet-voice-quality-prefetch-start', { reason: reason || '', total: candidates.length, season: zetflixnetCurrentSeasonForQuality(), voices: candidates.slice(0, 12).map(function (c) { return c.voice || ''; }) });
         function step() {
           if (runId !== zetflixnetVoiceQualityRunId || !(extract && extract.items)) return;
           if (i >= candidates.length) return;
@@ -30097,7 +30108,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.129: база 1.1.128; виправлено scope змінних ZetflixNet для DOM-підсвітки якості перекладів, щоб 1080p/4K у списку перекладів реально фарбувались жовтим.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.130: база 1.1.129; для ZetflixNet при зміні сезону запускається prefetch якості перекладів нового сезону; прибрано випадкові виклики zetflixnetVoiceRaw поза ZetflixNet, які давали ReferenceError у фоновій перевірці/фільтрації.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
