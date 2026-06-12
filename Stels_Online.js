@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.120';
+    var STELS_ONLINE_VERSION = '1.1.121';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -21,12 +21,12 @@
     var STELS_REQUESTED_SOURCE_NAMES = [
       'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'uaserials', 'rezka720',
       'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
-      'filmixtv', 'fxapi', 'filmix4k', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'zetflixnet', 'collaps',
+      'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'zetflixnet', 'collaps',
       'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'zerx', 'uafilm', 'kinotochka', 'iremux', 'remux',
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
       'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
       'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
-      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'spectre', 'nenetflixbd', 'kinoflix', 'leproduction', 'vkmovie',
+      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie',
       'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
       'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
       'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
@@ -34,15 +34,15 @@
 
     var STELS_SOURCE_TITLES = {
       uaflix: 'UAflix', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', jacktor: 'JackTor', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
-      mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI', filmix4k: 'Filmix 4K',
+      mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
       rezka: 'Rezka', pizdatoehd: 'PizdatoeHD', getstv: 'GetsTV', kinopub: 'KinoPub', zetflixdb: 'ZetflixDB', zetflixnet: 'ZetflixNet',
       collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
       kinoukr: 'KinoUkr', zerx: 'Zerx', uafilm: 'UAFilm', kinotochka: 'KinoTochka', iremux: 'iRemux', remux: 'Remux', anilibria: 'AniLibria',
       animedia: 'Animedia', animego: 'AnimeGo', animevost: 'AnimeVost', animebesst: 'AnimeBesst', alloha: 'Alloha',
-      mirage: 'Mirage', phantom: 'Phantom', spectre: 'Spectre', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
+      mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
-      videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', nenetflixbd: 'NeNetflix', kinoflix: 'KinoFlix',
+      videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
       leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
@@ -60,11 +60,11 @@
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'cdnvideohub',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'kinoukr', zerx: 'zerx',
       eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'cdnvideohub', filmixtv: 'filmix',
-      fxapi: 'filmix', filmix4k: 'filmix4k', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
+      fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'cdnvideohub',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
-      mirage: 'rc-mirage', phantom: 'collaps-dash', spectre: 'spectre', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
+      mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
-      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', nenetflixbd: 'nenetflixbd', kinoflix: 'videoseed', leproduction: 'videoseed',
+      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', kinoflix: 'videoseed', leproduction: 'videoseed',
       vkmovie: 'cdnvideohub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'cdnvideohub'
     };
 
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.120: Filmix 4K, Spectre і NeNetflix переведено на публічний http://showypro.com із showy_token; прибрано жорстко прописані IP-backend-и 130/85/178 для цих джерел.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.121: прибрано невдалі Showy-remote джерела; для Tartuga додано спеціальну обробку Turbo iframe з filmo.tartugi.net_Turbo.har.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15168,7 +15168,8 @@
           title = clean(title || 'Плеєр');
           if (!url || seen[url]) return;
           seen[url] = true;
-          out.push({ title: title || ('Плеєр ' + (out.length + 1)), url: url, quality: qualityFromText(title + ' ' + url) || 'iframe', poster: pageInfo && pageInfo.poster || '', referer: pageInfo && pageInfo.page || ref });
+          var isTurbo = /turbo/i.test(title || '') || /obrut\.show\/embed\//i.test(url || '');
+          out.push({ title: isTurbo ? 'Turbo' : (title || ('Плеєр ' + (out.length + 1))), url: url, quality: isTurbo ? '240p ~ 1080p' : (qualityFromText(title + ' ' + url) || 'iframe'), poster: pageInfo && pageInfo.poster || '', referer: pageInfo && pageInfo.page || ref, turbo: isTurbo });
         }
         html.replace(/<span[^>]*onclick\s*=\s*(['"])([\s\S]*?)\1[^>]*>([\s\S]*?)<\/span>/gi, function (all, q, onclick, body) {
           var u = (onclick.match(/ChangeCDN\s*\([^,]+,\s*(['"])([\s\S]*?)\1\s*\)/i) || [])[2] || '';
@@ -15182,6 +15183,103 @@
           return p(a) - p(b);
         });
         return out;
+      }
+      function isTurboPlayer(player) {
+        return !!(player && (/turbo/i.test(player.title || '') || /obrut\.show\/embed\//i.test(player.url || '')));
+      }
+      function turboOrigin(url) {
+        var m = String(url || '').match(/^(https?:\/\/[^\/]+)/i);
+        return m ? m[1] : 'https://2525ee00.obrut.show';
+      }
+      function turboHeaders(url, pageUrl) {
+        var origin = turboOrigin(url);
+        return {
+          'User-Agent': headers['User-Agent'],
+          'Accept': '*/*',
+          'Accept-Language': headers['Accept-Language'],
+          'Referer': origin + '/',
+          'Origin': origin
+        };
+      }
+      function turboDecodeUtf8(bin) {
+        try {
+          var out = '';
+          for (var i = 0; i < bin.length; i++) out += '%' + ('00' + bin.charCodeAt(i).toString(16)).slice(-2);
+          return decodeURIComponent(out);
+        } catch (e) { return bin || ''; }
+      }
+      function turboBestDecoded(html) {
+        html = String(html || '');
+        var match = html.match(/new\s+Player\s*\(\s*['"]([^'"]{200,})['"]/i);
+        var arg = match && match[1] || '';
+        if (!arg) return '';
+        var candidates = [];
+        var pos = -1;
+        while ((pos = arg.indexOf('eyJ', pos + 1)) !== -1) candidates.push(arg.slice(pos));
+        if (!candidates.length) candidates.push(arg);
+        var best = '';
+        var bestScore = 0;
+        candidates.forEach(function (raw) {
+          raw = String(raw || '').replace(/[^A-Za-z0-9+\/]/g, '');
+          for (var cut = 0; cut < 8; cut++) {
+            var s = cut ? raw.slice(0, -cut) : raw;
+            if (!s || s.length < 100) continue;
+            try {
+              while (s.length % 4) s += '=';
+              var txt = turboDecodeUtf8(atob(s));
+              var score = (txt.match(/\[\d+p\]https?:\\?\/\\?\//g) || []).length * 100 + (txt.match(/cdn-[^\s"']+obrut\.show/g) || []).length;
+              if (score > bestScore) { bestScore = score; best = txt; }
+            } catch (e) {}
+          }
+        });
+        return best;
+      }
+      function turboParseQuality(html, iframeUrl) {
+        var txt = turboBestDecoded(html);
+        var quality = {};
+        var first = '';
+        function add(label, url) {
+          label = String(label || '').trim();
+          url = String(url || '').replace(/\\\//g, '/').replace(/\/+$/, '').trim();
+          if (!label || !/^https?:\/\//i.test(url)) return;
+          if (!quality[label]) quality[label] = url;
+          if (!first) first = url;
+        }
+        txt.replace(/\[(\d+p)\](https?:\\?\/\\?\/[^,"\s\x00-\x1f]+)/gi, function (all, label, url) { add(label, url); return all; });
+        txt.replace(/(https?:\\?\/\\?\/[^,"\s\x00-\x1f]+(?:m3u8|stream)[^,"\s\x00-\x1f]*)/gi, function (all, url) { add('HLS', url); return all; });
+        var order = ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', 'HLS'];
+        var selected = '';
+        order.some(function (q) { if (quality[q]) { selected = quality[q]; return true; } return false; });
+        selected = selected || first;
+        log('turbo-parse', { iframe: String(iframeUrl || '').slice(0, 180), decoded: !!txt, qualities: Object.keys(quality), selected: String(selected || '').slice(0, 180) });
+        return selected ? { url: selected, quality: quality } : null;
+      }
+      function playTurboIframe(element, fallback) {
+        requestText(element.stream, function (html) {
+          var parsed = turboParseQuality(html, element.stream);
+          if (!parsed || !parsed.url) { fallback('turbo parse empty'); return; }
+          var play = stelsSanitizeAndroidPlayable({
+            url: parsed.url,
+            title: (element.title || select_title) + ' / Turbo',
+            poster: element.poster || '',
+            timeline: element.timeline,
+            headers: turboHeaders(element.stream),
+            subtitles: false,
+            quality: parsed.quality || false,
+            iframe: false
+          }, 'tartuga-turbo');
+          Lampa.Player.play(play);
+          Lampa.Player.playlist([play]);
+        }, function (err) { fallback(err || 'turbo request error'); }, { timeout: 15000, headers: {
+          'User-Agent': headers['User-Agent'],
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': headers['Accept-Language'],
+          'Referer': element.referer || ref,
+          'Sec-Fetch-Dest': 'iframe',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'cross-site',
+          'Upgrade-Insecure-Requests': '1'
+        } });
       }
       function cdnUrlByKp(kp) {
         return host + '/CDN/ChangeCDN-RU.php?kpid=' + encodeURIComponent(kp) + '&all=yes&veoveo=' + encodeURIComponent(kp) + '&ok=&ok2=&youtube=&vk=&youtube-ost=&youtube-list=&youtube-fakti=';
@@ -15244,7 +15342,7 @@
       function currentItems() {
         var p = extract[choice.player] || extract[0];
         if (!p) return [];
-        return [{ title: select_title || p.title || 'Tartuga', quality: p.quality || 'iframe', info: p.title ? ' / ' + p.title : '', voice: p.title || '', stream: p.url, iframe: true, headers: iframeHeaders, poster: p.poster || '' }];
+        return [{ title: select_title || p.title || 'Tartuga', quality: p.quality || 'iframe', info: p.title ? ' / ' + p.title : '', voice: p.title || '', stream: p.url, iframe: true, headers: p.turbo ? turboHeaders(p.url, p.referer) : iframeHeaders, poster: p.poster || '', turbo: !!p.turbo, referer: p.referer || ref }];
       }
       function append(items) {
         component.reset();
@@ -15259,6 +15357,17 @@
           if (viewed.indexOf(hash_file) !== -1) row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
           row.on('hover:enter', function () {
             if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            if (element.turbo) {
+              playTurboIframe(element, function (reason) {
+                log('turbo-fallback-iframe', { reason: reason || '', iframe: String(element.stream || '').slice(0, 180) });
+                var fallbackPlay = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.title || select_title, poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: false, quality: false, iframe: true, method: 'iframe' }, 'tartuga-turbo-iframe');
+                Lampa.Player.play(fallbackPlay);
+                Lampa.Player.playlist([fallbackPlay]);
+              });
+              if (viewed.indexOf(hash_file) === -1) { viewed.push(hash_file); row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>'); Lampa.Storage.set('online_view', viewed); }
+              try { stelsSaveWatchHistory(object.movie, 'tartuga', 'Tartuga', element, { title: element.title, player: 'Turbo' }); } catch (e) {}
+              return;
+            }
             var play = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.title || select_title, poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: false, quality: false, iframe: true, method: 'iframe' }, 'tartuga');
             Lampa.Player.play(play);
             Lampa.Player.playlist([play]);
@@ -20676,9 +20785,7 @@
           var nws_id = Lampa.Storage.get('lampac_nws_id', '');
           if (nws_id) url = Lampa.Utils.addUrlComponent(url, 'nws_id=' + encodeURIComponent(nws_id));
         }
-        // 1.1.118: Showy premium endpoints (зокрема Filmix 4K/fxapi) не працюють
-        // через прямий backend без авторизації. Якщо у Lampa вже є showy_token
-        // від Showy-плагіна, додаємо його так само, як у Showy m.js.
+        // Для Showy remote endpoint додаємо showy_token зі Storage, якщо він є.
         if ((remoteOptions.showyToken || /showypro\.com/i.test(host || '')) && url.indexOf('showy_token=') == -1) {
           var showy_token = Lampa.Storage.get('showy_token', '');
           if (showy_token) url = Lampa.Utils.addUrlComponent(url, 'showy_token=' + encodeURIComponent(showy_token));
@@ -24357,26 +24464,6 @@
         kp: true,
         imdb: true
       }, {
-        name: 'spectre',
-        title: 'Spectre',
-        // 1.1.120: прибрано жорстку прив'язку до IP-backend.
-        // Spectre працює через публічний Showy host: http://showypro.com/lite/spectre із showy_token зі Storage.
-        source: new lampauaRemoteSource(this, object, ['spectre'], 'Spectre', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'spectre', preferDirect: true }),
-        search: false,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'nenetflixbd',
-        title: 'NeNetflix',
-        // 1.1.120: прибрано жорстку прив'язку до IP-backend.
-        // NeNetflix працює через публічний Showy host: http://showypro.com/lite/zetflixdb із showy_token зі Storage.
-        // У фільмах сервер повертає багато videos__item по перекладах, тому movieVoiceFilter
-        // групує їх в одну картку, а переклади виносить у фільтр і меню плеєра.
-        source: new lampauaRemoteSource(this, object, ['nenetflix', 'nenetflix bd', 'nenetflixbd', 'ne netflix', 'ne netflix bd', 'zetflixdb'], 'NeNetflix', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'zetflixdb', preferDirect: true, movieVoiceFilter: true }),
-        search: false,
-        kp: true,
-        imdb: true
-      }, {
         name: 'rc-mirage',
         title: 'Mirage',
         source: new lampauaRemoteSource(this, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true }),
@@ -24489,16 +24576,6 @@
         search: true,
         kp: false,
         imdb: false
-      }, {
-        name: 'filmix4k',
-        title: 'Filmix 4K',
-        // 1.1.118: Filmix 4K.har НЕ містить робочого безавторизаційного backend для fxapi.
-        // Filmix 4K працює через showypro.com/lite/fxapi із showy_token зі Storage.
-        // IP-backend для цього джерела не використовуємо.
-        source: new lampauaRemoteSource(this, object, ['filmix4k', 'filmix 4k', 'fxapi', 'filmix'], 'Filmix 4K', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'fxapi', preferDirect: true, movieVoiceFilter: true }),
-        search: false,
-        kp: true,
-        imdb: true
       }, {
         name: 'zetflix',
         title: 'Zetflix',
@@ -25169,13 +25246,10 @@
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino');
           if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
-          if (name === 'filmix4k' || engine === 'filmix4k') return new lampauaRemoteSource(fake, object, ['filmix4k', 'filmix 4k', 'fxapi', 'filmix'], 'Filmix 4K', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'fxapi', preferDirect: true, movieVoiceFilter: true });
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
-          if (name === 'spectre' || engine === 'spectre') return new lampauaRemoteSource(fake, object, ['spectre'], 'Spectre', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'spectre', preferDirect: true });
-          if (name === 'nenetflixbd' || name === 'nenetflix' || engine === 'nenetflixbd') return new lampauaRemoteSource(fake, object, ['nenetflix', 'nenetflix bd', 'nenetflixbd', 'ne netflix', 'ne netflix bd', 'zetflixdb'], 'NeNetflix', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'zetflixdb', preferDirect: true, movieVoiceFilter: true });
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
@@ -28644,7 +28718,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.120: Filmix 4K, Spectre і NeNetflix переведено на публічний http://showypro.com із showy_token; прибрано жорстко прописані IP-backend-и 130/85/178 для цих джерел.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.121: прибрано невдалі Showy-remote джерела; для Tartuga додано спеціальну обробку Turbo iframe з filmo.tartugi.net_Turbo.har.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
