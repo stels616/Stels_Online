@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.108';
+    var STELS_ONLINE_VERSION = '1.1.109';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5629,7 +5629,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.108: Collaps переведено у native-only режим без Showy; використовується api.ortified/ws + api.kinogram.best + dataset fallback. Інші Showy remote-джерела не чіпались.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.109: Collaps dataset тепер використовується як повноцінний fallback із Collaps.json (223 сторінки), включено fallback після parse-fail і ширший пошук kp/imdb у dataset.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -6555,9 +6555,16 @@
         var m = String(api || '').match(/^(kp|imdb)\/([^\/]+)/i);
         if (!m) return null;
         var kind = m[1].toLowerCase();
-        var id = String(m[2] || '').replace(/^tt/i, '').replace(/\D+/g, '');
+        var raw = String(m[2] || '');
+        var id = raw.replace(/^tt/i, '').replace(/\D+/g, '');
         if (!id) return null;
-        return { kind: kind, id: id, key: kind + ':' + id };
+        return {
+          kind: kind,
+          id: id,
+          raw: raw,
+          imdb: kind == 'imdb' ? 'tt' + id : '',
+          key: kind + ':' + id
+        };
       }
 
       function collaps_dataset_cache_get(target) {
@@ -6590,18 +6597,53 @@
 
       function collaps_dataset_match(item, target) {
         if (!(item && target)) return false;
-        var field = target.kind == 'kp' ? 'kinopoisk_id' : 'imdb_id';
-        var value = String(item[field] || '').replace(/^tt/i, '').replace(/\D+/g, '');
-        if (value && value == target.id) return true;
-        var alt = target.kind == 'kp' ? String(item.kinopoisk || '') : String(item.imdb || '');
-        alt = alt.replace(/^tt/i, '').replace(/\D+/g, '');
-        return !!(alt && alt == target.id);
+
+        function cleanId(v) {
+          return String(v || '').replace(/^tt/i, '').replace(/\D+/g, '');
+        }
+
+        function directValue(v) {
+          return !!(cleanId(v) && cleanId(v) == target.id);
+        }
+
+        var names = target.kind == 'kp'
+          ? ['kinopoisk_id', 'kinopoiskId', 'kp_id', 'kpId', 'kp', 'kinopoisk', 'kinopoiskID', 'kpID']
+          : ['imdb_id', 'imdbId', 'imdb', 'imdbID'];
+
+        for (var i = 0; i < names.length; i++) {
+          if (directValue(item[names[i]])) return true;
+        }
+
+        // 1.1.109: dataset Collaps міняє назви полів у різних page-*.json.
+        // Тому додатково рекурсивно шукаємо kp/imdb тільки в релевантних ключах,
+        // а не по всьому JSON, щоб не сплутати id з роком/сезоном/епізодом.
+        function deepMatch(obj, depth, parentKey) {
+          if (!obj || depth > 5) return false;
+          if (Array.isArray(obj)) {
+            for (var a = 0; a < obj.length; a++) if (deepMatch(obj[a], depth + 1, parentKey)) return true;
+            return false;
+          }
+          if (typeof obj === 'object') {
+            for (var k in obj) {
+              if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+              var lk = String(k || '').toLowerCase();
+              var relevant = target.kind == 'kp'
+                ? /(kp|kinopoisk|kinopoiskid|kinopoisk_id)/i.test(lk)
+                : /(imdb|imdbid|imdb_id)/i.test(lk);
+              if (relevant && directValue(obj[k])) return true;
+              if (deepMatch(obj[k], depth + 1, lk)) return true;
+            }
+          }
+          return false;
+        }
+
+        return deepMatch(item, 0, '');
       }
 
       function collaps_dataset_page_urls() {
-        var urls = [];
-        for (var i = 1; i <= 260; i++) urls.push('https://api-movies.github.io/collaps/datasets/page-' + i + '.json');
-        return urls;
+        // 1.1.109: список взятий із Collaps.json, який ти скинув.
+        // Не скануємо зайві неіснуючі page-224..260, щоб не отримувати порожні 404/timeout.
+        return ['https://api-movies.github.io/collaps/datasets/page-100.json', 'https://api-movies.github.io/collaps/datasets/page-101.json', 'https://api-movies.github.io/collaps/datasets/page-102.json', 'https://api-movies.github.io/collaps/datasets/page-103.json', 'https://api-movies.github.io/collaps/datasets/page-104.json', 'https://api-movies.github.io/collaps/datasets/page-105.json', 'https://api-movies.github.io/collaps/datasets/page-106.json', 'https://api-movies.github.io/collaps/datasets/page-107.json', 'https://api-movies.github.io/collaps/datasets/page-108.json', 'https://api-movies.github.io/collaps/datasets/page-109.json', 'https://api-movies.github.io/collaps/datasets/page-10.json', 'https://api-movies.github.io/collaps/datasets/page-110.json', 'https://api-movies.github.io/collaps/datasets/page-111.json', 'https://api-movies.github.io/collaps/datasets/page-112.json', 'https://api-movies.github.io/collaps/datasets/page-113.json', 'https://api-movies.github.io/collaps/datasets/page-114.json', 'https://api-movies.github.io/collaps/datasets/page-115.json', 'https://api-movies.github.io/collaps/datasets/page-116.json', 'https://api-movies.github.io/collaps/datasets/page-117.json', 'https://api-movies.github.io/collaps/datasets/page-118.json', 'https://api-movies.github.io/collaps/datasets/page-119.json', 'https://api-movies.github.io/collaps/datasets/page-11.json', 'https://api-movies.github.io/collaps/datasets/page-120.json', 'https://api-movies.github.io/collaps/datasets/page-121.json', 'https://api-movies.github.io/collaps/datasets/page-122.json', 'https://api-movies.github.io/collaps/datasets/page-123.json', 'https://api-movies.github.io/collaps/datasets/page-124.json', 'https://api-movies.github.io/collaps/datasets/page-125.json', 'https://api-movies.github.io/collaps/datasets/page-126.json', 'https://api-movies.github.io/collaps/datasets/page-127.json', 'https://api-movies.github.io/collaps/datasets/page-128.json', 'https://api-movies.github.io/collaps/datasets/page-129.json', 'https://api-movies.github.io/collaps/datasets/page-12.json', 'https://api-movies.github.io/collaps/datasets/page-130.json', 'https://api-movies.github.io/collaps/datasets/page-131.json', 'https://api-movies.github.io/collaps/datasets/page-132.json', 'https://api-movies.github.io/collaps/datasets/page-133.json', 'https://api-movies.github.io/collaps/datasets/page-134.json', 'https://api-movies.github.io/collaps/datasets/page-135.json', 'https://api-movies.github.io/collaps/datasets/page-136.json', 'https://api-movies.github.io/collaps/datasets/page-137.json', 'https://api-movies.github.io/collaps/datasets/page-138.json', 'https://api-movies.github.io/collaps/datasets/page-139.json', 'https://api-movies.github.io/collaps/datasets/page-13.json', 'https://api-movies.github.io/collaps/datasets/page-140.json', 'https://api-movies.github.io/collaps/datasets/page-141.json', 'https://api-movies.github.io/collaps/datasets/page-142.json', 'https://api-movies.github.io/collaps/datasets/page-143.json', 'https://api-movies.github.io/collaps/datasets/page-144.json', 'https://api-movies.github.io/collaps/datasets/page-145.json', 'https://api-movies.github.io/collaps/datasets/page-146.json', 'https://api-movies.github.io/collaps/datasets/page-147.json', 'https://api-movies.github.io/collaps/datasets/page-148.json', 'https://api-movies.github.io/collaps/datasets/page-149.json', 'https://api-movies.github.io/collaps/datasets/page-14.json', 'https://api-movies.github.io/collaps/datasets/page-150.json', 'https://api-movies.github.io/collaps/datasets/page-151.json', 'https://api-movies.github.io/collaps/datasets/page-152.json', 'https://api-movies.github.io/collaps/datasets/page-153.json', 'https://api-movies.github.io/collaps/datasets/page-154.json', 'https://api-movies.github.io/collaps/datasets/page-155.json', 'https://api-movies.github.io/collaps/datasets/page-156.json', 'https://api-movies.github.io/collaps/datasets/page-157.json', 'https://api-movies.github.io/collaps/datasets/page-158.json', 'https://api-movies.github.io/collaps/datasets/page-159.json', 'https://api-movies.github.io/collaps/datasets/page-15.json', 'https://api-movies.github.io/collaps/datasets/page-160.json', 'https://api-movies.github.io/collaps/datasets/page-161.json', 'https://api-movies.github.io/collaps/datasets/page-162.json', 'https://api-movies.github.io/collaps/datasets/page-163.json', 'https://api-movies.github.io/collaps/datasets/page-164.json', 'https://api-movies.github.io/collaps/datasets/page-165.json', 'https://api-movies.github.io/collaps/datasets/page-166.json', 'https://api-movies.github.io/collaps/datasets/page-167.json', 'https://api-movies.github.io/collaps/datasets/page-168.json', 'https://api-movies.github.io/collaps/datasets/page-169.json', 'https://api-movies.github.io/collaps/datasets/page-16.json', 'https://api-movies.github.io/collaps/datasets/page-170.json', 'https://api-movies.github.io/collaps/datasets/page-171.json', 'https://api-movies.github.io/collaps/datasets/page-172.json', 'https://api-movies.github.io/collaps/datasets/page-173.json', 'https://api-movies.github.io/collaps/datasets/page-174.json', 'https://api-movies.github.io/collaps/datasets/page-175.json', 'https://api-movies.github.io/collaps/datasets/page-176.json', 'https://api-movies.github.io/collaps/datasets/page-177.json', 'https://api-movies.github.io/collaps/datasets/page-178.json', 'https://api-movies.github.io/collaps/datasets/page-179.json', 'https://api-movies.github.io/collaps/datasets/page-17.json', 'https://api-movies.github.io/collaps/datasets/page-180.json', 'https://api-movies.github.io/collaps/datasets/page-181.json', 'https://api-movies.github.io/collaps/datasets/page-182.json', 'https://api-movies.github.io/collaps/datasets/page-183.json', 'https://api-movies.github.io/collaps/datasets/page-184.json', 'https://api-movies.github.io/collaps/datasets/page-185.json', 'https://api-movies.github.io/collaps/datasets/page-186.json', 'https://api-movies.github.io/collaps/datasets/page-187.json', 'https://api-movies.github.io/collaps/datasets/page-188.json', 'https://api-movies.github.io/collaps/datasets/page-189.json', 'https://api-movies.github.io/collaps/datasets/page-18.json', 'https://api-movies.github.io/collaps/datasets/page-190.json', 'https://api-movies.github.io/collaps/datasets/page-191.json', 'https://api-movies.github.io/collaps/datasets/page-192.json', 'https://api-movies.github.io/collaps/datasets/page-193.json', 'https://api-movies.github.io/collaps/datasets/page-194.json', 'https://api-movies.github.io/collaps/datasets/page-195.json', 'https://api-movies.github.io/collaps/datasets/page-196.json', 'https://api-movies.github.io/collaps/datasets/page-197.json', 'https://api-movies.github.io/collaps/datasets/page-198.json', 'https://api-movies.github.io/collaps/datasets/page-199.json', 'https://api-movies.github.io/collaps/datasets/page-19.json', 'https://api-movies.github.io/collaps/datasets/page-1.json', 'https://api-movies.github.io/collaps/datasets/page-200.json', 'https://api-movies.github.io/collaps/datasets/page-201.json', 'https://api-movies.github.io/collaps/datasets/page-202.json', 'https://api-movies.github.io/collaps/datasets/page-203.json', 'https://api-movies.github.io/collaps/datasets/page-204.json', 'https://api-movies.github.io/collaps/datasets/page-205.json', 'https://api-movies.github.io/collaps/datasets/page-206.json', 'https://api-movies.github.io/collaps/datasets/page-207.json', 'https://api-movies.github.io/collaps/datasets/page-208.json', 'https://api-movies.github.io/collaps/datasets/page-209.json', 'https://api-movies.github.io/collaps/datasets/page-20.json', 'https://api-movies.github.io/collaps/datasets/page-210.json', 'https://api-movies.github.io/collaps/datasets/page-211.json', 'https://api-movies.github.io/collaps/datasets/page-212.json', 'https://api-movies.github.io/collaps/datasets/page-213.json', 'https://api-movies.github.io/collaps/datasets/page-214.json', 'https://api-movies.github.io/collaps/datasets/page-215.json', 'https://api-movies.github.io/collaps/datasets/page-216.json', 'https://api-movies.github.io/collaps/datasets/page-217.json', 'https://api-movies.github.io/collaps/datasets/page-218.json', 'https://api-movies.github.io/collaps/datasets/page-219.json', 'https://api-movies.github.io/collaps/datasets/page-21.json', 'https://api-movies.github.io/collaps/datasets/page-220.json', 'https://api-movies.github.io/collaps/datasets/page-221.json', 'https://api-movies.github.io/collaps/datasets/page-222.json', 'https://api-movies.github.io/collaps/datasets/page-223.json', 'https://api-movies.github.io/collaps/datasets/page-22.json', 'https://api-movies.github.io/collaps/datasets/page-23.json', 'https://api-movies.github.io/collaps/datasets/page-24.json', 'https://api-movies.github.io/collaps/datasets/page-25.json', 'https://api-movies.github.io/collaps/datasets/page-26.json', 'https://api-movies.github.io/collaps/datasets/page-27.json', 'https://api-movies.github.io/collaps/datasets/page-28.json', 'https://api-movies.github.io/collaps/datasets/page-29.json', 'https://api-movies.github.io/collaps/datasets/page-2.json', 'https://api-movies.github.io/collaps/datasets/page-30.json', 'https://api-movies.github.io/collaps/datasets/page-31.json', 'https://api-movies.github.io/collaps/datasets/page-32.json', 'https://api-movies.github.io/collaps/datasets/page-33.json', 'https://api-movies.github.io/collaps/datasets/page-34.json', 'https://api-movies.github.io/collaps/datasets/page-35.json', 'https://api-movies.github.io/collaps/datasets/page-36.json', 'https://api-movies.github.io/collaps/datasets/page-37.json', 'https://api-movies.github.io/collaps/datasets/page-38.json', 'https://api-movies.github.io/collaps/datasets/page-39.json', 'https://api-movies.github.io/collaps/datasets/page-3.json', 'https://api-movies.github.io/collaps/datasets/page-40.json', 'https://api-movies.github.io/collaps/datasets/page-41.json', 'https://api-movies.github.io/collaps/datasets/page-42.json', 'https://api-movies.github.io/collaps/datasets/page-43.json', 'https://api-movies.github.io/collaps/datasets/page-44.json', 'https://api-movies.github.io/collaps/datasets/page-45.json', 'https://api-movies.github.io/collaps/datasets/page-46.json', 'https://api-movies.github.io/collaps/datasets/page-47.json', 'https://api-movies.github.io/collaps/datasets/page-48.json', 'https://api-movies.github.io/collaps/datasets/page-49.json', 'https://api-movies.github.io/collaps/datasets/page-4.json', 'https://api-movies.github.io/collaps/datasets/page-50.json', 'https://api-movies.github.io/collaps/datasets/page-51.json', 'https://api-movies.github.io/collaps/datasets/page-52.json', 'https://api-movies.github.io/collaps/datasets/page-53.json', 'https://api-movies.github.io/collaps/datasets/page-54.json', 'https://api-movies.github.io/collaps/datasets/page-55.json', 'https://api-movies.github.io/collaps/datasets/page-56.json', 'https://api-movies.github.io/collaps/datasets/page-57.json', 'https://api-movies.github.io/collaps/datasets/page-58.json', 'https://api-movies.github.io/collaps/datasets/page-59.json', 'https://api-movies.github.io/collaps/datasets/page-5.json', 'https://api-movies.github.io/collaps/datasets/page-60.json', 'https://api-movies.github.io/collaps/datasets/page-61.json', 'https://api-movies.github.io/collaps/datasets/page-62.json', 'https://api-movies.github.io/collaps/datasets/page-63.json', 'https://api-movies.github.io/collaps/datasets/page-64.json', 'https://api-movies.github.io/collaps/datasets/page-65.json', 'https://api-movies.github.io/collaps/datasets/page-66.json', 'https://api-movies.github.io/collaps/datasets/page-67.json', 'https://api-movies.github.io/collaps/datasets/page-68.json', 'https://api-movies.github.io/collaps/datasets/page-69.json', 'https://api-movies.github.io/collaps/datasets/page-6.json', 'https://api-movies.github.io/collaps/datasets/page-70.json', 'https://api-movies.github.io/collaps/datasets/page-71.json', 'https://api-movies.github.io/collaps/datasets/page-72.json', 'https://api-movies.github.io/collaps/datasets/page-73.json', 'https://api-movies.github.io/collaps/datasets/page-74.json', 'https://api-movies.github.io/collaps/datasets/page-75.json', 'https://api-movies.github.io/collaps/datasets/page-76.json', 'https://api-movies.github.io/collaps/datasets/page-77.json', 'https://api-movies.github.io/collaps/datasets/page-78.json', 'https://api-movies.github.io/collaps/datasets/page-79.json', 'https://api-movies.github.io/collaps/datasets/page-7.json', 'https://api-movies.github.io/collaps/datasets/page-80.json', 'https://api-movies.github.io/collaps/datasets/page-81.json', 'https://api-movies.github.io/collaps/datasets/page-82.json', 'https://api-movies.github.io/collaps/datasets/page-83.json', 'https://api-movies.github.io/collaps/datasets/page-84.json', 'https://api-movies.github.io/collaps/datasets/page-85.json', 'https://api-movies.github.io/collaps/datasets/page-86.json', 'https://api-movies.github.io/collaps/datasets/page-87.json', 'https://api-movies.github.io/collaps/datasets/page-88.json', 'https://api-movies.github.io/collaps/datasets/page-89.json', 'https://api-movies.github.io/collaps/datasets/page-8.json', 'https://api-movies.github.io/collaps/datasets/page-90.json', 'https://api-movies.github.io/collaps/datasets/page-91.json', 'https://api-movies.github.io/collaps/datasets/page-92.json', 'https://api-movies.github.io/collaps/datasets/page-93.json', 'https://api-movies.github.io/collaps/datasets/page-94.json', 'https://api-movies.github.io/collaps/datasets/page-95.json', 'https://api-movies.github.io/collaps/datasets/page-96.json', 'https://api-movies.github.io/collaps/datasets/page-97.json', 'https://api-movies.github.io/collaps/datasets/page-98.json', 'https://api-movies.github.io/collaps/datasets/page-99.json', 'https://api-movies.github.io/collaps/datasets/page-9.json'];
       }
 
       function collaps_dataset_search(api, callback, error) {
@@ -6731,14 +6773,56 @@
         object = _object;
         select_title = object.search || object.movie.title;
         var error = component.empty.bind(component);
-        var api = (+kinopoisk_id ? 'kp/' : 'imdb/') + kinopoisk_id;
-        collaps_api_search(api, function (str) {
-          if (str) parse(str);else if (!object.clarification && object.movie.imdb_id && kinopoisk_id != object.movie.imdb_id) {
-            collaps_api_search('imdb/' + object.movie.imdb_id, function (str) {
-              if (str) parse(str);else component.emptyForQuery(select_title);
-            }, error);
-          } else component.emptyForQuery(select_title);
-        }, error);
+        var tried = {};
+        var list = [];
+
+        function addApi(api) {
+          api = String(api || '');
+          if (!api || tried[api]) return;
+          tried[api] = true;
+          list.push(api);
+        }
+
+        if (kinopoisk_id) addApi((+kinopoisk_id ? 'kp/' : 'imdb/') + kinopoisk_id);
+        if (object.movie && object.movie.kinopoisk_id) addApi('kp/' + object.movie.kinopoisk_id);
+        if (object.movie && object.movie.imdb_id) addApi('imdb/' + object.movie.imdb_id);
+
+        function tryNext(pos) {
+          var api = list[pos];
+          if (!api) {
+            component.emptyForQuery(select_title);
+            return;
+          }
+
+          collaps_api_search(api, function (str) {
+            // 1.1.109: якщо embed відповів HTML без makePlayer або порожньо,
+            // не показуємо одразу "немає джерела", а пробуємо dataset із Collaps.json.
+            if (str && parse(str, true)) return;
+
+            if (collaps_is_dataset_candidate(api)) {
+              collaps_dataset_search(api, function (datasetStr) {
+                if (datasetStr && parse(datasetStr, true)) return;
+                tryNext(pos + 1);
+              }, function () {
+                tryNext(pos + 1);
+              });
+            } else {
+              tryNext(pos + 1);
+            }
+          }, function () {
+            if (collaps_is_dataset_candidate(api)) {
+              collaps_dataset_search(api, function (datasetStr) {
+                if (datasetStr && parse(datasetStr, true)) return;
+                tryNext(pos + 1);
+              }, function () {
+                tryNext(pos + 1);
+              });
+            } else tryNext(pos + 1);
+          });
+        }
+
+        stelsLog('collaps-search-plan', { title: select_title, apis: list });
+        tryNext(0);
       };
 
       this.extendChoice = function (saved) {
@@ -6785,7 +6869,7 @@
         extract = null;
       };
 
-      function parse(str) {
+      function parse(str, silent) {
         component.loading(false);
         str = (str || '').replace(/\n/g, '');
         var find = str.match(/makePlayer\(({.*?})\);/);
@@ -6806,7 +6890,12 @@
 
           filter();
           append(filtred());
-        } else component.emptyForQuery(select_title);
+          return true;
+        }
+
+        stelsLog('collaps-parse-empty', { title: select_title, silent: !!silent, length: str.length, sample: str.slice(0, 160) });
+        if (!silent) component.emptyForQuery(select_title);
+        return false;
       }
       /**
        * Построить фильтр
@@ -25921,9 +26010,9 @@
       }, {
         name: 'collaps',
         title: 'Collaps',
-        // 1.1.108: Collaps працює напряму без Showy-сервера.
-        // HAR із Showy не містить внутрішнього Collaps API, тому повертаємо native extractor:
-        // api.ortified.ws/embed/{kp|imdb}/... -> api.kinogram.best/embed/... -> api-movies.github.io dataset fallback.
+        // 1.1.109: Collaps працює напряму без Showy-сервера.
+        // Спочатку пробує api.ortified/api.kinogram, а якщо embed порожній або HTML не містить makePlayer,
+        // шукає id у dataset-сторінках із Collaps.json і відкриває /embed/{id}.
         source: new collaps(this, object, false),
         search: false,
         kp: true,
@@ -30094,7 +30183,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.108: Collaps переведено у native-only режим без Showy; використовується api.ortified/ws + api.kinogram.best + dataset fallback. Інші Showy remote-джерела не чіпались.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.109: Collaps dataset тепер використовується як повноцінний fallback із Collaps.json (223 сторінки), включено fallback після parse-fail і ширший пошук kp/imdb у dataset.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
