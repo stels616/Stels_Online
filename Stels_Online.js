@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.103';
+    var STELS_ONLINE_VERSION = '1.1.104';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5629,7 +5629,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.103: Tartuga-Alloha: domain/title-page з Chrome HAR, direct HLS без proxy, autoplay=1 для зміни перекладу; HDVB Windows retry через сторінку тайтлу.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.104: відкатано загальні зміни Tartuga з 1.1.103; VeoVeo/HDVB/Turbo/Collaps залишені як у 1.1.102, правки ізольовані тільки в Tartuga-Alloha.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15499,19 +15499,6 @@
           return /alloha|token_movie|stravers|stloadi|allarknow|hdvb|sevstar/i.test(s);
         });
       }
-      function capturedTitlePageHint() {
-        var kp = String(object.kinopoisk_id || object.kp_id || object.kinopoisk || object.kp || movie.kinopoisk_id || movie.kp_id || '').replace(/[^0-9]/g, '');
-        var tmdb = String(object.tmdb_id || object.id || movie.id || '').replace(/[^0-9]/g, '');
-        // fallback з Chrome HAR користувача: iframe Alloha має userParam.domain саме на цю сторінку,
-        // а пошук DLE у Lampa/Electron для цього тайтлу повертає 0 результатів.
-        if (kp === '6943933' || tmdb === '1265609') return host + '/120153-voennaya-mashina.html';
-        return '';
-      }
-      function bestTartugaPageHint(player) {
-        var page = player && player.page_info && player.page_info.page || player && player.referer || '';
-        if (page && page !== ref && /^https?:\/\//i.test(page)) return page;
-        return capturedTitlePageHint();
-      }
       function renderPlayers(players, pageInfo) {
         extract = players || [];
         if (!extract.length) { component.loading(false); component.emptyForQuery(select_title); return; }
@@ -15540,12 +15527,6 @@
           }
           if (players.length && directCdnNeedsTitleRefresh(players, infoForPlayers)) {
             log('cdn-title-refresh-start', { reason: 'direct-kp-referer-root', players: players.length, sample: players.slice(0, 8).map(function (p) { return p.title + '|' + p.url.slice(0, 100); }) });
-            var pageHint = capturedTitlePageHint();
-            if (pageHint) {
-              log('cdn-title-refresh-hint', { page: pageHint, source: 'captured-domain' });
-              loadTitlePage(pageHint);
-              return;
-            }
             findBestTitlePage(titleVariants(), 0, function (link) {
               log('cdn-title-refresh-found', { page: link });
               loadTitlePage(link);
@@ -15630,12 +15611,6 @@
         if (!player || player._hdvb_page_retry) return false;
         player._hdvb_page_retry = true;
         log('hdvb-page-retry-start', { player: player.title || '', referer: player.referer || '', error: preview(lastError || '', 220) });
-        var pageHint = bestTartugaPageHint(player);
-        if (pageHint) {
-          log('hdvb-page-retry-hint', { page: pageHint, source: 'captured-domain' });
-          loadTitlePage(pageHint);
-          return true;
-        }
         findBestTitlePage(titleVariants(), 0, function (link) {
           log('hdvb-page-retry-found', { page: link });
           loadTitlePage(link);
@@ -15730,9 +15705,12 @@
         var seen = {};
         function add(season, episode, voice, media, quality) {
           media = media || {};
+          // Alloha movie translations have both a selected translation id (media.id)
+          // and sometimes a base file id (media.id_file). Keep both, but do not change
+          // other Tartuga players; this block is used only for Alloha fileList items.
           var selectedId = media.id || media.file_id || '';
           var baseId = media.id_file || '';
-          var id = selectedId || baseId || '';
+          var id = selectedId || baseId || media.file_id || '';
           var file = media.file || media.url || media.src || media.hls || '';
           if (!id && !file) return;
           var key = [season || 0, episode || 0, voice || '', selectedId || id || file].join('|');
@@ -15746,7 +15724,7 @@
             episode: parseInt(episode, 10) || 0,
             voice: voice || media.translation || player && player.title || '',
             media: media,
-            file_id: selectedId || id,
+            file_id: id,
             alloha_id: selectedId || media.id || '',
             alloha_base_id: baseId || '',
             alloha_translation_id: media.id_translation || '',
@@ -16171,26 +16149,22 @@
         var tk = tokenFromUrl(iframe);
         var current = originFromUrl(iframe);
         if (tm && tk) {
-          var domainPage = bestTartugaPageHint(player) || host + '/';
-          var domainRoot = host + '/';
           if (current) {
             var sameBase = current + '/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
-            add(sameBase + '&domain=' + encodeURIComponent(domainPage), 'same-origin-title-domain');
             add(sameBase, 'same-origin-token');
-            add(sameBase + '&domain=' + encodeURIComponent(domainRoot), 'same-origin-root-domain');
+            add(sameBase + '&domain=' + encodeURIComponent(host + '/'), 'same-origin-domain');
+            add(sameBase + '&domain=' + encodeURIComponent(host), 'same-origin-domain-noslash');
           }
           // 2) Канонічний astrid як другий рівень fallback.
           ['https://astrid-as.stravers.live'].forEach(function (origin) {
             var base = origin + '/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
-            add(base + '&domain=' + encodeURIComponent(domainPage), 'astrid-title-domain');
-            add(base + '&domain=' + encodeURIComponent(domainRoot), 'astrid-root-domain');
+            add(base + '&domain=' + encodeURIComponent(host + '/'), 'astrid-domain');
             add(base, 'astrid-token');
           });
           // 3) Альтернативні Alloha-домени тільки після оригіналу/same-origin/astrid.
           ['https://synthezoid-as.allarknow.online', 'https://synthezoid-as.stloadi.live', 'https://mars.stravers.live'].forEach(function (origin) {
             var base = origin + '/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
-            add(base + '&domain=' + encodeURIComponent(domainPage), 'alt-title-domain:' + origin);
-            add(base + '&domain=' + encodeURIComponent(domainRoot), 'alt-root-domain:' + origin);
+            add(base + '&domain=' + encodeURIComponent(host + '/'), 'alt-domain:' + origin);
             add(base, 'alt-token:' + origin);
           });
         }
@@ -16206,7 +16180,7 @@
             'User-Agent': headers['User-Agent'],
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': headers['Accept-Language'],
-            'Referer': bestTartugaPageHint(player) || ref
+            'Referer': ref
           };
           requestText(current, function (html) {
             var fileList = parseJsonParseVariable(html, 'fileList');
@@ -16215,22 +16189,11 @@
             player.player_referer = current;
             player.player_token = tokenFromUrl(current);
             player.player_borth = stelsAllohaBorthHeaderFromHtml(html);
-            player.player_borth_source = 'generated';
-            try {
-              var bparts = String(player.player_borth || '').split('|');
-              if (capturedTitlePageHint() && bparts[1]) {
-                // У Chrome HAR для цього Alloha iframe FingerprintJS visitorId був таким.
-                // Поточний псевдо-хеш мав правильну другу частину Borth, але не першу.
-                player.player_borth = '23c720563899e836dc0f8d4d9e0ed9cf2cee4eddb056ed1615607ca89a910efe|' + bparts[1];
-                player.player_borth_source = 'captured-fingerprint';
-              }
-            } catch (eborth) {}
-            player.player_borth_list = player.player_borth ? [player.player_borth] : [];
-            player.player_filelist = fileList || null;
             player.player_iframe_variants = variants;
             player.player_iframe_reason = variants[pos] && variants[pos].reason || '';
+            player.player_filelist = fileList || null;
             var items = normalizeFileListItems(fileList, player);
-            log('filelist-loaded', { player: player.title, type: fileList.type, items: items.length, origin: player.player_origin, token_len: String(player.player_token || '').length, borth: !!player.player_borth, borth_source: player.player_borth_source || '', sample: items.slice(0, 8).map(function (it) { return it.title + '|' + it.voice; }) });
+            log('filelist-loaded', { player: player.title, type: fileList.type, items: items.length, origin: player.player_origin, token_len: String(player.player_token || '').length, borth: !!player.player_borth, sample: items.slice(0, 8).map(function (it) { return it.title + '|' + it.voice; }) });
             if (items.length) success(items); else fail && fail('fileList empty');
           }, function () { tryOne(pos + 1); }, { headers: playerHeaders, dataType: 'text', timeout: 16000, withCredentials: true });
         }
@@ -16365,10 +16328,10 @@
         function addId(v) { v = String(v || '').replace(/[^0-9]/g, ''); if (v && ids.indexOf(v) === -1) ids.push(v); }
         addId(element.alloha_id);
         addId(media.id);
-        addId(media.file_id);
         addId(element.file_id);
         addId(element.alloha_base_id);
         addId(media.id_file);
+        addId(media.file_id);
         // Alloha часто повертає переклади як окремі id, але фактичний HLS може віддаватись тільки з базового id/id_file.
         // Якщо у вибраного перекладу немає id_file (наприклад Dragon Money Studio), пробуємо всі id цього ж фільму/серії.
         try {
@@ -16386,11 +16349,11 @@
         if (ids.length > 6) ids = ids.slice(0, 6);
         var token = player.player_token || tokenFromUrl(player.url) || '';
         var baseReferer = player.player_referer || player.url || ref;
+        if (!ids.length || !token) { error && error(); return; }
         var activeAllohaId = '';
         try { activeAllohaId = String(player.player_filelist && player.player_filelist.active && player.player_filelist.active.id || ''); } catch (eactive) {}
         var selectedAllohaId = String(element.alloha_id || media.id || element.file_id || '');
         var isAllohaTranslationChange = !!(activeAllohaId && selectedAllohaId && activeAllohaId !== selectedAllohaId);
-        if (!ids.length || !token) { error && error(); return; }
         function buildStreamAttempts() {
           var out = [];
           var seen = {};
@@ -16434,8 +16397,9 @@
           attempts.push(x);
         }
         baseAttempts.forEach(function (a) {
-          // Реальний iframe Alloha: перший активний HLS іде з autoplay=0 + audio/subtitle,
-          // а зміна перекладу translationMovie — з autoplay=1 і без порожніх audio/subtitle.
+          // Не чіпаємо інші Tartuga-плеєри. Це лише Alloha POST /bnsi/movies/{id}.
+          // HAR Chrome: перший активний потік -> autoplay=0 + audio/subtitle,
+          // зміна перекладу -> autoplay=1 без порожніх audio/subtitle.
           if (isAllohaTranslationChange) {
             pushAttempt(a, true, false, 'change-av1-autoplay', 1);
             pushAttempt(a, false, false, 'change-noav1-autoplay', 1);
@@ -16455,7 +16419,7 @@
           enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
           enc += 'param/Referer=' + encodeURIComponent(attempt.referer || (attempt.origin + '/')) + '/';
           enc += 'param/Origin=' + encodeURIComponent(attempt.origin) + '/';
-          if (attempt && attempt.borth || player.player_borth) enc += 'param/Borth=' + encodeURIComponent((attempt && attempt.borth) || player.player_borth) + '/';
+          if (player.player_borth) enc += 'param/Borth=' + encodeURIComponent(player.player_borth) + '/';
           enc += 'param/Content-Type=' + encodeURIComponent('application/x-www-form-urlencoded; charset=UTF-8') + '/';
           enc += 'param/X-Requested-With=' + encodeURIComponent('XMLHttpRequest') + '/';
           enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('empty') + '/';
@@ -16465,10 +16429,11 @@
         }
         function allohaPlayableUrl(url, enc) {
           url = absolute(String(url || '').split(/\s+or\s+/i)[0], baseReferer || ref);
-          // Alloha HAR вантажить фінальні vkvideo.cloud .m3u8 напряму з Origin/Referer iframe.
-          // Proxy залишаємо тільки для API /bnsi, а не для підписаних HLS-посилань.
+          if (!url) return '';
+          // Chrome/HAR вантажить підписані vkvideo/cloud .m3u8 напряму з Origin/Referer iframe.
+          // Це не торкається VeoVeo/HDVB/Turbo/Collaps, тільки фінального HLS Alloha.
           if (/vkvideo\.cloud|\.m3u8(?:$|\?)/i.test(url || '')) return url;
-          return url && allohaProxy ? component.proxyLink(url, allohaProxy, enc) : url;
+          return allohaProxy ? component.proxyLink(url, allohaProxy, enc) : url;
         }
         function parseTracks(tracks, enc) {
           if (!(tracks && tracks.forEach)) return false;
@@ -16525,58 +16490,11 @@
           return true;
         }
         function fallbackIframe(lastError) {
-          // 1.1.101: не відкриваємо Alloha iframe як відео після fail, бо Lampa/Android
-          // показує "Відео не знайдене або пошкоджене". Спочатку пробуємо автоматично
-          // взяти робочий потік з іншого Tartuga-плеєра цього ж тайтлу.
-          function sameEpisodeItem(items) {
-            items = items || [];
-            for (var ii = 0; ii < items.length; ii++) {
-              var it = items[ii] || {};
-              if ((element.season || element.episode) && ((it.season || 0) !== (element.season || 0) || (it.episode || 0) !== (element.episode || 0))) continue;
-              return it;
-            }
-            return items[0] || null;
-          }
-          function tryAltPlayer(pos) {
-            var order = ['hdvb', 'veoveo', 'collaps', 'turbo'];
-            if (pos >= order.length) {
-              log('alloha-stream-no-iframe-fallback', { error: preview(lastError || '', 260), reason: 'all-alt-players-failed' });
-              error && error(lastError || 'Alloha stream failed');
-              return;
-            }
-            var key = order[pos];
-            var alt = null;
-            for (var pi = 0; pi < extract.length; pi++) {
-              var p = extract[pi] || {};
-              var label = String(p.title || '') + ' ' + String(p.url || '');
-              if (p === player) continue;
-              if (key === 'hdvb' && isHdvbPlayer(p)) { alt = p; break; }
-              if (key === 'veoveo' && /temptcdn|veoveo/i.test(label)) { alt = p; break; }
-              if (key === 'collaps' && /collaps|ortified/i.test(label)) { alt = p; break; }
-              if (key === 'turbo' && /turbo|obrut/i.test(label)) { alt = p; break; }
-            }
-            if (!alt) { tryAltPlayer(pos + 1); return; }
-            log('alloha-stream-alt-player-start', { player: alt.title || '', url: preview(alt.url, 180), after: preview(lastError || '', 220) });
-            loadSerialForPlayer(alt, function (items) {
-              var altItem = sameEpisodeItem(items);
-              if (!altItem) { log('alloha-stream-alt-player-empty', { player: alt.title || '' }); tryAltPlayer(pos + 1); return; }
-              altItem.player = alt;
-              getStream(altItem, function (ready) {
-                ready.title = ready.title || altItem.title || element.title;
-                ready.voice = ready.voice || altItem.voice || alt.title || '';
-                ready.translate_voice = ready.translate_voice || ready.voice;
-                log('alloha-stream-alt-player-ready', { player: alt.title || '', title: ready.title || '', voice: ready.voice || '', stream: preview(ready.stream || '', 220) });
-                call(ready);
-              }, function (msg) {
-                log('alloha-stream-alt-player-fail', { player: alt.title || '', message: preview(msg || '', 220) });
-                tryAltPlayer(pos + 1);
-              });
-            }, function (msg) {
-              log('alloha-stream-alt-player-load-fail', { player: alt.title || '', message: preview(msg || '', 220) });
-              tryAltPlayer(pos + 1);
-            });
-          }
-          tryAltPlayer(0);
+          // 1.1.104: Alloha більше не перемикається автоматично на HDVB/VeoVeo/Turbo/Collaps.
+          // Інакше користувач бачить, що вибрав Alloha/переклад Alloha, але фактично грає інший плеєр.
+          // Інші плеєри Tartuga доступні тільки через фільтр "Плеєри" і їхня логіка тут не чіпається.
+          log('alloha-stream-no-cross-player-fallback', { error: preview(lastError || '', 260), reason: 'alloha-isolated' });
+          error && error(lastError || 'Alloha stream failed');
         }
         function tryAllohaStream(pos, lastError) {
           var total = Math.min(ids.length * attempts.length, 40);
@@ -16599,8 +16517,8 @@
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin'
           };
-          if (attempt.borth || player.player_borth) h.Borth = attempt.borth || player.player_borth;
-          log('alloha-stream-request', { id: id, pos: pos, total: total, reason: attempt.reason || '', url: preview(url, 220), origin: attempt.origin, referer: preview(attempt.referer, 220), token_len: String(token || '').length, borth: !!(attempt.borth || player.player_borth), av1: attempt.av1 !== false, autoplay: typeof attempt.autoplay === 'number' ? attempt.autoplay : 0, track_params: !!attempt.include_track_params, translation_change: !!isAllohaTranslationChange, proxy: !!(attempt.proxy && allohaProxy) });
+          if (player.player_borth) h.Borth = player.player_borth;
+          log('alloha-stream-request', { id: id, pos: pos, total: total, reason: attempt.reason || '', url: preview(url, 220), origin: attempt.origin, referer: preview(attempt.referer, 220), token_len: String(token || '').length, borth: !!player.player_borth, av1: attempt.av1 !== false, autoplay: typeof attempt.autoplay === 'number' ? attempt.autoplay : 0, track_params: !!attempt.include_track_params, translation_change: !!isAllohaTranslationChange, proxy: !!(attempt.proxy && allohaProxy) });
           requestText(url, function (jsonText) {
             if (extractStream(jsonText, id, enc, attempt)) call(element);
             else tryAllohaStream(pos + 1, 'empty stream for id ' + id + ' via ' + (attempt.reason || ''));
@@ -30112,7 +30030,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.103: Tartuga-Alloha: domain/title-page з Chrome HAR, direct HLS без proxy, autoplay=1 для зміни перекладу; HDVB Windows retry через сторінку тайтлу.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.104: відкатано загальні зміни Tartuga з 1.1.103; VeoVeo/HDVB/Turbo/Collaps залишені як у 1.1.102, правки ізольовані тільки в Tartuga-Alloha.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
