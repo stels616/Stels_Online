@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.121';
+    var STELS_ONLINE_VERSION = '1.1.122';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.121: прибрано невдалі Showy-remote джерела; для Tartuga додано спеціальну обробку Turbo iframe з filmo.tartugi.net_Turbo.har.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.122: виправлено Turbo в Tartuga — перед відкриттям obrut.show iframe визначаємо реальну сторінку фільму Tartuga і передаємо її як Referer, як у HAR; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15184,6 +15184,31 @@
         });
         return out;
       }
+      function isTartugaRootReferer(value) {
+        value = String(value || '').replace(/\\/g, '/').replace(/\/+$/, '') + '/';
+        return !value || value === ref || value === (host + '/');
+      }
+      function resolveTurboReferer(success, fail) {
+        var queries = titleVariants();
+        var pos = 0;
+        function next() {
+          if (destroyed) return;
+          if (pos >= queries.length) {
+            if (fail) fail('title page not found');
+            return;
+          }
+          var q = queries[pos++];
+          var post = 'do=search&sortby=title&subaction=search&story=' + encodeURIComponent(q) + '&x=0&y=0';
+          log('turbo-referer-search-try', { query: q, pos: pos, total: queries.length });
+          requestText(host + '/index.php?do=search', function (html) {
+            var results = parseSearchItems(html);
+            log('turbo-referer-search-results', { query: q, count: results.length, sample: results.slice(0, 3).map(function (r) { return r.title + '|' + r.url; }) });
+            if (results.length && (results[0].url || results[0].link)) success(results[0].url || results[0].link);
+            else next();
+          }, function () { next(); }, { post: post, headers: ajaxHeaders, timeout: 12000 });
+        }
+        next();
+      }
       function isTurboPlayer(player) {
         return !!(player && (/turbo/i.test(player.title || '') || /obrut\.show\/embed\//i.test(player.url || '')));
       }
@@ -15255,31 +15280,52 @@
         return selected ? { url: selected, quality: quality } : null;
       }
       function playTurboIframe(element, fallback) {
-        requestText(element.stream, function (html) {
-          var parsed = turboParseQuality(html, element.stream);
-          if (!parsed || !parsed.url) { fallback('turbo parse empty'); return; }
-          var play = stelsSanitizeAndroidPlayable({
-            url: parsed.url,
-            title: (element.title || select_title) + ' / Turbo',
-            poster: element.poster || '',
-            timeline: element.timeline,
-            headers: turboHeaders(element.stream),
-            subtitles: false,
-            quality: parsed.quality || false,
-            iframe: false
-          }, 'tartuga-turbo');
-          Lampa.Player.play(play);
-          Lampa.Player.playlist([play]);
-        }, function (err) { fallback(err || 'turbo request error'); }, { timeout: 15000, headers: {
-          'User-Agent': headers['User-Agent'],
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': headers['Accept-Language'],
-          'Referer': element.referer || ref,
-          'Sec-Fetch-Dest': 'iframe',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'cross-site',
-          'Upgrade-Insecure-Requests': '1'
-        } });
+        function openWithCurrentReferer() {
+          var referer = element.referer || ref;
+          log('turbo-iframe-request', { iframe: String(element.stream || '').slice(0, 180), referer: referer });
+          requestText(element.stream, function (html) {
+            var parsed = turboParseQuality(html, element.stream);
+            if (!parsed || !parsed.url) { fallback('turbo parse empty'); return; }
+            var play = stelsSanitizeAndroidPlayable({
+              url: parsed.url,
+              title: (element.title || select_title) + ' / Turbo',
+              poster: element.poster || '',
+              timeline: element.timeline,
+              headers: turboHeaders(element.stream, referer),
+              subtitles: false,
+              quality: parsed.quality || false,
+              iframe: false
+            }, 'tartuga-turbo');
+            Lampa.Player.play(play);
+            Lampa.Player.playlist([play]);
+          }, function (err) { fallback(err || 'turbo request error'); }, { timeout: 15000, headers: {
+            'User-Agent': headers['User-Agent'],
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': headers['Accept-Language'],
+            'Referer': referer,
+            'Sec-Fetch-Dest': 'iframe',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'cross-site',
+            'Upgrade-Insecure-Requests': '1'
+          } });
+        }
+        // Turbo/obrut.show у HAR відкривався тільки з Referer конкретної сторінки фільму,
+        // а не з кореня filmo.tartugi.net. Якщо ми зайшли через прямий ChangeCDN-RU.php по KP,
+        // спершу знаходимо сторінку фільму пошуком і лише потім завантажуємо iframe.
+        if (!element._turboRefererResolved && isTartugaRootReferer(element.referer || ref)) {
+          element._turboRefererResolved = true;
+          log('turbo-referer-resolve-start', { current: element.referer || ref, iframe: String(element.stream || '').slice(0, 180) });
+          resolveTurboReferer(function (page) {
+            element.referer = absolute(page, ref);
+            log('turbo-referer-resolved', { referer: element.referer });
+            openWithCurrentReferer();
+          }, function (reason) {
+            log('turbo-referer-resolve-fail', { reason: reason || '' });
+            openWithCurrentReferer();
+          });
+          return;
+        }
+        openWithCurrentReferer();
       }
       function cdnUrlByKp(kp) {
         return host + '/CDN/ChangeCDN-RU.php?kpid=' + encodeURIComponent(kp) + '&all=yes&veoveo=' + encodeURIComponent(kp) + '&ok=&ok2=&youtube=&vk=&youtube-ost=&youtube-list=&youtube-fakti=';
@@ -28718,7 +28764,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.121: прибрано невдалі Showy-remote джерела; для Tartuga додано спеціальну обробку Turbo iframe з filmo.tartugi.net_Turbo.har.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.122: виправлено Turbo в Tartuga — перед відкриттям obrut.show iframe визначаємо реальну сторінку фільму Tartuga і передаємо її як Referer, як у HAR; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
