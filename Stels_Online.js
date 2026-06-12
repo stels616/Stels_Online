@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.130';
+    var STELS_ONLINE_VERSION = '1.1.131';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -112,6 +112,140 @@
       if (value >= 2160) return '4K';
       if (value >= 1440) return '2K';
       return value + 'p';
+    }
+
+
+    var STELS_VOICE_QUALITY_RE = /^(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)$/i;
+    var stelsVoiceQualityColorObserver = null;
+    var stelsVoiceQualityColorTimer = 0;
+
+    function stelsVoiceQualityPrefix(value) {
+      var m = String(value == null ? '' : value).trim().match(/^(8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)(?:\s+|$)/i);
+      return m ? m[1] : '';
+    }
+
+    function stelsStripVoiceQuality(value) {
+      return String(value == null ? '' : value).replace(/^\s*(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i, '').trim();
+    }
+
+    function stelsVoiceQualityLabelFromAny(value) {
+      var q = 0;
+      try { q = stelsExtractMaxQualityFromAny(value, 0, 'quality'); } catch (e) {}
+      return q ? stelsQualityLabel(q) : '';
+    }
+
+    function stelsVoiceDisplayName(name, quality) {
+      name = String(name == null ? '' : name).trim();
+      quality = String(quality == null ? '' : quality).trim();
+      if (!name) return name;
+      if (stelsVoiceQualityPrefix(name)) return name;
+      if (!quality && STELS_VOICE_QUALITY_RE.test(name)) return name;
+      return quality ? (quality + '  ' + name) : name;
+    }
+
+    function stelsBuildDisplayFilterItems(filterItems, sourceName) {
+      var out = {};
+      filterItems = filterItems || {};
+      Object.keys(filterItems).forEach(function (k) {
+        var v = filterItems[k];
+        out[k] = Array.isArray(v) ? v.slice(0) : v;
+      });
+      try {
+        if (filterItems.voice && filterItems.voice.length) {
+          var qarr = filterItems.voice_quality || [];
+          var info = filterItems.voice_info || [];
+          out.voice = filterItems.voice.map(function (voice, index) {
+            var q = qarr[index] || '';
+            if (!q && info[index]) q = stelsVoiceQualityLabelFromAny(info[index]);
+            if (!q) q = stelsVoiceQualityPrefix(voice || '');
+            return stelsVoiceDisplayName(voice, q);
+          });
+        }
+      } catch (e) {}
+      return out;
+    }
+
+    function stelsInstallVoiceQualityColorStyle() {
+      try {
+        if (document.getElementById('stels-global-voice-quality-color-style')) return;
+        var st = document.createElement('style');
+        st.id = 'stels-global-voice-quality-color-style';
+        st.textContent = '' +
+          '.stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;font-weight:700!important;text-shadow:0 0 2px rgba(0,0,0,.45)!important;}' +
+          '.selectbox-item .stels-online-voice-quality-prefix,.selectbox__item .stels-online-voice-quality-prefix,.selector__item .stels-online-voice-quality-prefix,.menu__item .stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}';
+        (document.head || document.documentElement).appendChild(st);
+      } catch (e) {}
+    }
+
+    function stelsWrapVoiceQualityTextNode(node) {
+      try {
+        if (!node || node.nodeType !== 3 || !node.parentNode) return false;
+        var parent = node.parentNode;
+        if (parent.classList && (parent.classList.contains('stels-online-voice-quality-prefix') || parent.classList.contains('stels-zetflixnet-voice-quality-prefix'))) return false;
+        var txt = node.nodeValue || '';
+        var m = txt.match(/^(\s*)(8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)(\s+)([\s\S]*)$/i);
+        if (!m) return false;
+        var frag = document.createDocumentFragment();
+        if (m[1]) frag.appendChild(document.createTextNode(m[1]));
+        var span = document.createElement('span');
+        span.className = 'stels-online-voice-quality-prefix';
+        span.textContent = m[2];
+        frag.appendChild(span);
+        frag.appendChild(document.createTextNode(m[3] + (m[4] || '')));
+        parent.replaceChild(frag, node);
+        return true;
+      } catch (e) { return false; }
+    }
+
+    function stelsColorizeVoiceQualityRows(reason) {
+      var result = { reason: reason || '', rows: 0, colored: 0, errors: [] };
+      try {
+        stelsInstallVoiceQualityColorStyle();
+        if (!document.querySelectorAll) return result;
+        var rows = document.querySelectorAll('.selectbox-item,.selectbox__item,.selector__item,.menu__item,.selector');
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          if (!row || row.querySelector && (row.querySelector('.stels-online-voice-quality-prefix') || row.querySelector('.stels-zetflixnet-voice-quality-prefix'))) continue;
+          var rowText = String(row.textContent || '').trim();
+          if (!/^(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i.test(rowText)) continue;
+          result.rows++;
+          var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
+            acceptNode: function (n) {
+              if (!n || !n.nodeValue) return NodeFilter.FILTER_REJECT;
+              if (!/^\s*(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+              return NodeFilter.FILTER_ACCEPT;
+            }
+          });
+          var nodes = [];
+          var n;
+          while ((n = walker.nextNode())) nodes.push(n);
+          for (var j = 0; j < nodes.length; j++) if (stelsWrapVoiceQualityTextNode(nodes[j])) result.colored++;
+        }
+      } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+      if (result.rows || result.colored || result.errors.length) try { stelsLog('global-voice-quality-colorize', result); } catch (elog) {}
+      return result;
+    }
+
+    function stelsInstallVoiceQualityColorObserver() {
+      try {
+        if (stelsVoiceQualityColorObserver || typeof MutationObserver === 'undefined' || !document.body) return;
+        stelsVoiceQualityColorObserver = new MutationObserver(function () {
+          clearTimeout(stelsVoiceQualityColorTimer);
+          stelsVoiceQualityColorTimer = setTimeout(function () { stelsColorizeVoiceQualityRows('mutation'); }, 80);
+        });
+        stelsVoiceQualityColorObserver.observe(document.body, { childList: true, subtree: true });
+        try { stelsLog('global-voice-quality-color-observer-installed', { ok: true }); } catch (e) {}
+      } catch (e) { try { stelsLog('global-voice-quality-color-observer-error', { error: e && (e.message || e.toString()) || '' }); } catch (e2) {} }
+    }
+
+    function stelsScheduleVoiceQualityColor(reason) {
+      try {
+        stelsInstallVoiceQualityColorStyle();
+        stelsInstallVoiceQualityColorObserver();
+        [40, 160, 450, 900, 1600].forEach(function (delay) {
+          setTimeout(function () { stelsColorizeVoiceQualityRows((reason || 'schedule') + '-' + delay); }, delay);
+        });
+      } catch (e) {}
     }
 
     function stelsExtractMaxQualityFromAny(value, depth, keyHint) {
@@ -8011,6 +8145,11 @@
         if (extract.seasons && extract.seasons[choice.season]) {
           filter_items.voice = extract.seasons[choice.season].voices.map(function (v) {
             return v.id;
+          });
+          filter_items.voice_quality = extract.seasons[choice.season].voices.map(function (v) {
+            var maxQ = 0;
+            try { (v.items || []).forEach(function (it) { maxQ = Math.max(maxQ, parseInt(it.quality || 0, 10) || 0); }); } catch (e) {}
+            return maxQ ? stelsQualityLabel(maxQ) : '';
           });
         }
 
@@ -16855,6 +16994,9 @@
 
       var embed = atob('aHR0cHM6Ly9wbGFwaS5jZG52aWRlb2h1Yi5jb20vYXBpL3YxL3BsYXllci9zdi8=');
       var filter_items = {};
+      var cdnVoiceQualityCache = {};
+      var cdnVoiceQualityPending = {};
+      var cdnVoiceQualityRunId = 0;
       var choice = {
         season: 0,
         voice: 0,
@@ -16981,6 +17123,88 @@
           append(outItems);
         } else component.emptyForQuery(select_title);
       }
+      function cdnCurrentSeasonForQuality() {
+        try {
+          if (extract && extract.seasons && extract.seasons.length) return extract.seasons[choice.season] && extract.seasons[choice.season].id || 0;
+        } catch (e) {}
+        return 0;
+      }
+
+      function cdnVoiceQualityKey(voice, season) {
+        var mid = object && object.movie && (object.movie.id || object.movie.tmdb_id || object.movie.kinopoisk_id || object.movie.imdb_id) || '';
+        return [mid, cdnSourceTitle || 'CDNVideoHub', season || 0, String(voice || '')].join('|');
+      }
+
+      function cdnVoiceQualityLabel(voice, season) {
+        return cdnVoiceQualityCache[cdnVoiceQualityKey(voice, season != null ? season : cdnCurrentSeasonForQuality())] || '';
+      }
+
+      function cdnVoiceNameOf(data) {
+        return data && (data.voiceStudio || data.voiceType) || '';
+      }
+
+      function cdnRememberVoiceQuality(voice, season, quality) {
+        voice = cleanText(voice || '');
+        if (!voice) return '';
+        var q = stelsExtractMaxQualityFromAny(quality, 0, 'quality');
+        if (!q) return '';
+        var key = cdnVoiceQualityKey(voice, season || 0);
+        var prev = stelsQualityToValue(cdnVoiceQualityCache[key] || '');
+        if (q > prev) cdnVoiceQualityCache[key] = stelsQualityLabel(q);
+        return cdnVoiceQualityCache[key] || '';
+      }
+
+      function cdnQualityProbeCandidates() {
+        var out = [];
+        var seen = {};
+        if (!(extract && extract.items && extract.items.length) || !(filter_items && filter_items.voice && filter_items.voice.length)) return out;
+        var season = cdnCurrentSeasonForQuality();
+        extract.items.forEach(function (data) {
+          var voice = cdnVoiceNameOf(data);
+          if (!voice || !data.vkId) return;
+          if (season && data.season != season) return;
+          if (filter_items.voice.indexOf(voice) === -1) return;
+          var key = cdnVoiceQualityKey(voice, season);
+          if (seen[key] || cdnVoiceQualityCache[key] || cdnVoiceQualityPending[key]) return;
+          seen[key] = true;
+          out.push({ voice: voice, season: season, data: data, data_id: data.vkId });
+        });
+        return out.slice(0, 10);
+      }
+
+      function cdnStartVoiceQualityPrefetch(reason) {
+        var candidates = cdnQualityProbeCandidates();
+        if (!candidates.length) return;
+        var runId = ++cdnVoiceQualityRunId;
+        var i = 0;
+        stelsLog('global-source-voice-quality-prefetch-start', { source: cdnSourceTitle || 'CDNVideoHub', reason: reason || '', total: candidates.length, season: cdnCurrentSeasonForQuality(), voices: candidates.map(function (c) { return c.voice || ''; }) });
+        function step() {
+          if (runId !== cdnVoiceQualityRunId || !(extract && extract.items)) return;
+          if (i >= candidates.length) return;
+          var c = candidates[i++];
+          var key = cdnVoiceQualityKey(c.voice, c.season || 0);
+          cdnVoiceQualityPending[key] = true;
+          var element = {
+            title: extract.title_name || select_title,
+            data_id: c.data_id,
+            voice_name: c.voice,
+            translate_voice: c.voice,
+            media: c.data
+          };
+          getStream(element, function (ready) {
+            delete cdnVoiceQualityPending[key];
+            var label = cdnRememberVoiceQuality(c.voice, c.season || 0, ready && ready.qualitys || ready);
+            stelsLog('global-source-voice-quality-ready', { source: cdnSourceTitle || 'CDNVideoHub', voice: c.voice || '', season: c.season || 0, data_id: c.data_id || '', quality: label || '', quality_keys: ready && ready.qualitys ? Object.keys(ready.qualitys) : [] });
+            try { filter(); } catch (e) { stelsLog('global-source-voice-quality-filter-error', { source: cdnSourceTitle || 'CDNVideoHub', error: e && (e.message || e.toString()) || '' }); }
+            setTimeout(step, 45);
+          }, function () {
+            delete cdnVoiceQualityPending[key];
+            setTimeout(step, 45);
+          });
+        }
+        setTimeout(step, 100);
+      }
+
       /**
        * Построить фильтр
        */
@@ -17010,8 +17234,10 @@
             choice.voice = inx;
           }
         }
-
+        filter_items.voice_quality = (filter_items.voice || []).map(function (voice) { return cdnVoiceQualityLabel(voice); });
+        stelsLog('global-source-voice-filter-build', { source: cdnSourceTitle || 'CDNVideoHub', voices: filter_items.voice || [], voice_quality: filter_items.voice_quality || [], season: cdnCurrentSeasonForQuality(), is_movie: !(extract.seasons && extract.seasons.length) });
         component.filter(filter_items, choice);
+        cdnStartVoiceQualityPrefetch('filter-build');
       }
       /**
        * Отфильтровать файлы
@@ -27666,10 +27892,12 @@
       this.filter = function (filter_items, choice) {
         var select = [];
         try { stels_last_filter_items = filter_items || {}; stels_last_choice = choice || {}; } catch (efstate) {}
+        var display_filter_items = stelsBuildDisplayFilterItems(filter_items || {}, balanser);
 
         var add = function add(type, title) {
           var need = Lampa.Storage.get('stels_online_filter', '{}');
-          var items = filter_items[type];
+          var raw_items = filter_items[type] || [];
+          var items = display_filter_items[type] || raw_items;
           var subitems = [];
           var value = need[type];
           items.forEach(function (name, i) {
@@ -27696,6 +27924,7 @@
         filter_items.source = obj_filter_sources.map(function (s) {
           return stelsSourceTitleWithStatus(s);
         });
+        display_filter_items.source = filter_items.source.slice ? filter_items.source.slice(0) : filter_items.source;
         add('source', Lampa.Lang.translate('stels_online_balanser'));
         if (filter_items.player && filter_items.player.length) add('player', 'Плеєри');
         if (filter_items.voice && filter_items.voice.length) add('voice', Lampa.Lang.translate('torrent_parser_voice'));
@@ -27704,6 +27933,7 @@
         this.updateQualityFilter();
         select.push(qualityFilter);
         filter.set('filter', select);
+        stelsScheduleVoiceQualityColor('component-filter');
         stelsLog('sort-menu-build', { count: obj_filter_sources.length, sources: obj_filter_sources.map(function(e){ return e.name + ':' + e.title; }), selected: balanser });
         filter.set('sort', obj_filter_sources.map(function (e) {
           return {
@@ -27716,7 +27946,7 @@
         stelsEnsureSourceMenuObserver();
         setTimeout(stelsPatchOpenSourceSortMenu, 80);
         setTimeout(stelsPatchOpenSourceSortMenu, 260);
-        this.selected(filter_items);
+        this.selected(display_filter_items);
       };
       /**
        * Закрыть фильтр
@@ -30108,7 +30338,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.130: база 1.1.129; для ZetflixNet при зміні сезону запускається prefetch якості перекладів нового сезону; прибрано випадкові виклики zetflixnetVoiceRaw поза ZetflixNet, які давали ReferenceError у фоновій перевірці/фільтрації.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.131: глобальна підтримка badge якості у списку перекладів; компонент фільтра показує voice_quality/voice_info без зміни raw-значень, жовте підсвічування стало загальним; додано якість перекладів для CDNVideoHub-подібних джерел і Filmix-серіалів.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
