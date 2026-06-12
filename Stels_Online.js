@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.127';
+    var STELS_ONLINE_VERSION = '1.1.128';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -2405,6 +2405,8 @@
       var zetflixnetLastSelectedVoiceName = '';
       var zetflixnetVoiceMenuObserver = null;
       var zetflixnetVoiceMenuTimer = 0;
+      var zetflixnetVoiceQualityColorObserver = null;
+      var zetflixnetVoiceQualityColorTimer = 0;
       var zetflixnetVoiceCheckApplying = false;
       var zetflixnetVoiceCheckMuteUntil = 0;
 
@@ -18098,6 +18100,7 @@
         choice.voice_quality = filter_items.voice_quality && filter_items.voice_quality[choice.voice] || '';
         stelsLog('zetflixnet-filter-build', { seasons: filter_items.season || [], voices: filter_items.voice || [], voice_raw: filter_items.voice_raw || [], voice_quality: filter_items.voice_quality || [], selected_season: choice.season, selected_voice: choice.voice_name || '', selected_voice_label: filter_items.voice && filter_items.voice[choice.voice] || '', is_movie: !(extract.seasons && extract.seasons.length), items_count: extract.items ? extract.items.length : 0 });
         component.filter(filter_items, choice);
+        zetflixnetScheduleVoiceQualityColor('filter-build');
       }
 
       function filtred() {
@@ -18549,6 +18552,102 @@
         return result;
       }
 
+      function zetflixnetInstallVoiceQualityColorStyle() {
+        try {
+          if (document.getElementById('stels-zetflixnet-voice-quality-color-style')) return;
+          var st = document.createElement('style');
+          st.id = 'stels-zetflixnet-voice-quality-color-style';
+          st.textContent = '' +
+            '.stels-zetflixnet-voice-quality-prefix{color:#ffc400!important;font-weight:700!important;text-shadow:0 0 2px rgba(0,0,0,.45)!important;}' +
+            '.selectbox-item .stels-zetflixnet-voice-quality-prefix,.selectbox__item .stels-zetflixnet-voice-quality-prefix,.selector__item .stels-zetflixnet-voice-quality-prefix,.menu__item .stels-zetflixnet-voice-quality-prefix{color:#ffc400!important;}';
+          (document.head || document.documentElement).appendChild(st);
+        } catch (e) {}
+      }
+
+      function zetflixnetVoiceQualityTextSet() {
+        var set = {};
+        try {
+          (filter_items && filter_items.voice || []).forEach(function (v) {
+            var txt = cleanText(v || '');
+            if (/^(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i.test(txt)) set[txt] = true;
+          });
+        } catch (e) {}
+        return set;
+      }
+
+      function zetflixnetWrapQualityTextNode(node) {
+        try {
+          if (!node || node.nodeType !== 3 || !node.parentNode) return false;
+          var parent = node.parentNode;
+          if (parent.classList && parent.classList.contains('stels-zetflixnet-voice-quality-prefix')) return false;
+          var txt = node.nodeValue || '';
+          var m = txt.match(/^(\s*)(8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)(\s+)([\s\S]*)$/i);
+          if (!m) return false;
+          var frag = document.createDocumentFragment();
+          if (m[1]) frag.appendChild(document.createTextNode(m[1]));
+          var span = document.createElement('span');
+          span.className = 'stels-zetflixnet-voice-quality-prefix';
+          span.textContent = m[2];
+          frag.appendChild(span);
+          frag.appendChild(document.createTextNode(m[3] + (m[4] || '')));
+          parent.replaceChild(frag, node);
+          return true;
+        } catch (e) { return false; }
+      }
+
+      function zetflixnetColorizeVoiceQualityRows(reason) {
+        var result = { reason: reason || '', rows: 0, colored: 0, errors: [] };
+        try {
+          zetflixnetInstallVoiceQualityColorStyle();
+          var allowed = zetflixnetVoiceQualityTextSet();
+          var allowedKeys = Object.keys(allowed);
+          if (!allowedKeys.length || !document.querySelectorAll) return result;
+          var rows = document.querySelectorAll('.selectbox-item,.selectbox__item,.selector__item,.menu__item,.selector');
+          for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            if (!row || row.querySelector && row.querySelector('.stels-zetflixnet-voice-quality-prefix')) continue;
+            var rowText = cleanText(row.textContent || '');
+            if (!allowed[rowText]) continue;
+            result.rows++;
+            var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
+              acceptNode: function (n) {
+                if (!n || !n.nodeValue) return NodeFilter.FILTER_REJECT;
+                if (!/^(?:\s*)(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+              }
+            });
+            var nodes = [];
+            var n;
+            while ((n = walker.nextNode())) nodes.push(n);
+            for (var j = 0; j < nodes.length; j++) if (zetflixnetWrapQualityTextNode(nodes[j])) result.colored++;
+          }
+        } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+        if (result.rows || result.colored || result.errors.length) stelsLog('zetflixnet-voice-quality-colorize', result);
+        return result;
+      }
+
+      function zetflixnetScheduleVoiceQualityColor(reason) {
+        try {
+          zetflixnetInstallVoiceQualityColorStyle();
+          zetflixnetInstallVoiceQualityColorObserver();
+          [40, 160, 450, 900, 1600].forEach(function (delay) {
+            setTimeout(function () { zetflixnetColorizeVoiceQualityRows((reason || 'schedule') + '-' + delay); }, delay);
+          });
+        } catch (e) {}
+      }
+
+      function zetflixnetInstallVoiceQualityColorObserver() {
+        try {
+          if (zetflixnetVoiceQualityColorObserver || typeof MutationObserver === 'undefined' || !document.body) return;
+          zetflixnetVoiceQualityColorObserver = new MutationObserver(function () {
+            clearTimeout(zetflixnetVoiceQualityColorTimer);
+            zetflixnetVoiceQualityColorTimer = setTimeout(function () { zetflixnetColorizeVoiceQualityRows('mutation'); }, 80);
+          });
+          zetflixnetVoiceQualityColorObserver.observe(document.body, { childList: true, subtree: true });
+          stelsLog('zetflixnet-voice-quality-color-observer-installed', { ok: true });
+        } catch (e) { stelsLog('zetflixnet-voice-quality-color-observer-error', { error: e && (e.message || e.toString()) || '' }); }
+      }
+
       function zetflixnetInstallVoiceCheckStyle() {
         try {
           if (document.getElementById('stels-zetflixnet-voice-check-style')) return;
@@ -18851,6 +18950,7 @@
         if (!(filter_items.voice_raw && filter_items.voice_raw.length > 1 || filter_items.voice && filter_items.voice.length > 1)) return false;
         selectedVoice = selectedVoice || element && (element.translate_voice || element.voice_name || (element.media && (element.media.voiceStudio || element.media.voiceType))) || zetflixnetVoiceRaw(choice.voice) || '';
         var rawVoices = filter_items.voice_raw && filter_items.voice_raw.length ? filter_items.voice_raw : filter_items.voice;
+        zetflixnetScheduleVoiceQualityColor('voiceovers');
         var trackList = rawVoices.map(function (voiceName, index) {
           var displayName = zetflixnetVoiceDisplayName(voiceName);
           return {
@@ -29992,7 +30092,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.127: база 1.1.126; виправлено undefined stelsQualityToValue у prefetch якості ZetflixNet; вимкнено DOM-форсування галочок, щоб фільтр перекладів відкривався штатно, а якість біля перекладу бралась із video/{vkId}.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.128: база 1.1.127; для ZetflixNet якість у списку перекладів підсвічується жовтим через безпечне DOM-оформлення тільки текстового префікса якості, без втручання в галочки/active-класи.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
