@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.122';
+    var STELS_ONLINE_VERSION = '1.1.123';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -25020,6 +25020,24 @@
         return value + 'p';
       }
 
+      function stelsSourceQualityCap(source) {
+        source = stelsNormalizeSourceKey(source || '');
+        // 1.1.123: Filmix-сімейство в precheck може отримувати 2160p із загальних
+        // лімітів/назв/кешу Filmix, але у фактичних потоках цих джерел у поточній
+        // схемі немає 4K. Не дозволяємо badge якості підніматися вище реального
+        // рівня, який показує Filmix API для безпечного/анонімного доступу.
+        if (source === 'filmix' || source === 'filmixtv' || source === 'fxapi') return 480;
+        return 0;
+      }
+
+      function stelsClampSourceQualityValue(source, value) {
+        value = parseInt(value, 10) || 0;
+        if (!value) return 0;
+        var cap = stelsSourceQualityCap(source);
+        if (cap && value > cap) return cap;
+        return value;
+      }
+
       function stelsExtractQualityFromRenderedItem(value) {
         var max = 0;
         try {
@@ -25109,13 +25127,12 @@
           if (!source) return;
           var q = stelsExtractMaxQualityFromAny(value, 0, 'quality');
           if (!q) return;
+          q = stelsClampSourceQualityValue(source, q);
           var qkey = stelsCurrentQualityKey(source);
           var rec = stelsRenderedSourceQuality[qkey] || { max: 0 };
           var existingQ = 0;
-          try { existingQ = stelsQualityToValue(stelsSourceStatus[source] && stelsSourceStatus[source].quality || ''); } catch (eq0) {}
-          // 1.1.120: поточна картка/обраний потік може бути 1080p, хоча в джерелі є 4K.
-          // Тому для цього фільму якість джерела тільки піднімаємо до максимуму, але не знижуємо.
-          rec.max = Math.max(rec.max || 0, existingQ || 0, q);
+          try { existingQ = stelsClampSourceQualityValue(source, stelsQualityToValue(stelsSourceStatus[source] && stelsSourceStatus[source].quality || '')); } catch (eq0) {}
+          rec.max = stelsClampSourceQualityValue(source, Math.max(rec.max || 0, existingQ || 0, q));
           rec.time = Date.now();
           stelsRenderedSourceQuality[qkey] = rec;
           var qlabel = stelsQualityLabel(rec.max);
@@ -25135,10 +25152,11 @@
         var prev = stelsSourceStatus[source] || {};
         var qvalue = 0;
         try {
-          var incomingQ = stelsQualityToValue(quality || '');
-          var prevQ = stelsQualityToValue(prev.quality || '');
+          var incomingQ = stelsClampSourceQualityValue(source, stelsQualityToValue(quality || ''));
+          var prevQ = stelsClampSourceQualityValue(source, stelsQualityToValue(prev.quality || ''));
           var renderedRec = stelsRenderedSourceQuality[stelsCurrentQualityKey(source)] || null;
-          qvalue = Math.max(incomingQ || 0, prevQ || 0, renderedRec && renderedRec.max || 0);
+          var renderedQ = stelsClampSourceQualityValue(source, renderedRec && renderedRec.max || 0);
+          qvalue = stelsClampSourceQualityValue(source, Math.max(incomingQ || 0, prevQ || 0, renderedQ || 0));
         } catch (e) {}
 
         // 1.1.121: timeout у precheck — це невизначений стан, а не доказ що джерело мертве.
@@ -25355,12 +25373,16 @@
           finished = true;
           // 1.1.75: якщо вдалося зробити file()/getStream() для фактичної серії,
           // його якість має пріоритет над підказками типу "FilmixTV 4K" або назвами фільтрів.
+          probeVerifiedQuality = stelsClampSourceQualityValue(sourceName, probeVerifiedQuality || 0);
+          probeMaxQuality = stelsClampSourceQualityValue(sourceName, probeMaxQuality || 0);
           var qvalue = probeVerifiedQuality || probeMaxQuality || 0;
           try {
-            var existingQuality = stelsQualityToValue(stelsSourceStatus[stelsNormalizeSourceKey(sourceName)] && stelsSourceStatus[stelsNormalizeSourceKey(sourceName)].quality || '');
+            var existingQuality = stelsClampSourceQualityValue(sourceName, stelsQualityToValue(stelsSourceStatus[stelsNormalizeSourceKey(sourceName)] && stelsSourceStatus[stelsNormalizeSourceKey(sourceName)].quality || ''));
             var renderedRec = stelsRenderedSourceQuality[stelsCurrentQualityKey(sourceName)] || null;
-            // 1.1.120: precheck не має знижувати вже знайдену максимальну якість поточного джерела.
-            qvalue = Math.max(qvalue || 0, existingQuality || 0, renderedRec && renderedRec.max || 0);
+            var renderedQ = stelsClampSourceQualityValue(sourceName, renderedRec && renderedRec.max || 0);
+            // 1.1.120: precheck не має знижувати вже знайдену максимальну якість поточного джерела,
+            // але 1.1.123 обмежує Filmix/FilmixTV/FxAPI, щоб помилкові 4K-підказки не лишались у badge.
+            qvalue = stelsClampSourceQualityValue(sourceName, Math.max(qvalue || 0, existingQuality || 0, renderedQ || 0));
           } catch (eqp) {}
           var qlabel = quality || (qvalue ? stelsQualityLabel(qvalue) : '');
           stelsMarkSourceStatus(sourceName, status, message || '', qlabel);
@@ -28906,7 +28928,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.122: база 1.1.121 без експериментів 1.1.123/1.1.125; для GetsTV і HDVB додано окремі CDNVideoHub-екземпляри з movieVoiceFilter, щоб фільм відкривався однією карткою, а переклади були у фільтрі та кнопці плеєра.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.123: база стабільної 1.1.122; додано обмеження badge якості для Filmix/FilmixTV/FxAPI, щоб precheck/кеш не показував 4K, якого немає у фактичних потоках цих джерел.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
