@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.107';
+    var STELS_ONLINE_VERSION = '1.1.108';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5629,7 +5629,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.107: додано Showy remote-джерела ShowyTOR/Kinobase/Phantom/Spectre/NeNetflix bd/Collaps/Rutube; standalone Alloha переведено на Showy endpoint, Tortuga не змінювалась.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.108: Collaps переведено у native-only режим без Showy; використовується api.ortified/ws + api.kinogram.best + dataset fallback. Інші Showy remote-джерела не чіпались.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -25921,7 +25921,10 @@
       }, {
         name: 'collaps',
         title: 'Collaps',
-        source: new lampauaRemoteSource(this, object, ['collaps'], 'Collaps', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'collaps' }),
+        // 1.1.108: Collaps працює напряму без Showy-сервера.
+        // HAR із Showy не містить внутрішнього Collaps API, тому повертаємо native extractor:
+        // api.ortified.ws/embed/{kp|imdb}/... -> api.kinogram.best/embed/... -> api-movies.github.io dataset fallback.
+        source: new collaps(this, object, false),
         search: false,
         kp: true,
         imdb: true,
@@ -30091,7 +30094,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.107: додано Showy remote-джерела ShowyTOR/Kinobase/Phantom/Spectre/NeNetflix bd/Collaps/Rutube; standalone Alloha переведено на Showy endpoint, Tortuga не змінювалась.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.108: Collaps переведено у native-only режим без Showy; використовується api.ortified/ws + api.kinogram.best + dataset fallback. Інші Showy remote-джерела не чіпались.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
