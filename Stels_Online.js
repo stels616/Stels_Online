@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.104';
+    var STELS_ONLINE_VERSION = '1.1.105';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5629,7 +5629,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.104: відкатано загальні зміни Tartuga з 1.1.103; VeoVeo/HDVB/Turbo/Collaps залишені як у 1.1.102, правки ізольовані тільки в Tartuga-Alloha.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.105: Tartuga швидше відкриває список плеєрів без глобального title-refresh; Alloha ізольовано пробує HAR-origin astrid першим і Android HLS через headers/proxy.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15491,13 +15491,11 @@
         return host + '/CDN/ChangeCDN-RU.php?kpid=' + encodeURIComponent(kp) + '&all=yes&parlo=' + encodeURIComponent(kp) + '&veoveo=' + encodeURIComponent(kp) + '&ok=&ok2=&youtube=&vk=&youtube-ost=&youtube-list=&youtube-fakti=';
       }
       function directCdnNeedsTitleRefresh(players, pageInfo) {
-        players = players || [];
-        var directKp = !pageInfo || !pageInfo.page || pageInfo.page === ref;
-        if (!directKp || !players.length) return false;
-        return players.some(function (p) {
-          var s = String(p && p.title || '') + ' ' + String(p && p.url || '');
-          return /alloha|token_movie|stravers|stloadi|allarknow|hdvb|sevstar/i.test(s);
-        });
+        // 1.1.105: не робимо глобальний пошук сторінки тайтлу перед показом Tartuga.
+        // CDN вже повертає VeoVeo/Alloha/HDVB/Turbo/Collaps за ~1 секунду, а попередня логіка
+        // після цього перебирала до 12 назв і давала зайві 8-10 секунд завантаження.
+        // Якщо HDVB потребує точний referer сторінки тайтлу, його lazy-retry лишається в getStream/loadHdvbStream.
+        return false;
       }
       function renderPlayers(players, pageInfo) {
         extract = players || [];
@@ -16367,6 +16365,14 @@
             out.push({ origin: origin, referer: referer || (origin + '/'), proxy: !!proxy, reason: reason || '' });
           }
           var primaryOrigin = player.player_origin || originFromUrl(player.url) || '';
+          var tokenMovie = tokenMovieFromUrl(player.url) || tokenMovieFromUrl(baseReferer) || '';
+          // 1.1.105: для Tartuga-Alloha першим пробуємо origin/iframe з Chrome HAR сайту Tartuga.
+          // Це не зачіпає VeoVeo/HDVB/Turbo/Collaps, бо виконується тільки всередині Alloha POST.
+          if (tokenMovie && token) {
+            var astridRef = 'https://astrid-as.stravers.live/?token_movie=' + encodeURIComponent(tokenMovie) + '&token=' + encodeURIComponent(token);
+            add('https://astrid-as.stravers.live', astridRef, false, 'raw-har-astrid');
+            if (allohaProxy) add('https://astrid-as.stravers.live', astridRef, true, 'proxy-har-astrid');
+          }
           add(primaryOrigin, baseReferer, false, 'raw-current');
           if (allohaProxy) add(primaryOrigin, baseReferer, true, 'proxy-current');
           try {
@@ -16378,14 +16384,14 @@
               if (allohaProxy) add(o, u, true, 'proxy-' + (v.reason || 'variant'));
             });
           } catch (ea) {}
-          ['https://astrid-as.stravers.live', 'https://synthezoid-as.allarknow.online', 'https://synthezoid-as.stloadi.live', 'https://mars.stravers.live'].forEach(function (o) {
-            var u = o + '/?token_movie=' + encodeURIComponent(tokenMovieFromUrl(player.url) || '') + '&token=' + encodeURIComponent(token);
+          if (tokenMovie && token) ['https://astrid-as.stravers.live', 'https://synthezoid-as.allarknow.online', 'https://synthezoid-as.stloadi.live', 'https://mars.stravers.live'].forEach(function (o) {
+            var u = o + '/?token_movie=' + encodeURIComponent(tokenMovie) + '&token=' + encodeURIComponent(token);
             add(o, u, false, 'raw-host:' + o);
             if (allohaProxy) add(o, u, true, 'proxy-host:' + o);
           });
           return out;
         }
-        var baseAttempts = buildStreamAttempts().slice(0, 10);
+        var baseAttempts = buildStreamAttempts().slice(0, 6);
         var attempts = [];
         function pushAttempt(a, av1, includeTrackParams, suffix, autoplayValue) {
           var x = {};
@@ -16430,9 +16436,13 @@
         function allohaPlayableUrl(url, enc) {
           url = absolute(String(url || '').split(/\s+or\s+/i)[0], baseReferer || ref);
           if (!url) return '';
-          // Chrome/HAR вантажить підписані vkvideo/cloud .m3u8 напряму з Origin/Referer iframe.
+          // Chrome/HAR вантажить підписані vkvideo/cloud .m3u8 з Origin/Referer iframe.
+          // На Android вбудований плеєр не завжди передає headers, тому для Alloha HLS даємо проксі з цими headers.
           // Це не торкається VeoVeo/HDVB/Turbo/Collaps, тільки фінального HLS Alloha.
-          if (/vkvideo\.cloud|\.m3u8(?:$|\?)/i.test(url || '')) return url;
+          if (/vkvideo\.cloud|\.m3u8(?:$|\?)/i.test(url || '')) {
+            if (stelsAndroidPlayerFixEnabled() && allohaProxy) return component.proxyLink(url, allohaProxy, enc);
+            return url;
+          }
           return allohaProxy ? component.proxyLink(url, allohaProxy, enc) : url;
         }
         function parseTracks(tracks, enc) {
@@ -16497,7 +16507,7 @@
           error && error(lastError || 'Alloha stream failed');
         }
         function tryAllohaStream(pos, lastError) {
-          var total = Math.min(ids.length * attempts.length, 40);
+          var total = Math.min(ids.length * attempts.length, 24);
           if (pos >= total) { log('alloha-stream-all-fail', { ids: ids, attempts: attempts.map(function (a) { return a.reason; }).slice(0, 20), message: preview(lastError || '', 260), proxy: !!allohaProxy }); fallbackIframe(lastError); return; }
           var id = ids[Math.floor(pos / attempts.length)];
           var attempt = attempts[pos % attempts.length] || attempts[0] || { origin: player.player_origin || originFromUrl(player.url) || '', referer: baseReferer, proxy: false, reason: 'fallback' };
@@ -30030,7 +30040,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.104: відкатано загальні зміни Tartuga з 1.1.103; VeoVeo/HDVB/Turbo/Collaps залишені як у 1.1.102, правки ізольовані тільки в Tartuga-Alloha.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.105: Tartuga швидше відкриває список плеєрів без глобального title-refresh; Alloha ізольовано пробує HAR-origin astrid першим і Android HLS через headers/proxy.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
