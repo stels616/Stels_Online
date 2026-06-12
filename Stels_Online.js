@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.123';
+    var STELS_ONLINE_VERSION = '1.1.124';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -309,6 +309,143 @@
       return url.length > 220 ? url.slice(0, 220) + '...' : url;
     }
 
+    function stelsWebviewHelperRawUrl() {
+      try { return String(Lampa.Storage.get('stels_online_webview_helper_url', '') || Lampa.Storage.field('stels_online_webview_helper_url') || '').trim(); }
+      catch (e) { return ''; }
+    }
+
+    function stelsWebviewHelperEndpoint() {
+      var url = stelsWebviewHelperRawUrl();
+      if (!url) return '';
+      if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+      if (/\/(?:extract|api\/extract|webview|api\/webview)(?:$|[?#])/i.test(url) || /[?&](?:url|iframe)=/i.test(url)) return url;
+      return url.replace(/\/+$/, '') + '/extract';
+    }
+
+    function stelsAppendQuery(url, params) {
+      var query = [];
+      Object.keys(params || {}).forEach(function (key) {
+        var val = params[key];
+        if (val === undefined || val === null || val === '') return;
+        if (typeof val == 'object') { try { val = JSON.stringify(val); } catch (e) { val = ''; } }
+        if (val === '') return;
+        query.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(val)));
+      });
+      if (!query.length) return url;
+      return url + (url.indexOf('?') === -1 ? '?' : '&') + query.join('&');
+    }
+
+    function stelsTryJson(text) {
+      if (text && typeof text == 'object') return text;
+      try { return JSON.parse(String(text || '').trim()); } catch (e) {}
+      try { return Lampa.Arrays.decodeJson(text, null); } catch (e2) {}
+      return null;
+    }
+
+    function stelsWebviewHelperNormalizeResponse(raw) {
+      var json = stelsTryJson(raw);
+      var root = json || raw;
+      function firstUrlFromText(text) {
+        text = String(text || '').replace(/\\\//g, '/').trim();
+        var m = text.match(/https?:\/\/[^\s"'<>]+(?:\.m3u8|\.mp4|video\.m3u8|manifest\.m3u8)[^\s"'<>]*/i) || text.match(/https?:\/\/[^\s"'<>]+/i);
+        return m ? m[0].replace(/[),.;]+$/, '') : '';
+      }
+      function pick(obj) {
+        if (!obj) return null;
+        if (typeof obj == 'string') {
+          var u = firstUrlFromText(obj);
+          return u ? { url: u } : null;
+        }
+        if (Array.isArray(obj)) {
+          for (var i = 0; i < obj.length; i++) { var r = pick(obj[i]); if (r && r.url) return r; }
+          return null;
+        }
+        if (typeof obj != 'object') return null;
+        var direct = obj.url || obj.file || obj.stream || obj.hls || obj.m3u8 || obj.src || obj.link || '';
+        if (direct && typeof direct == 'object') {
+          var nested = pick(direct);
+          if (nested) return nested;
+        }
+        if (typeof direct == 'string' && /^https?:\/\//i.test(direct)) {
+          return { url: direct, quality: obj.quality || obj.qualities || obj.qualitys || false, headers: obj.headers || false, subtitles: obj.subtitles || false, title: obj.title || '' };
+        }
+        var qualities = obj.quality || obj.qualities || obj.qualitys || obj.streams || obj.files || obj.sources || null;
+        if (qualities) {
+          if (Array.isArray(qualities)) {
+            var qmapA = {}, selectedA = '';
+            qualities.forEach(function (it) {
+              if (!it) return;
+              var label = String(it.label || it.quality || it.name || it.resolution || '').trim() || 'HLS';
+              var u = it.url || it.file || it.stream || it.src || '';
+              if (typeof u == 'string' && /^https?:\/\//i.test(u)) { qmapA[label] = u; if (!selectedA) selectedA = u; }
+            });
+            if (selectedA) return { url: selectedA, quality: qmapA, headers: obj.headers || false, subtitles: obj.subtitles || false, title: obj.title || '' };
+          }
+          else if (typeof qualities == 'object') {
+            var qmap = {}, selected = '';
+            ['2160p','1440p','1080p','720p','480p','360p','240p','144p','HLS','Auto'].forEach(function (key) {
+              var u = qualities[key] || qualities[key.replace('p','')] || '';
+              if (typeof u == 'string' && /^https?:\/\//i.test(u)) { qmap[key] = u; if (!selected) selected = u; }
+            });
+            Object.keys(qualities).forEach(function (key) {
+              var u = qualities[key];
+              if (typeof u == 'string' && /^https?:\/\//i.test(u)) { qmap[key] = u; if (!selected) selected = u; }
+            });
+            if (selected) return { url: selected, quality: qmap, headers: obj.headers || false, subtitles: obj.subtitles || false, title: obj.title || '' };
+          }
+        }
+        return pick(obj.data) || pick(obj.result) || pick(obj.response) || pick(obj.playable) || pick(obj.video);
+      }
+      return pick(root);
+    }
+
+    function stelsWebviewHelperExtract(options, success, fail) {
+      options = options || {};
+      var endpoint = stelsWebviewHelperEndpoint();
+      if (!endpoint) { if (fail) fail('helper url empty'); return; }
+      var req = new Lampa.Reguest();
+      var payload = {
+        url: options.url || options.iframe || '',
+        iframe: options.iframe || options.url || '',
+        referer: options.referer || '',
+        origin: options.origin || '',
+        user_agent: options.user_agent || ((navigator && navigator.userAgent) || ''),
+        source: options.source || 'stels_online',
+        player: options.player || '',
+        title: options.title || '',
+        original_title: options.original_title || '',
+        year: options.year || '',
+        kinopoisk_id: options.kinopoisk_id || '',
+        imdb_id: options.imdb_id || '',
+        tmdb_id: options.tmdb_id || '',
+        timeout: options.timeout || 12000
+      };
+      var requestUrl = stelsAppendQuery(endpoint, payload);
+      try {
+        req.timeout(options.request_timeout || 35000);
+        stelsLog('webview-helper-request', { endpoint: stelsPreviewUrl(endpoint), iframe: stelsPreviewUrl(payload.iframe), referer: stelsPreviewUrl(payload.referer), player: payload.player, source: payload.source });
+        req.native(requestUrl, function (text) {
+          var parsed = stelsWebviewHelperNormalizeResponse(text);
+          if (!parsed || !parsed.url) {
+            stelsLog('webview-helper-empty', { player: payload.player, response_preview: stelsPreviewUrl(typeof text == 'string' ? text : JSON.stringify(text || '')) });
+            if (fail) fail('helper stream empty');
+            return;
+          }
+          var play = { url: parsed.url, file: parsed.url, quality: parsed.quality || false, headers: parsed.headers || false, subtitles: parsed.subtitles || false, title: parsed.title || options.title || payload.title || '', iframe: false, method: 'webview-helper' };
+          stelsLog('webview-helper-ready', { player: payload.player, source: payload.source, url_preview: stelsPreviewUrl(parsed.url), has_quality: !!parsed.quality, has_headers: !!parsed.headers });
+          if (success) success(play, parsed);
+        }, function (a, c) {
+          var msg = '';
+          try { msg = req.errorDecode(a, c); } catch (e) {}
+          stelsLog('webview-helper-fail', { player: payload.player, source: payload.source, status: a && a.status, statusText: a && a.statusText, message: msg || c || '' });
+          if (fail) fail(msg || c || (a && (a.statusText || a.status)) || 'helper request error');
+        }, false, { dataType: 'text', withCredentials: false, headers: { 'Accept': 'application/json,text/plain,*/*' } });
+      } catch (e) {
+        stelsLog('webview-helper-error', { error: e && (e.message || e.toString()) || '' });
+        if (fail) fail(e && (e.message || e.toString()) || 'helper error');
+      }
+    }
+
     function stelsSanitizeAndroidPlayable(play, ctx) {
       if (!stelsAndroidPlayerFixEnabled() || !play || typeof play !== 'object') return play;
       try {
@@ -455,6 +592,7 @@
                 low.indexOf('stels_online_uaflix_forced_year') !== -1 ||
                 low.indexOf('stels_online_save_last_balanser') !== -1 ||
                 low.indexOf('stels_online_android_player_fix') !== -1 ||
+                low.indexOf('stels_online_webview_helper_url') !== -1 ||
                 low.indexOf('stels_online_lampac_token') !== -1 ||
                 low.indexOf('token') !== -1 ||
                 low.indexOf('account') !== -1 ||
@@ -505,6 +643,7 @@
         'stels_online_rezka2_cookie',
         'stels_online_fancdn_cookie',
         'stels_online_log_enabled',
+        'stels_online_webview_helper_url',
         'stels_online_android_player_fix',
         'stels_online_zetflixnet_voice_quality_fix',
         'stels_online_zetflixnet_tizen_hls_voice',
@@ -5496,7 +5635,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.123: Turbo/Tartuga — додано російські title-hints і м’який match по року для пошуку сторінки filmo перед obrut.show; це виправляє 404 через неправильний Referer; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.124: додано URL WebView-helper; Tartuga Turbo пробує helper після невдалого прямого парсингу, Alloha/HDVB/VeoVeo з Tartuga використовують helper при заданому URL; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -15289,13 +15428,57 @@
         log('turbo-parse', { iframe: String(iframeUrl || '').slice(0, 180), decoded: !!txt, qualities: Object.keys(quality), selected: String(selected || '').slice(0, 180) });
         return selected ? { url: selected, quality: quality } : null;
       }
+      function tartugaHelperPlayerName(element) {
+        return String(element && (element.voice || element.title || '') || '').replace(/\s+💾/g, '').trim();
+      }
+      function tartugaCanUseWebviewHelper(element) {
+        if (!stelsWebviewHelperEndpoint()) return false;
+        var text = String((element && (element.voice || element.title || element.stream || '') || '')).toLowerCase();
+        return /turbo|alloha|hdvb|veoveo|obrut\.show|temptcdn|stravers|stloadi|sevstar/i.test(text);
+      }
+      function tartugaPlayViaWebviewHelper(element, reason, success, fail) {
+        if (!tartugaCanUseWebviewHelper(element)) { if (fail) fail('helper disabled'); return; }
+        var m = movieObj();
+        var player = tartugaHelperPlayerName(element) || 'iframe';
+        var refValue = element.referer || (element.headers && element.headers.Referer) || ref;
+        log('webview-helper-start', { player: player, reason: reason || '', iframe: String(element.stream || '').slice(0, 180), referer: refValue });
+        stelsWebviewHelperExtract({
+          url: element.stream,
+          iframe: element.stream,
+          referer: refValue,
+          origin: host,
+          user_agent: headers['User-Agent'],
+          source: 'tartuga',
+          player: player,
+          title: select_title || element.title || '',
+          original_title: m.original_title || m.original_name || '',
+          year: movieYear() || '',
+          kinopoisk_id: kinopoiskId(),
+          imdb_id: m.imdb_id || m.imdb || '',
+          tmdb_id: m.id || object.id || '',
+          timeout: 12000,
+          request_timeout: 40000
+        }, function (play) {
+          play.title = (select_title || element.title || 'Tartuga') + ' / ' + player;
+          play.poster = element.poster || play.poster || '';
+          play.timeline = element.timeline;
+          if (!play.headers) play.headers = element.headers || false;
+          play = stelsSanitizeAndroidPlayable(play, 'tartuga-webview-helper');
+          Lampa.Player.play(play);
+          Lampa.Player.playlist([play]);
+          if (success) success(play);
+        }, function (err) {
+          log('webview-helper-fail', { player: player, reason: reason || '', error: err || '' });
+          if (fail) fail(err || 'helper failed');
+        });
+      }
       function playTurboIframe(element, fallback) {
         function openWithCurrentReferer() {
           var referer = element.referer || ref;
           log('turbo-iframe-request', { iframe: String(element.stream || '').slice(0, 180), referer: referer });
           requestText(element.stream, function (html) {
             var parsed = turboParseQuality(html, element.stream);
-            if (!parsed || !parsed.url) { fallback('turbo parse empty'); return; }
+            if (!parsed || !parsed.url) { tartugaPlayViaWebviewHelper(element, 'turbo parse empty', null, function () { fallback('turbo parse empty'); }); return; }
             var play = stelsSanitizeAndroidPlayable({
               url: parsed.url,
               title: (element.title || select_title) + ' / Turbo',
@@ -15308,7 +15491,7 @@
             }, 'tartuga-turbo');
             Lampa.Player.play(play);
             Lampa.Player.playlist([play]);
-          }, function (err) { fallback(err || 'turbo request error'); }, { timeout: 15000, headers: {
+          }, function (err) { tartugaPlayViaWebviewHelper(element, err || 'turbo request error', null, function () { fallback(err || 'turbo request error'); }); }, { timeout: 15000, headers: {
             'User-Agent': headers['User-Agent'],
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': headers['Accept-Language'],
@@ -15422,6 +15605,17 @@
               });
               if (viewed.indexOf(hash_file) === -1) { viewed.push(hash_file); row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>'); Lampa.Storage.set('online_view', viewed); }
               try { stelsSaveWatchHistory(object.movie, 'tartuga', 'Tartuga', element, { title: element.title, player: 'Turbo' }); } catch (e) {}
+              return;
+            }
+            if (tartugaCanUseWebviewHelper(element)) {
+              tartugaPlayViaWebviewHelper(element, 'iframe-player-click', null, function (reason) {
+                log('webview-helper-fallback-iframe', { player: tartugaHelperPlayerName(element), reason: reason || '', iframe: String(element.stream || '').slice(0, 180) });
+                var fallbackPlay = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.title || select_title, poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: false, quality: false, iframe: true, method: 'iframe' }, 'tartuga-helper-fallback');
+                Lampa.Player.play(fallbackPlay);
+                Lampa.Player.playlist([fallbackPlay]);
+              });
+              if (viewed.indexOf(hash_file) === -1) { viewed.push(hash_file); row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>'); Lampa.Storage.set('online_view', viewed); }
+              try { stelsSaveWatchHistory(object.movie, 'tartuga', 'Tartuga', element, { title: element.title, player: tartugaHelperPlayerName(element), helper: true }); } catch (e) {}
               return;
             }
             var play = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.title || select_title, poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: false, quality: false, iframe: true, method: 'iframe' }, 'tartuga');
@@ -27138,6 +27332,7 @@
       Lampa.Params.select('stels_online_fancdn_cookie', '', '');
       Lampa.Params.select('stels_online_fancdn_token', '', '');
       Lampa.Params.select('stels_online_proxy_other_url', '', '');
+      Lampa.Params.select('stels_online_webview_helper_url', '', '');
       Lampa.Params.select('stels_online_secret_password', '', '');
 
       if (window.location.protocol === 'https:') {
@@ -28416,6 +28611,7 @@
       var template = "<div>";
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_sources\" data-static=\"true\">\n            <div class=\"settings-param__name\">Джерела</div>\n            <div class=\"settings-param__descr\">Увімкнення або вимкнення джерел у меню Сортувати</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_webview_helper_url\" data-type=\"input\" placeholder=\"http://192.168.1.10:8787\">\n            <div class=\"settings-param__name\">URL WebView-helper</div>\n            <div class=\"settings-param__descr\">Необов'язково. Якщо вказано, Tartuga Turbo / Alloha / HDVB / VeoVeo при помилці прямого парсингу передають iframe у helper і запускають повернений .m3u8/.mp4.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"stels-online-advanced-settings\" style=\"display:none\">";
 
       if (Utils.isDebug()) {
@@ -28774,7 +28970,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.123: Turbo/Tartuga — додано російські title-hints і м’який match по року для пошуку сторінки filmo перед obrut.show; це виправляє 404 через неправильний Referer; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.124: додано URL WebView-helper; Tartuga Turbo пробує helper після невдалого прямого парсингу, Alloha/HDVB/VeoVeo з Tartuga використовують helper при заданому URL; Filmix 4K/Spectre/NeNetflix лишаються видаленими.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
