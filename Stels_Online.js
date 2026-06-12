@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.118';
+    var STELS_ONLINE_VERSION = '1.1.120';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.118: виправлено Filmix 4K: HAR показав, що робочий fxapi був не на прямому backend, а на showypro.com/lite/fxapi із showy_token; додано передачу showy_token зі Storage. Без Showy-авторизації Filmix 4K не відкривається. Інші джерела не чіпав.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.120: Filmix 4K, Spectre і NeNetflix переведено на публічний http://showypro.com із showy_token; прибрано жорстко прописані IP-backend-и 130/85/178 для цих джерел.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -24359,21 +24359,20 @@
       }, {
         name: 'spectre',
         title: 'Spectre',
-        // 1.1.116: за Spectre.har робоча схема йде напряму через backend
-        // 85.198.110.239:11800/lite/spectre, який повертає data-json method=call
-        // з /lite/spectre/video та stream /lite/spectre/video.m3u8.
-        source: new lampauaRemoteSource(this, object, ['spectre'], 'Spectre', { host: 'http://85.198.110.239:11800/', token: false, showyToken: false, directPath: 'spectre', preferDirect: true }),
+        // 1.1.120: прибрано жорстку прив'язку до IP-backend.
+        // Spectre працює через публічний Showy host: http://showypro.com/lite/spectre із showy_token зі Storage.
+        source: new lampauaRemoteSource(this, object, ['spectre'], 'Spectre', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'spectre', preferDirect: true }),
         search: false,
         kp: true,
         imdb: true
       }, {
         name: 'nenetflixbd',
         title: 'NeNetflix',
-        // 1.1.115: NeNetflix за HAR працює через прямий Lampac backend
-        // 178.20.46.40:12600/lite/zetflixdb -> /lite/videodb -> manifest.m3u8.
+        // 1.1.120: прибрано жорстку прив'язку до IP-backend.
+        // NeNetflix працює через публічний Showy host: http://showypro.com/lite/zetflixdb із showy_token зі Storage.
         // У фільмах сервер повертає багато videos__item по перекладах, тому movieVoiceFilter
         // групує їх в одну картку, а переклади виносить у фільтр і меню плеєра.
-        source: new lampauaRemoteSource(this, object, ['nenetflix', 'nenetflix bd', 'nenetflixbd', 'ne netflix', 'ne netflix bd', 'zetflixdb'], 'NeNetflix', { host: 'http://178.20.46.40:12600/', token: false, showyToken: false, directPath: 'zetflixdb', preferDirect: true, movieVoiceFilter: true }),
+        source: new lampauaRemoteSource(this, object, ['nenetflix', 'nenetflix bd', 'nenetflixbd', 'ne netflix', 'ne netflix bd', 'zetflixdb'], 'NeNetflix', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'zetflixdb', preferDirect: true, movieVoiceFilter: true }),
         search: false,
         kp: true,
         imdb: true
@@ -24494,8 +24493,8 @@
         name: 'filmix4k',
         title: 'Filmix 4K',
         // 1.1.118: Filmix 4K.har НЕ містить робочого безавторизаційного backend для fxapi.
-        // В HAR робочий запит був showypro.com/lite/fxapi із showy_token; прямий 130.49.219.60:9118 повертає "Не авторизован".
-        // Тому використовуємо showypro.com + showy_token зі Storage; без Showy-авторизації Filmix 4K не відкриється.
+        // Filmix 4K працює через showypro.com/lite/fxapi із showy_token зі Storage.
+        // IP-backend для цього джерела не використовуємо.
         source: new lampauaRemoteSource(this, object, ['filmix4k', 'filmix 4k', 'fxapi', 'filmix'], 'Filmix 4K', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'fxapi', preferDirect: true, movieVoiceFilter: true }),
         search: false,
         kp: true,
@@ -25175,8 +25174,8 @@
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
-          if (name === 'spectre' || engine === 'spectre') return new lampauaRemoteSource(fake, object, ['spectre'], 'Spectre', { host: 'http://85.198.110.239:11800/', token: false, showyToken: false, directPath: 'spectre', preferDirect: true });
-          if (name === 'nenetflixbd' || name === 'nenetflix' || engine === 'nenetflixbd') return new lampauaRemoteSource(fake, object, ['nenetflix', 'nenetflix bd', 'nenetflixbd', 'ne netflix', 'ne netflix bd', 'zetflixdb'], 'NeNetflix', { host: 'http://178.20.46.40:12600/', token: false, showyToken: false, directPath: 'zetflixdb', preferDirect: true, movieVoiceFilter: true });
+          if (name === 'spectre' || engine === 'spectre') return new lampauaRemoteSource(fake, object, ['spectre'], 'Spectre', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'spectre', preferDirect: true });
+          if (name === 'nenetflixbd' || name === 'nenetflix' || engine === 'nenetflixbd') return new lampauaRemoteSource(fake, object, ['nenetflix', 'nenetflix bd', 'nenetflixbd', 'ne netflix', 'ne netflix bd', 'zetflixdb'], 'NeNetflix', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'zetflixdb', preferDirect: true, movieVoiceFilter: true });
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
@@ -28645,7 +28644,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.118: виправлено Filmix 4K: HAR показав, що робочий fxapi був не на прямому backend, а на showypro.com/lite/fxapi із showy_token; додано передачу showy_token зі Storage. Без Showy-авторизації Filmix 4K не відкривається. Інші джерела не чіпав.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.120: Filmix 4K, Spectre і NeNetflix переведено на публічний http://showypro.com із showy_token; прибрано жорстко прописані IP-backend-и 130/85/178 для цих джерел.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
