@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.109';
+    var STELS_ONLINE_VERSION = '1.1.110';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -26010,10 +26010,10 @@
       }, {
         name: 'collaps',
         title: 'Collaps',
-        // 1.1.109: Collaps працює напряму без Showy-сервера.
-        // Спочатку пробує api.ortified/api.kinogram, а якщо embed порожній або HTML не містить makePlayer,
-        // шукає id у dataset-сторінках із Collaps.json і відкриває /embed/{id}.
-        source: new collaps(this, object, false),
+        // 1.1.110: за новим collaps.har робоча схема Collaps іде через lite/collaps на 178.20.46.40:12600.
+        // Сервер повертає готовий HTML .videos__item з data-json і proxy .m3u8, тому цей endpoint став основним.
+        // Нативний api.ortified/dataset залишився в Collaps (DASH) як окремий/резервний варіант, щоб не ламати інші частини.
+        source: new lampauaRemoteSource(this, object, ['collaps'], 'Collaps', { host: 'http://178.20.46.40:12600/', token: false, showyToken: true, directPath: 'collaps', preferDirect: true }),
         search: false,
         kp: true,
         imdb: true,
@@ -30183,7 +30183,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.109: Collaps dataset тепер використовується як повноцінний fallback із Collaps.json (223 сторінки), включено fallback після parse-fail і ширший пошук kp/imdb у dataset.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.110: Collaps переведено на робочий endpoint із collaps.har: http://178.20.46.40:12600/lite/collaps, який повертає готовий data-json/proxy m3u8; нативний api.ortified/dataset лишився у Collaps (DASH).' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
