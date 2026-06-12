@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.123';
+    var STELS_ONLINE_VERSION = '1.1.122';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5496,7 +5496,7 @@
             }
             function failAlloha(a,c) {
               var msg = network.errorDecode(a,c) || '';
-              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.123: бейдж якості ініціалізується тільки з поточного render/precheck, додано HD/FHD/UHD розпізнавання, якість біля перекладів у фільтрі, precheck для UafilmMe/Filmix/iRemux/Mirage/VeoVeo/KinoTochka і directPath для KinoTochka.' });
+              log('alloha-iframe-error', { iframe: alloha.iframe || '', status: a && a.status || 0, message: msg, note: '1.1.122: не беремо якість джерела з останнього переглянутого потоку; append/rendered-card може тільки підняти вже знайдений precheck максимум. Для GetsTV і HDVB додано поглиблену перевірку кількох voice/stream, як у Makhno/Midnight/CDNVideoHub.' });
               component.empty(msg || 'Kinobaza: iframe Alloha не відкрився');
             }
             network.native(alloha.iframe, handleAllohaHtml, failAlloha, false, { dataType: 'text', headers: { 'User-Agent': Utils.baseUserAgent(), 'Referer': ref, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,uk;q=0.7,en-US;q=0.6,en;q=0.5', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1' } });
@@ -7941,10 +7941,7 @@
 
         if (extract.seasons && extract.seasons[choice.season]) {
           filter_items.voice = extract.seasons[choice.season].voices.map(function (v) {
-            var maxQ = 0;
-            try { (v.items || []).forEach(function (it) { maxQ = Math.max(maxQ, parseInt(it.quality || 0, 10) || 0); }); } catch (e) {}
-            var q = maxQ ? stelsQualityLabel(maxQ) : '';
-            return q ? (q + '  ' + v.id) : v.id;
+            return v.id;
           });
         }
 
@@ -21230,30 +21227,8 @@
 
       function lampauaQualityLabelFromText(text) {
         text = (text || '') + '';
-        var val = stelsQualityToValue(text);
-        return val ? stelsQualityLabel(val) : '';
-      }
-
-      function lampauaStripVoiceQualityTitle(title) {
-        return String(title || '').replace(/^\s*(?:8K|4K|2K|2160p|1440p|1080p|720p|576p|480p|360p|240p|UHD|FHD|HD)\s*(?:[•·\-–—|:]\s*)?/i, '').replace(/\s+/g, ' ').trim();
-      }
-
-      function lampauaQualityLabelFromItem(item, allowHint) {
-        var q = 0;
-        try {
-          q = Math.max(q, stelsExtractMaxQualityFromAny(item && item.quality, 0, 'quality'));
-          q = Math.max(q, stelsExtractMaxQualityFromAny(item && item.qualitys, 0, 'qualitys'));
-          q = Math.max(q, stelsExtractMaxQualityFromAny(item && (item.url || item.stream || item.file || ''), 0, 'url'));
-          q = Math.max(q, stelsExtractMaxQualityFromAny(item && (item.text || item.title || item.info || ''), 0, 'title'));
-          if (!q && allowHint !== false) q = Math.max(q, stelsQualityToValue(remote_quality_hint || ''));
-        } catch (e) {}
-        return q ? stelsQualityLabel(q) : '';
-      }
-
-      function lampauaDecorateVoiceTitle(title, item, allowHint) {
-        var raw = lampauaStripVoiceQualityTitle(title || '');
-        var q = lampauaQualityLabelFromItem(item || {}, allowHint);
-        return q ? (q + '  ' + (raw || title || '')) : (raw || title || '');
+        var m = text.match(/(?:^|[^0-9])((?:2160|1440|1080|720|480|360)p)(?:[^0-9]|$)/i);
+        return m ? m[1].toLowerCase().replace(/^([0-9]+)p$/, '$1p') : '';
       }
 
       function lampauaEnrichQualityFromTitle(item) {
@@ -21262,9 +21237,7 @@
         if (!url || typeof url != 'string') return item;
         var label = lampauaQualityLabelFromText(item.text || item.title || item.info || '');
         if (!label && /mirage|pidtor/i.test(sourceTitle || '')) label = lampauaQualityLabelFromText((item.text || '') + ' ' + (item.title || ''));
-        if (!label) label = stelsQualityLabel(stelsQualityToValue(remote_quality_hint || ''));
-        // 1.1.123: remote_quality_hint із назви джерела або HTML-коментаря використовуємо як
-        // fallback badge для активності джерела, коли сам stream/endpoint не містить 1080/2160 у URL.
+        // 1.1.71: remote_quality_hint із назви джерела або HTML-коментаря може бути лише максимальною/дефолтною можливістю джерела, а не фактичним stream.
         if (lampauaIsMirageSource()) item.url = lampauaNormalizeMirageUrl(item.url || '');
         if (label) {
           item.qualitys = {};
@@ -21740,7 +21713,7 @@
       }
 
       function lampauaIsMovieVoiceFilterSource() {
-        return !!remoteOptions.movieVoiceFilter || /zetflixdb|videodb/i.test(remoteOptions.directPath || remoteOptions.directBalanser || '');
+        return !!remoteOptions.movieVoiceFilter || /nenetflix/i.test(sourceTitle || '') || /zetflixdb|videodb/i.test(remoteOptions.directPath || remoteOptions.directBalanser || '');
       }
 
       function lampauaPreferredSimilarVoiceIndex(voices) {
@@ -21790,19 +21763,16 @@
       function lampauaBuildMirageMovieFilter(videos) {
         var seen = {};
         filter_find.voice = (videos || []).filter(function (v) { return v && (v.url || v.stream || v.file); }).map(function (v, index) {
-          var rawBase = lampauaMirageMovieVoiceTitle(v, index);
-          var key = lampauaStripVoiceQualityTitle(rawBase).toLowerCase();
+          var base = lampauaMirageMovieVoiceTitle(v, index);
+          var key = base.toLowerCase();
           seen[key] = (seen[key] || 0) + 1;
-          var rawTitle = seen[key] > 1 ? (lampauaStripVoiceQualityTitle(rawBase) + ' #' + seen[key]) : lampauaStripVoiceQualityTitle(rawBase);
+          var title = seen[key] > 1 ? (base + ' #' + seen[key]) : base;
           var item = lampauaCloneItem(v);
-          lampauaEnrichQualityFromTitle(item);
-          var qualityLabel = lampauaQualityLabelFromItem(item, true);
-          var title = lampauaDecorateVoiceTitle(rawTitle, item, true);
           item.voice_name = title;
           item.translate_voice = title;
           item.info = title;
           item.title = select_title || object.movie && (object.movie.title || object.movie.name) || title;
-          return { title: title, raw_title: rawTitle, quality_label: qualityLabel, url: item.url || '', active: false, item: item };
+          return { title: title, url: item.url || '', active: false, item: item };
         });
         var preferred = lampauaPreferredSimilarVoiceIndex(filter_find.voice);
         var voice = filter_find.voice[preferred] || filter_find.voice[0];
@@ -22090,7 +22060,7 @@
             var similar = items.filter(function (v) { return v.similar; });
             if (videos.length) {
               if (buttons.length) {
-                filter_find.voice = buttons.map(function (b) { return { title: lampauaDecorateVoiceTitle(b.text, b, true), raw_title: b.text, quality_label: lampauaQualityLabelFromItem(b, true), url: b.url, active: b.active }; });
+                filter_find.voice = buttons.map(function (b) { return { title: b.text, url: b.url, active: b.active }; });
                 var active = buttons.filter(function (b) { return b.active; })[0];
                 if (active) {
                   choice.voice = buttons.indexOf(active);
@@ -22117,9 +22087,7 @@
                 if (remoteOptions.voiceFromSimilar && object.movie && object.movie.name) {
                   filter_find.voice = similar.filter(function (elem) { return elem && elem.url; }).map(function (elem, index) {
                     return {
-                      title: lampauaDecorateVoiceTitle(elem.text || elem.title || ('Переклад ' + (index + 1)), elem, true),
-                      raw_title: elem.text || elem.title || ('Переклад ' + (index + 1)),
-                      quality_label: lampauaQualityLabelFromItem(elem, true),
+                      title: elem.text || elem.title || ('Переклад ' + (index + 1)),
                       url: elem.url,
                       active: index == (parseInt(choice.voice || 0, 10) || 0)
                     };
@@ -24475,14 +24443,14 @@
       }, {
         name: 'rc-iremux',
         title: 'iRemux',
-        source: new lampauaRemoteSource(this, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true }),
+        source: new lampauaRemoteSource(this, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
         search: true,
         kp: true,
         imdb: true
       }, {
         name: 'rc-veoveo',
         title: 'VeoVeo',
-        source: new lampauaRemoteSource(this, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true }),
+        source: new lampauaRemoteSource(this, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
         search: true,
         kp: true,
         imdb: true
@@ -24893,11 +24861,6 @@
             if (v >= 240 && v <= 4320) max = Math.max(max, v);
             return all;
           });
-          // 1.1.123: багато LampUA/RC джерел віддають якість словами: hd/fhd/uhd.
-          // Без цього UafilmMe, KinoTochka, VeoVeo та інші могли бути active, але без badge якості.
-          text.replace(/(^|[^a-z0-9а-яіїєґ])(?:ultra\s*)?uhd([^a-z0-9а-яіїєґ]|$)/ig, function () { max = Math.max(max, 2160); return ''; });
-          text.replace(/(^|[^a-z0-9а-яіїєґ])(?:full\s*)?fhd([^a-z0-9а-яіїєґ]|$)/ig, function () { max = Math.max(max, 1080); return ''; });
-          text.replace(/(^|[^a-z0-9а-яіїєґ])hd([^a-z0-9а-яіїєґ]|$)/ig, function () { max = Math.max(max, 720); return ''; });
           return max;
         } catch (e) {}
         return 0;
@@ -24988,7 +24951,6 @@
 
       var stelsRenderedSourceQuality = {};
       var stelsRenderedSourceQualityTimer = null;
-      var stelsAllowRenderedSourceQualityInit = {};
       function stelsCurrentQualityKey(source) {
         try {
           var mid = object && object.movie && (object.movie.id || object.movie.tmdb_id || object.movie.kinopoisk_id || object.movie.imdb_id) || '';
@@ -25004,15 +24966,12 @@
           if (!q) return;
           var prev = stelsSourceStatus[source] || {};
           var prevQ = stelsQualityToValue(prev.quality || '');
+          // 1.1.122: не ініціалізуємо якість джерела з поточної/останньої відкритої картки.
+          // Badge джерела має показувати максимум, знайдений precheck-ом, а не якість відео,
+          // яке користувач дивився останнім. Rendered-card може тільки ПІДНЯТИ вже знайдену якість.
+          if (!prevQ) return;
+          if (q <= prevQ) return;
           var qkey = stelsCurrentQualityKey(source);
-          // 1.1.123: не беремо якість зі старої/останньої картки без явного поточного пошуку.
-          // Але активне джерело теж повинно отримати badge: під час search() відкриваємо коротке
-          // вікно, у якому rendered-card може ІНІЦІАЛІЗУВАТИ якість саме для поточного фільму.
-          if (!prevQ) {
-            var allowAt = stelsAllowRenderedSourceQualityInit[qkey] || 0;
-            if (!allowAt || Date.now() - allowAt > 25000) return;
-          }
-          if (prevQ && q <= prevQ) return;
           var rec = stelsRenderedSourceQuality[qkey] || { max: 0 };
           rec.max = Math.max(rec.max || 0, prevQ, q);
           rec.time = Date.now();
@@ -25030,10 +24989,6 @@
       function stelsMarkSourceStatus(source, status, message, quality) {
         source = stelsNormalizeSourceKey(source || balanser);
         if (!source) return;
-        if ((status === 'error' || status === 'empty') && source === 'kinotochka' && /RCH|NativeWs|timeout/i.test(message || '')) {
-          status = 'wait';
-          message = '';
-        }
         var prev = stelsSourceStatus[source] || {};
         var prevQ = stelsQualityToValue(prev.quality || '');
         var newQ = stelsQualityToValue(quality || '');
@@ -25041,9 +24996,9 @@
         // 1.1.122: після precheck не дозволяємо append()/відкриттю конкретного 1080p-потоку
         // занижувати якість джерела з 4K/2K до поточної якості перегляду. Для нового precheck
         // status=wait/empty/error усе ще очищає badge, щоб не переносити якість між картками.
-        if (status === 'ok' && prevQ) {
-          if (!newQ) finalQuality = prev.quality || '';
-          else if (newQ < prevQ) finalQuality = prev.quality || '';
+        if (status === 'ok' && prev.status === 'ok') {
+          if (!newQ && prevQ) finalQuality = prev.quality || '';
+          else if (prevQ && newQ && newQ < prevQ) finalQuality = prev.quality || '';
         }
         stelsSourceStatus[source] = { status: status, message: message || '', quality: finalQuality, time: Date.now() };
         stelsSaveSourceStatus();
@@ -25223,7 +25178,7 @@
         var probeFileActive = 0;
         var probeResolveStarted = 0;
         var probeSourceKey = stelsNormalizeSourceKey(sourceName || '');
-        var probeDeepQualitySources = ['makhno', 'starlight', 'zetflixnet', 'cdnvideohub', 'getstv', 'hdvb', 'uafilmme-lampaua', 'filmix', 'filmixtv', 'fxapi', 'iremux', 'mirage', 'veoveo', 'kinotochka'];
+        var probeDeepQualitySources = ['makhno', 'starlight', 'zetflixnet', 'cdnvideohub', 'getstv', 'hdvb'];
         var probeFileLimit = probeDeepQualitySources.indexOf(probeSourceKey) !== -1 ? 8 : 2;
         function rememberQuality(value, keyHint) {
           try { probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || '')); } catch (e) {}
@@ -25309,9 +25264,9 @@
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino');
           if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
-          if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka' });
-          if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true });
-          if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true });
+          if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
@@ -25559,10 +25514,6 @@
           source: 0
         });
         stelsStopSafePrecheck();
-        try {
-          stelsAllowRenderedSourceQualityInit[stelsCurrentQualityKey(balanser)] = Date.now();
-          stelsMarkSourceStatus(balanser, 'wait', '', '');
-        } catch (eInitQ) {}
         this.reset();
         this.find();
         stelsStartSafePrecheck.call(this);
@@ -28787,7 +28738,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.123: бейдж якості ініціалізується тільки з поточного render/precheck, додано HD/FHD/UHD розпізнавання, якість біля перекладів у фільтрі, precheck для UafilmMe/Filmix/iRemux/Mirage/VeoVeo/KinoTochka і directPath для KinoTochka.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.122: не беремо якість джерела з останнього переглянутого потоку; append/rendered-card може тільки підняти вже знайдений precheck максимум. Для GetsTV і HDVB додано поглиблену перевірку кількох voice/stream, як у Makhno/Midnight/CDNVideoHub.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
