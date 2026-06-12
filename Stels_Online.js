@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.111';
+    var STELS_ONLINE_VERSION = '1.1.112';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -25907,10 +25907,10 @@
       }, {
         name: 'showy-alloha',
         title: 'Showy_Alloha',
-        // 1.1.111: окреме джерело за Showy_Alloha.har. Використовує прямий endpoint
-        // http://showypro.com/lite/alloha, який повертає .videos__item з method=call
-        // і далі /lite/alloha/video віддає готовий vkvideo master.m3u8/quality.
-        source: new lampauaRemoteSource(this, object, ['showy_alloha', 'showy alloha', 'showy-alloha', 'alloha'], 'Showy_Alloha', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'alloha', preferDirect: true }),
+        // 1.1.112: за Showy_Alloha.har не використовуємо публічний showypro.com,
+        // бо він вимагає showy_token і дає "не авторизований". Як із Collaps,
+        // беремо прямий backend-host із showy.pro/m.js: localhost = http://130.49.219.60:9118/.
+        source: new lampauaRemoteSource(this, object, ['showy_alloha', 'showy alloha', 'showy-alloha', 'alloha'], 'Showy_Alloha', { host: 'http://130.49.219.60:9118/', token: false, showyToken: false, directPath: 'alloha', preferDirect: true }),
         search: false,
         kp: true,
         imdb: true,
@@ -26726,7 +26726,7 @@
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
-          if (name === 'showy-alloha' || engine === 'showy-alloha') return new lampauaRemoteSource(fake, object, ['showy_alloha', 'showy alloha', 'showy-alloha', 'alloha'], 'Showy_Alloha', { host: 'http://showypro.com/', token: false, showyToken: true, directPath: 'alloha', preferDirect: true });
+          if (name === 'showy-alloha' || engine === 'showy-alloha') return new lampauaRemoteSource(fake, object, ['showy_alloha', 'showy alloha', 'showy-alloha', 'alloha'], 'Showy_Alloha', { host: 'http://130.49.219.60:9118/', token: false, showyToken: false, directPath: 'alloha', preferDirect: true });
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
@@ -30195,7 +30195,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.111: додано окреме джерело Showy_Alloha за Showy_Alloha.har через прямий http://showypro.com/lite/alloha -> /lite/alloha/video; Collaps лишено на робочому endpoint з 1.1.110.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.112: Showy_Alloha переведено з авторизаційного showypro.com на прямий backend http://130.49.219.60:9118/lite/alloha за Showy_Alloha.har/showy.pro m.js; Collaps не чіпав.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
