@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.140';
+    var STELS_ONLINE_VERSION = '1.1.141';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -26977,8 +26977,18 @@
           var isJq = value && value.jquery;
           if (!isNode && !isJq) return 0;
           var el = isJq ? value : $(value);
-          var explicit = el.attr('data-stels-quality-value') || el.attr('data-stels-quality-label') || '';
-          if (explicit) max = Math.max(max, stelsQualityToValue(explicit));
+          // 1.1.141: data-stels-quality-value з DOM-атрибута приходить рядком типу "480".
+          // stelsQualityToValue() свідомо не вважає голе "480" якістю, тому раніше
+          // KinoTochka мала data-stels-quality-label="480p", але через пріоритет value
+          // precheck отримував 0 і badge біля джерела лишався порожнім.
+          var explicitValue = el.attr('data-stels-quality-value') || '';
+          var explicitLabel = el.attr('data-stels-quality-label') || '';
+          if (explicitValue) {
+            var explicitNum = parseInt(explicitValue, 10) || 0;
+            if (explicitNum > 100 && explicitNum < 9000) max = Math.max(max, explicitNum);
+            else max = Math.max(max, stelsQualityToValue(explicitValue));
+          }
+          if (explicitLabel) max = Math.max(max, stelsQualityToValue(explicitLabel));
           var qtext = (el.find('.online__quality').first().text() || '').replace(/\s+/g, ' ').trim();
           if (qtext && !/[~〜～]/.test(qtext)) max = Math.max(max, stelsQualityToValue(qtext));
           var title = (el.find('.online__title').first().text() || '').replace(/\s+/g, ' ').trim();
@@ -27030,6 +27040,12 @@
               if (/quality|qualitys|qualities|file|url|stream|src|sources|links|playlist/.test(keyHint || '')) {
                 var keyQ = stelsQualityToValue(k);
                 if (keyQ && (typeof child == 'string' || typeof child == 'object')) max = Math.max(max, keyQ);
+              }
+              // 1.1.141: службова підказка, яку сам Stels_Online ставить для RC KinoTochka
+              // з назви life/events (`Kinotochka - 480p`). Загальний фільтр навмисно
+              // ігнорує ключі з `source`, тому читаємо тільки цей внутрішній ключ явно.
+              if (lk === '_stels_source_quality_hint' || lk === 'stels_source_quality_hint') {
+                max = Math.max(max, stelsQualityToValue(child));
               }
               max = Math.max(max, stelsExtractMaxQualityFromAny(child, depth + 1, lk));
             });
@@ -27290,7 +27306,13 @@
         var probeDeepVoiceQuality = stelsIsDeepVoiceQualitySource(sourceName);
         var probeFileLimit = probeDeepVoiceQuality ? 8 : 2;
         function rememberQuality(value, keyHint) {
-          try { probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || '')); } catch (e) {}
+          try {
+            var before = probeMaxQuality || 0;
+            probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || ''));
+            if (probeMaxQuality > before && stelsNormalizeSourceKey(sourceName) === 'kinotochka') {
+              stelsLog('source-precheck-quality-captured', { source: sourceName, reason: keyHint || '', quality: stelsQualityLabel(probeMaxQuality) });
+            }
+          } catch (e) {}
         }
         function rememberVerifiedQuality(value, keyHint) {
           try { probeVerifiedQuality = Math.max(probeVerifiedQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || '')); } catch (e) {}
@@ -30917,7 +30939,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.140: точково виправлено precheck KinoTochka: RCH/NativeWs success callback більше не трактується як помилка; якість 480p береться з RC life/events назви джерела.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.141: база 1.1.140; виправлено відображення badge якості KinoTochka у precheck: DOM data-stels-quality-value=480 тепер читається як 480p, а службова source-quality підказка не відсікається.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
