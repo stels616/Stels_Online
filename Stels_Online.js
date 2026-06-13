@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.142';
+    var STELS_ONLINE_VERSION = '1.1.143';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -198,6 +198,25 @@
       if (value >= 2160) return '4K';
       if (value >= 1440) return '2K';
       return value + 'p';
+    }
+
+    // 1.1.143: цей clamp потрібен не лише внутрішньому precheck, а й
+    // lampauaRemoteSource / iRemux під час відкриття відео. У 1.1.142 функція
+    // існувала тільки у внутрішньому scope списку джерел, тому iRemux падав з
+    // ReferenceError: stelsClampSourceQualityValue is not defined.
+    function stelsSourceQualityCap(source) {
+      source = stelsNormalizeSourceKey(source || '');
+      if (source === 'filmix' || source === 'filmixtv' || source === 'fxapi') return 480;
+      if (source === 'iremux') return 1080;
+      return 0;
+    }
+
+    function stelsClampSourceQualityValue(source, value) {
+      value = parseInt(value, 10) || 0;
+      if (!value) return 0;
+      var cap = stelsSourceQualityCap(source);
+      if (cap && value > cap) return cap;
+      return value;
     }
 
 
@@ -30946,7 +30965,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.142: iRemux переведено в структурований режим: одна картка фільму, переклади у фільтрі/кнопці плеєра; precheck/current badge беруть 1080p з RC life/events підказки.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.143: виправлено падіння iRemux при відкритті відео: stelsClampSourceQualityValue винесено у глобальний scope, щоб voice-quality callback не обривав плеєр; структурована картка/фільтр iRemux з 1.1.142 збережені.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
