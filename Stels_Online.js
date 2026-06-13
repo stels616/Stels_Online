@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.133';
+    var STELS_ONLINE_VERSION = '1.1.134';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -141,6 +141,73 @@
       if (stelsVoiceQualityPrefix(name)) return name;
       if (!quality && STELS_VOICE_QUALITY_RE.test(name)) return name;
       return quality ? (quality + '  ' + name) : name;
+    }
+
+
+    function stelsCleanVoiceDisplayText(value) {
+      var text = String(value == null ? '' : value).replace(/&nbsp;/g, ' ').trim();
+      // Lampa у player/audio menu може сама додавати службові частини: "1 /" і " / Source".
+      text = text.replace(/^\s*\d+\s*\/\s*/i, '').trim();
+      text = text.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno)\s*$/i, '').trim();
+      return text;
+    }
+
+    function stelsNormalizeVoiceTrack(track, index, ctx) {
+      try {
+        if (!track || typeof track !== 'object') return track;
+        var sourceText = track.language || track.name || track.title || track.label || track.voice || '';
+        var quality = track._stels_quality || track.quality_label || track.qualityLabel || track.quality_name || '';
+        if (!quality) quality = stelsVoiceQualityPrefix(sourceText || '');
+        if (!quality) quality = stelsVoiceQualityLabelFromAny(track.quality || track.qualitys || track.height || track.resolution || '');
+        var raw = track._stels_voice_raw || track.voice || track.raw || track.raw_title || track.name || track.title || track.language || track.label || ('Voice ' + ((index || 0) + 1));
+        raw = stelsCleanVoiceDisplayText(raw);
+        raw = stelsStripVoiceQuality(raw);
+        if (!raw || STELS_VOICE_QUALITY_RE.test(raw)) raw = stelsStripVoiceQuality(stelsCleanVoiceDisplayText(sourceText || '')) || ('Voice ' + ((index || 0) + 1));
+        var display = stelsVoiceDisplayName(raw, quality);
+        // Даємо всі можливі поля, бо різні версії Lampa читають різні ключі для меню аудіодоріжок.
+        track.language = display;
+        track.name = display;
+        track.title = display;
+        track.label = display;
+        track.text = display;
+        track.number = false;
+        track.hide_index = true;
+        track._stels_voice_raw = raw;
+        if (quality) track._stels_quality = quality;
+        try { delete track.source; } catch (e0) {}
+        try { delete track.balanser; } catch (e1) {}
+      } catch (e) {}
+      return track;
+    }
+
+    function stelsNormalizeVoiceTrackList(list, ctx) {
+      if (!(list && list.forEach)) return list;
+      try {
+        list.forEach(function (track, index) { stelsNormalizeVoiceTrack(track, index, ctx); });
+      } catch (e) {}
+      return list;
+    }
+
+    function stelsNormalizePlayableVoiceTracks(play, ctx) {
+      if (!play || typeof play !== 'object') return play;
+      try {
+        var tracks = null;
+        if (play.voiceovers && play.voiceovers.forEach) tracks = play.voiceovers;
+        else if (play.translate && play.translate.tracks && play.translate.tracks.forEach) tracks = play.translate.tracks;
+        else if (play.audio_tracks && play.audio_tracks.forEach) tracks = play.audio_tracks;
+        if (tracks && tracks.length) {
+          stelsNormalizeVoiceTrackList(tracks, ctx);
+          play.voiceovers = tracks;
+          play.translate = play.translate || {};
+          play.translate.tracks = tracks;
+          // Частина Android/Lampa показує саме audio_tracks у вікні "Аудіодоріжки".
+          // Тому дублюємо туди той самий очищений список із quality badge.
+          play.audio_tracks = tracks;
+          play._stels_voice_tracks_normalized = true;
+          try { stelsLog('global-player-voice-tracks-normalized', { ctx: ctx || '', count: tracks.length, sample: tracks.slice(0, 8).map(function (t) { return t && (t.language || t.name || t.title || t.label) || ''; }) }); } catch (elog) {}
+        }
+      } catch (e) { try { stelsLog('global-player-voice-tracks-normalize-error', { ctx: ctx || '', error: e && (e.message || e.toString()) || '' }); } catch (elog2) {} }
+      return play;
     }
 
     function stelsBuildDisplayFilterItems(filterItems, sourceName) {
@@ -519,7 +586,7 @@
     function stelsSanitizeAndroidPlayable(play, ctx) {
       if (!stelsAndroidPlayerFixEnabled() || !play || typeof play !== 'object') return play;
       try {
-        var out = play;
+        var out = stelsNormalizePlayableVoiceTracks(play, ctx || 'android-sanitize');
         var url = out.url || out.file || '';
         if (typeof url == 'string' && url.indexOf(' or ') !== -1) {
           var parts = url.split(' or ');
@@ -552,6 +619,9 @@
           has_reserve: !!out.url_reserve,
           has_file: !!out.file,
           quality_disabled: !!out._stels_original_quality,
+          voiceovers: out.voiceovers && out.voiceovers.length || 0,
+          translate_tracks: out.translate && out.translate.tracks && out.translate.tracks.length || 0,
+          audio_tracks: out.audio_tracks && out.audio_tracks.length || 0,
           url_preview: stelsPreviewUrl(out.url || out.file || '')
         });
       } catch (e) {
@@ -567,12 +637,20 @@
         var nativePlaylist = Lampa.Player.playlist;
         if (typeof nativePlay == 'function') {
           Lampa.Player.play = function (data) {
+            if (data && typeof data === 'object') {
+              data = stelsNormalizePlayableVoiceTracks(data, 'Lampa.Player.play');
+              stelsScheduleVoiceQualityColor('player-play');
+            }
             if (stelsAndroidPlayerFixEnabled()) data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
             return nativePlay.apply(this, arguments.length ? [data] : arguments);
           };
         }
         if (typeof nativePlaylist == 'function') {
           Lampa.Player.playlist = function (list) {
+            if (Array.isArray(list)) {
+              list.forEach(function (item) { if (item && typeof item === 'object') stelsNormalizePlayableVoiceTracks(item, 'Lampa.Player.playlist'); });
+              stelsScheduleVoiceQualityColor('player-playlist');
+            }
             if (stelsAndroidPlayerFixEnabled() && Array.isArray(list)) {
               var original_len = list.length;
               var safe = [];
@@ -30564,7 +30642,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.133: у player voiceovers прибрано службову нумерацію/index та назву джерела після перекладу; DOM-підсвітка додатково чистить 1 / та / Джерело; для LampUA voice_quality має fallback на максимум джерела без порожніх бейджів.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.134: виправлено player audio/voice menu: voiceovers/translate.tracks/audio_tracks тепер нормалізуються глобально перед Lampa.Player.play/playlist, якість дублюється в audio_tracks і label/name/title/language, щоб badge якості зʼявлявся у списку перекладів плеєра.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
