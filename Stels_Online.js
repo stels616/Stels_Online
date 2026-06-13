@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.138';
+    var STELS_ONLINE_VERSION = '1.1.139';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -27280,6 +27280,25 @@
         function rememberVerifiedQuality(value, keyHint) {
           try { probeVerifiedQuality = Math.max(probeVerifiedQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || '')); } catch (e) {}
         }
+        function rememberVoiceQualityFilter(filterItems, reason) {
+          try {
+            if (!probeDeepVoiceQuality || !filterItems) return;
+            var qarr = filterItems.voice_quality || filterItems.voiceQuality || filterItems.quality_voice || [];
+            if (!qarr || !qarr.length) return;
+            var max = 0;
+            Array.prototype.slice.call(qarr).forEach(function (q) {
+              max = Math.max(max, stelsQualityToValue(q));
+            });
+            if (!max) return;
+            probeVerifiedQuality = Math.max(probeVerifiedQuality || 0, stelsClampSourceQualityValue(sourceName, max));
+            stelsLog('source-precheck-voice-quality-captured', {
+              source: sourceName,
+              reason: reason || '',
+              quality: stelsQualityLabel(probeVerifiedQuality),
+              voice_quality: Array.prototype.slice.call(qarr).slice(0, 12)
+            });
+          } catch (e) {}
+        }
         function finish(status, message, quality) {
           if (finished || token !== stelsPrecheckToken) return;
           if (!quality && probeFileActive > 0 && probeResolveStarted && Date.now() - probeResolveStarted < (probeDeepVoiceQuality ? 5200 : 2600)) {
@@ -27309,7 +27328,16 @@
         }
         probe.loading = function () {};
         probe.reset = function () {};
-        probe.filter = function () {};
+        probe.filter = function (filterItems) {
+          // 1.1.139: HDVB/Getstv/Makhno/Midnight/CDNVideoHub/ZetflixNet отримують реальну
+          // якість озвучок асинхронно через filter_items.voice_quality. Звичайний парсер
+          // precheck навмисно ігнорує ключі з `voice`, тому без окремого мосту статус
+          // джерела міг залишатися без badge якості, хоча `global-source-voice-quality-ready`
+          // вже показував 1080p/4K. Беремо тільки deep voice sources, щоб не зачепити інші.
+          rememberVoiceQualityFilter(filterItems, 'component.filter');
+          try { rememberQuality(filterItems, 'filter'); } catch (e) {}
+          scheduleOkFinish();
+        };
         probe.selected = function () {};
         probe.start = function () {};
         probe.closeFilter = function () {};
@@ -30874,7 +30902,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.138: база 1.1.137; точково виправлено пропуски якості в аудіодоріжках, коли Lampa розриває 4K-переклад і показує службове `5 / K ...` замість `4K ...`.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.139: база 1.1.138; точково виправлено precheck badge якості для HDVB/deep voice джерел, коли voice_quality уже отримана, але статус джерела лишався без якості.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
