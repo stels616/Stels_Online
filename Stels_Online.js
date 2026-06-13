@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.145';
+    var STELS_ONLINE_VERSION = '1.1.146';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -23005,6 +23005,20 @@
         return found;
       }
 
+      function reportSourceQualityHintForPrecheck(reason) {
+        try {
+          // 1.1.146: для iRemux/KinoTochka якість приходить уже на етапі life/events
+          // у назві джерела (`iRemux - 1080p`). У precheck не чекаємо важкий
+          // getfile/prefetch усіх озвучок: одразу передаємо службову підказку у fake component.
+          if (!remoteOptions.sourceQualityHint || !component || !component._stelsPrecheck || typeof component.filter !== 'function') return;
+          var qv = stelsExtractMaxQualityFromAny(remote_quality_hint || (current_source && current_source.name) || '', 0, 'quality');
+          var ql = stelsQualityLabel(qv);
+          if (!ql) return;
+          stelsLog('lampaua-source-quality-precheck-hint', { source: sourceTitle, reason: reason || '', quality: ql });
+          component.filter({ _stels_source_quality_hint: ql, source_quality_hint: ql, quality: ql });
+        } catch (e) {}
+      }
+
       function loadSourceUrl(done, fail) {
         if (source_url) return done(source_url);
         var direct = remoteDirectUrl();
@@ -23012,6 +23026,7 @@
           if (direct) {
             current_source = { name: sourceTitle, balanser: remoteOptions.directPath || sourceTitle, url: direct, show: true };
             source_url = direct;
+            reportSourceQualityHintForPrecheck('direct:' + (reason || ''));
             stelsLog('remote-direct-source-url', { source: sourceTitle, direct: direct, reason: reason || '', prefer: remoteUseDirectFirst() });
             return done(source_url);
           }
@@ -23032,6 +23047,7 @@
             if (src && src.url) {
               current_source = src;
               source_url = src.url;
+              reportSourceQualityHintForPrecheck('events');
               done(source_url);
             } else useDirect('events source not found');
           }
@@ -23052,12 +23068,14 @@
           if (src && src.url && src.show !== false) {
             current_source = src;
             source_url = src.url;
+            reportSourceQualityHintForPrecheck('lifeevents');
             return done(source_url);
           }
           if (life_wait_times > 16 || (json && json.ready)) {
             if (src && src.url) {
               current_source = src;
               source_url = src.url;
+              reportSourceQualityHintForPrecheck('lifeevents-ready');
               return done(source_url);
             }
             return fail('Джерело ' + sourceTitle + ' не відповіло');
@@ -24064,7 +24082,10 @@
             viewed: viewed,
             hash_file: hash_file,
             element: element,
-            file: function (call) {
+            // 1.1.146: у precheck для iRemux/KinoTochka достатньо sourceQualityHint із
+            // life/events. Не запускаємо важкий getfile() з контекстного меню, щоб
+            // перевірка станів не вантажила всі CDNVideoHub-посилання.
+            file: (component && component._stelsPrecheck && remoteOptions.sourceQualityHint) ? null : function (call) {
               getFileUrl(element, function (stream, stream_json) {
                 var cell = preparePlayable(element, stream || {}, stream_json || {});
                 call({ file: cell.url, quality: cell.quality });
@@ -24073,7 +24094,9 @@
           });
         });
         lampauaRenderFilter('display');
-        lampauaStartVoiceQualityPrefetch('display');
+        // 1.1.146: для precheck sourceQualityHint-джерел не запускаємо prefetch усіх
+        // озвучок, бо він створює зайве навантаження і затримує перевірку меню джерел.
+        if (!(component && component._stelsPrecheck && remoteOptions.sourceQualityHint)) lampauaStartVoiceQualityPrefetch('display');
         component.loading(false);
         component.start(true);
       }
@@ -27351,6 +27374,8 @@
         var real = this;
         var finished = false;
         var probe = {};
+        probe._stelsPrecheck = true;
+        probe._stelsPrecheckSource = sourceName;
         for (var key in real) {
           if (typeof real[key] === 'function') {
             try { probe[key] = real[key].bind(real); } catch (e) { probe[key] = real[key]; }
@@ -27368,7 +27393,7 @@
           try {
             var before = probeMaxQuality || 0;
             probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || ''));
-            if (probeMaxQuality > before && stelsNormalizeSourceKey(sourceName) === 'kinotochka') {
+            if (probeMaxQuality > before && (stelsNormalizeSourceKey(sourceName) === 'kinotochka' || stelsNormalizeSourceKey(sourceName) === 'iremux')) {
               stelsLog('source-precheck-quality-captured', { source: sourceName, reason: keyHint || '', quality: stelsQualityLabel(probeMaxQuality) });
             }
           } catch (e) {}
@@ -27554,29 +27579,41 @@
             // перезапускатися, а ok без quality має добирати badge якості.
             if (info && info.time && now - info.time < 20 * 60 * 1000) {
               if (info.status === 'wait') return true;
+              if (entry.name === 'iremux' && (info.status === 'empty' || info.status === 'error')) return true;
               if (entry.name === currentName && info.status === 'ok' && !info.quality) return true;
               if (info.status === 'ok' && !info.quality) return true;
               return false;
             }
             return true;
           });
-          // Активне джерело ставимо першим, щоб iRemux не чекав усю чергу й одразу
-          // отримував ✓/1080p у списку джерел без відкриття картки.
+          // 1.1.146: активне джерело лишається першим, але iRemux/KinoTochka
+          // теж піднімаємо на початок черги. Інакше iRemux перевірявся лише через
+          // десятки секунд або після ручного відкриття джерела.
           try {
+            var sourceOrderIndex = {};
+            obj_filter_sources.forEach(function (s, i) { if (s && s.name) sourceOrderIndex[s.name] = i; });
+            function precheckPriority(entry) {
+              var n = entry && entry.name || '';
+              if (n === currentName) return 0;
+              if (n === 'iremux') return 1;
+              if (n === 'kinotochka') return 2;
+              return 10;
+            }
             queue.sort(function (a, b) {
-              var ak = a && a.name === currentName ? -1 : 0;
-              var bk = b && b.name === currentName ? -1 : 0;
-              return ak - bk;
+              var pa = precheckPriority(a);
+              var pb = precheckPriority(b);
+              if (pa !== pb) return pa - pb;
+              return (sourceOrderIndex[a && a.name] || 0) - (sourceOrderIndex[b && b.name] || 0);
             });
           } catch (eqs) {}
           if (!queue.length) return;
           stelsPrecheckRunning = true;
           var token = ++stelsPrecheckToken;
           var active = 0;
-          // 1.1.145: повертаємо послідовну перевірку. Паралельні 3 запити разом із
-          // RCH/CDNVideoHub/iRemux могли підвисати Lampa й не давали стабільно
-          // оновлювати статуси джерел.
-          var limit = 1;
+          // 1.1.146: повертаємо 3 одночасні перевірки, як просив користувач.
+          // Водночас iRemux більше не чекає всю чергу, бо має пріоритет і швидкий
+          // sourceQualityHint-precheck.
+          var limit = 3;
           stelsLog('source-precheck-start', { count: queue.length, limit: limit, sources: queue.map(function (s) { return s.name; }) });
           function pump() {
             if (token !== stelsPrecheckToken) { stelsPrecheckRunning = false; return; }
@@ -31027,7 +31064,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.145: precheck знову послідовний (limit=1), не виставляє ⏳ всій черзі одночасно; активне джерело, зокрема iRemux, теж перевіряється і ставиться першим у чергу, щоб ✓/якість зʼявлялися без ручного відкриття.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.146: повернено limit=3 для precheck; iRemux/KinoTochka піднято на початок черги, а для iRemux додано швидкий sourceQualityHint-precheck із life/events, щоб ✓/1080p зʼявлялися без ручного відкриття джерела.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
