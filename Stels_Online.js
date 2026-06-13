@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.150';
+    var STELS_ONLINE_VERSION = '1.1.151';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -27528,7 +27528,7 @@
 
       function stelsIsDeepVoiceQualitySource(sourceName) {
         sourceName = stelsNormalizeSourceKey(sourceName || '');
-        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'getstv' || sourceName === 'hdvb';
+        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'getstv' || sourceName === 'hdvb';
       }
 
       function stelsMakeProbeComponent(sourceName, token, done) {
@@ -27716,6 +27716,7 @@
           if (name === 'zetflixnet' || engine === 'zetflixnet') return new zetflixnet(fake, object, { precheckAllVoices: true });
           if (name === 'getstv' || engine === 'getstv') return new cdnvideohub(fake, object, { sourceTitle: 'GetsTV', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'hdvb' || engine === 'hdvb') return new cdnvideohub(fake, object, { sourceTitle: 'HDVB', movieVoiceFilter: true, precheckAllVoices: true });
+          if (name === 'vokino') return new cdnvideohub(fake, object, { sourceTitle: 'Vokino', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'cdnvideohub') return new cdnvideohub(fake, object, { sourceTitle: 'CDNVideoHub', movieVoiceFilter: true, precheckAllVoices: true });
           if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
           if (engine === 'anilibria') return new anilibria(fake, object);
@@ -28767,6 +28768,19 @@
         var select = [];
         var prev_filter_items = stels_last_filter_items || {};
         var display_filter_items = stelsBuildDisplayFilterItems(filter_items || {}, balanser);
+        try {
+          // 1.1.151: Vokino є видимим alias для CDNVideoHub. Сам CDNVideoHub спочатку
+          // дає badge 1080p із першої/вибраної озвучки, а 4K для `ТО Дубляжная`
+          // приходить асинхронно через voice_quality. Піднімаємо badge активного
+          // джерела до максимального значення з фільтра, не перебудовуючи SelectBox.
+          var __vfq = stelsExtractMaxQualityFromAny((filter_items || {}).voice_quality || [], 0, 'quality');
+          if (__vfq) {
+            stelsMarkSourceStatus(balanser, 'ok', '', stelsQualityLabel(__vfq));
+            if (stelsNormalizeSourceKey(balanser) === 'vokino') {
+              stelsLog('source-quality-from-voice-filter', { source: balanser, quality: stelsQualityLabel(stelsClampSourceQualityValue(balanser, __vfq)), voice_quality: (filter_items || {}).voice_quality || [] });
+            }
+          }
+        } catch (eVfq) {}
         var patch_open_only = stelsIsOnlyVoiceQualityUpdate(prev_filter_items, filter_items || {});
         var source_sort_menu_protected = stelsIsSourceSortMenuProtected();
         if (source_sort_menu_protected) patch_open_only = true;
@@ -31240,7 +31254,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.150: Mirage отримує sourceQualityHint з RC life/events (`Mirage - 2160p`) для badge якості; ZetflixNet на Tizen після зміни перекладу синхронізує quality-map і вибрану якість у playdata/поточному плеєрі.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.151: Vokino більше не занижує badge до 1080p: максимальна якість береться з voice_quality активного CDNVideoHub-alias, а precheck для Vokino проходить усі озвучки й бачить 4K.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
