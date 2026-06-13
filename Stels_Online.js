@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.156';
+    var STELS_ONLINE_VERSION = '1.1.157';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -23940,7 +23940,12 @@
       }
 
       function lampauaShouldGroupMirageMovieVideos(videos) {
-        return (lampauaIsMirageLike() || lampauaIsMovieVoiceFilterSource()) && videos && videos.length > 1 && videos.every(function (v) { return v && !parseInt(v.season || 0, 10); });
+        // 1.1.157: UafilmMe часто повертає один playable як один переклад.
+        // У 1.1.156 через умову `videos.length > 1` фільтр перекладів залишався
+        // порожнім, хоча item існував і мав call/play URL. Для UafilmMe групуємо
+        // навіть один movie-item, а для інших джерел лишаємо стару поведінку.
+        var minCount = (sourceTitle === 'UafilmMe' && lampauaIsMovieVoiceFilterSource()) ? 1 : 2;
+        return (lampauaIsMirageLike() || lampauaIsMovieVoiceFilterSource()) && videos && videos.length >= minCount && videos.every(function (v) { return v && !parseInt(v.season || 0, 10); });
       }
 
       function lampauaMirageMovieVoiceTitle(item, index) {
@@ -24039,7 +24044,9 @@
       }
 
       function lampauaRezkaVoiceovers(element, selected_index) {
-        if (!lampauaSupportsVoiceFilter() || !(filter_find.voice && filter_find.voice.length > 1)) return false;
+        // 1.1.157: для UafilmMe показуємо voiceovers навіть якщо переклад один,
+        // щоб структура була однакова: переклад є у фільтрі й у кнопці плеєра.
+        if (!lampauaSupportsVoiceFilter() || !(filter_find.voice && filter_find.voice.length) || (filter_find.voice.length <= 1 && sourceTitle !== 'UafilmMe')) return false;
         stelsScheduleVoiceQualityColor('lampaua-player-voiceovers');
         return filter_find.voice.map(function (voice, index) {
           var rawTitle = voice.title || ('Voice ' + (index + 1));
@@ -26663,7 +26670,7 @@
       }, {
         name: 'lampaua-uafilmme',
         title: 'UafilmMe',
-        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true }),
+        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true }),
         search: true,
         kp: true,
         imdb: true
@@ -27726,7 +27733,7 @@
           if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno', { movieVoiceFilter: true });
           if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino', { movieVoiceFilter: true });
-          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true });
+          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true });
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
           if (name === 'makhno' || engine === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'starlight' || engine === 'starlight') return new cdnvideohub(fake, object, { sourceTitle: 'Midnight', movieVoiceFilter: true, precheckAllVoices: true });
@@ -31325,7 +31332,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.156: виправлено UafilmMe після 1.1.155 — для CUB-карток підтягується українська назва TMDB і tmdb_id/source=tmdb, UafilmMe повернено в movieVoiceFilter; VKMovie перевіряється як окремий CDNVideoHub-alias з precheckAllVoices і може підняти badge до 4K.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.157: виправлено UafilmMe після 1.1.156 — прибрано помилковий матч alias uafilm, щоб UafilmMe не підхоплював UaFilm/groupdeny; для одного playable-перекладу UafilmMe тепер будується фільтр/voiceovers. VKMovie 4K-логіка збережена.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
