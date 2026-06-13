@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.158';
+    var STELS_ONLINE_VERSION = '1.1.159';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -716,8 +716,38 @@
         var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
         if (componentKey === 'stels_online' || el.hasClass('view--stels_online') || el.hasClass('stels-online-settings-folder')) return true;
-        if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text)) return true;
+        if (text === 'Stels_Online' || /^Stels_Online\s*\d+\.\d+\.\d+$/.test(text)) return true;
         return false;
+      }
+
+      function stelsIsSettingsFolderElement(el) {
+        try {
+          if (!el || !el.length) return false;
+          if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return true;
+          if (el.find('.settings-folder__name, .settings-folder__icon').length) return true;
+        } catch (e) {}
+        return false;
+      }
+
+      function stelsRemovePluginVersionFromSourceEntry(el) {
+        try {
+          if (!el || !el.length || stelsIsSettingsFolderElement(el)) return;
+          el.removeAttr('data-subtitle');
+          el.find('.full-start__subtitle, .selector__subtitle, .source__subtitle, .extensions__subtitle, .menu__subtitle, .item__subtitle').filter(function () {
+            return /^\s*\d+\.\d+\.\d+\s*$/.test(($(this).text() || '').trim());
+          }).remove();
+          el.find('*').filter(function () {
+            var node = $(this);
+            if (node.children().length) return false;
+            return /^\s*\d+\.\d+\.\d+\s*$/.test((node.text() || '').trim());
+          }).remove();
+          el.contents().filter(function () { return this.nodeType === 3; }).each(function () {
+            this.nodeValue = String(this.nodeValue || '').replace(/Stels_Online\s*\d+\.\d+\.\d+/g, 'Stels_Online').replace(/\b\d+\.\d+\.\d+\b/g, '');
+          });
+          el.find('*').contents().filter(function () { return this.nodeType === 3; }).each(function () {
+            this.nodeValue = String(this.nodeValue || '').replace(/Stels_Online\s*\d+\.\d+\.\d+/g, 'Stels_Online');
+          });
+        } catch (e) {}
       }
 
       function stelsPatchSettingsFolderElement(el) {
@@ -746,14 +776,20 @@
           scope.find('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').addBack('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').each(function () {
             var el = $(this);
             var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
-            if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) stelsPatchSettingsFolderElement(el);
+            var isSettingsFolder = stelsIsSettingsFolderElement(el);
+            // 1.1.159: у списку "Джерело" Lampa також ставить data-component=stels_online,
+            // але це не налаштування плагіна. Не додаємо туди підпис з версією —
+            // лишаємо тільки назву Stels_Online. Версія лишається під назвою у меню налаштувань.
+            if ((componentKey === 'stels_online' && isSettingsFolder) || el.hasClass('stels-online-settings-folder')) stelsPatchSettingsFolderElement(el);
             if (!shouldPatch(el)) return;
-            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
+            if (isSettingsFolder || el.hasClass('stels-online-settings-folder')) return;
+            stelsRemovePluginVersionFromSourceEntry(el);
             var display = el.css('display');
             if (display === 'inline') el.css('display', 'inline-flex');
             else if (display === 'block') el.css('display', 'flex');
             el.css('align-items', 'center');
             if (!el.find('.stels-online-plugin-icon').length) el.prepend(STELS_ICON_HTML);
+            stelsRemovePluginVersionFromSourceEntry(el);
           });
           // Деякі екрани Lampa (наприклад список джерел "Джерело") будуються не через data-component,
           // а простим пунктом з текстом Stels_Online + версія. Патчимо їх окремо по тексту.
@@ -761,14 +797,16 @@
             var el = $(this);
             if (el.find('.stels-online-plugin-icon').length) return;
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-            if (!(text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text))) return;
-            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
+            if (!(text === 'Stels_Online' || /^Stels_Online\s*\d+\.\d+\.\d+$/.test(text))) return;
+            if (stelsIsSettingsFolderElement(el) || el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
             el.addClass('stels-online-source-entry');
+            stelsRemovePluginVersionFromSourceEntry(el);
             var display = el.css('display');
             if (display === 'inline') el.css('display', 'inline-flex');
             else if (display === 'block') el.css('display', 'flex');
             el.css('align-items', 'center');
             el.prepend('<img class="stels-online-plugin-icon stels-online-source-icon" src="' + STELS_ICON_URL + '" style="width:2.15em;height:2.15em;object-fit:contain;display:block;flex-shrink:0;margin-right:.7em" alt="Stels_Online">');
+            stelsRemovePluginVersionFromSourceEntry(el);
           });
           stelsPatchUaFlagIcons(scope);
         } catch (e) {
@@ -31381,7 +31419,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.158: стабілізовано відтворення UafilmMe — для proxy-HLS додано reserve http/https і hls_manifest_timeout=60000; серіальні епізоди UafilmMe відкриваються без lazy-плейлиста всіх серій, щоб плеєр не зависав і не ловив випадкові помилки; один вбудований переклад лишається у фільтрі/voiceovers.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.159: у списку вибору джерела прибрано показ версії після назви Stels_Online; версія лишається у логах і в налаштуваннях плагіна.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
