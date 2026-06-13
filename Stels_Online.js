@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.149';
+    var STELS_ONLINE_VERSION = '1.1.150';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -212,6 +212,9 @@
       // але саме джерело в LampUA/lifeevents позначене як 1080p. Не даємо випадковим
       // службовим назвам підняти badge вище цього рівня.
       if (source === 'eneyida') return 1080;
+      // 1.1.150: Mirage у RC life/events приходить як `Mirage - 2160p`,
+      // але сам pidtor endpoint часто не віддає quality-map під час precheck.
+      if (source === 'mirage') return 2160;
       return 0;
     }
 
@@ -19398,6 +19401,23 @@
                 obj._stels_zetflixnet_data_id = item.data_id || obj._stels_zetflixnet_data_id || '';
                 obj.data_id = item.data_id || obj.data_id || '';
               }
+              if (play) {
+                var qmap = play.quality || play.qualitys || false;
+                var qlabel = zetflixnetSelectedQualityLabelFromPlay(play);
+                obj.url = play.url || play.file || play.stream || obj.url || '';
+                obj.file = play.file || play.url || play.stream || obj.file || '';
+                obj.stream = play.stream || play.url || play.file || obj.stream || '';
+                if (qmap) {
+                  obj.quality = qmap;
+                  obj.qualitys = qmap;
+                }
+                if (qlabel) {
+                  obj._quality = qlabel;
+                  obj.quality_name = qlabel;
+                  obj.qualityLabel = qlabel;
+                  obj.label = qlabel;
+                }
+              }
               return true;
             } catch (e) {
               result.errors.push(label + ':' + (e && (e.message || e.toString()) || e));
@@ -19500,6 +19520,86 @@
           });
         } catch (e) {}
         return out;
+      }
+
+      function zetflixnetFindQualityByUrl(quality, url) {
+        var out = { label: '', url: '' };
+        if (!quality || !url) return out;
+        var wanted = zetflixnetUrlCleanForCompare(url || '');
+        if (!wanted) return out;
+        try {
+          Object.keys(quality).some(function (key) {
+            var u = quality[key] || '';
+            if (u && zetflixnetUrlCleanForCompare(u) === wanted) {
+              out.label = key;
+              out.url = u;
+              return true;
+            }
+            return false;
+          });
+        } catch (e) {}
+        return out;
+      }
+
+      function zetflixnetSelectedQualityLabelFromPlay(play) {
+        if (!play) return '';
+        var direct = zetflixnetNormalizeQualityLabel(play._quality || play.quality_name || play.qualityLabel || play.label || '');
+        if (/^(?:HLS|8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p)$/i.test(direct)) return direct;
+        var q = play.quality || play.qualitys || false;
+        var found = zetflixnetFindQualityByUrl(q, play.url || play.file || play.stream || '');
+        return zetflixnetNormalizeQualityLabel(found.label || '');
+      }
+
+      function zetflixnetApplyQualityStateToPlayer(play, voiceName, item, reason) {
+        var result = { reason: reason || '', voice: voiceName || '', data_id: item && item.data_id || '', selected_quality: '', quality_keys: [], copied: false, setter: false, errors: [] };
+        try {
+          if (!play) return result;
+          var qmap = play.quality || play.qualitys || false;
+          var selectedLabel = zetflixnetSelectedQualityLabelFromPlay(play);
+          result.selected_quality = zetflixnetNormalizeQualityLabel(selectedLabel || '');
+          result.quality_keys = qmap ? Object.keys(qmap).map(zetflixnetNormalizeQualityLabel) : [];
+
+          function copyTo(obj, label) {
+            if (!obj) return false;
+            try {
+              obj.url = play.url || play.file || play.stream || obj.url || '';
+              obj.file = play.file || play.url || play.stream || obj.file || '';
+              obj.stream = play.stream || play.url || play.file || obj.stream || '';
+              if (qmap) {
+                obj.quality = qmap;
+                obj.qualitys = qmap;
+              }
+              if (selectedLabel) {
+                obj._quality = selectedLabel;
+                obj.quality_name = selectedLabel;
+                obj.qualityLabel = selectedLabel;
+                obj.label = selectedLabel;
+              }
+              obj._stels_zetflixnet_quality_synced = true;
+              obj._stels_zetflixnet_quality_sync_reason = reason || '';
+              return true;
+            } catch (e) {
+              result.errors.push(label + ':' + (e && (e.message || e.toString()) || e));
+              return false;
+            }
+          }
+
+          copyTo(play, 'play');
+          try {
+            if (Lampa && Lampa.Player && typeof Lampa.Player.playdata === 'function') {
+              var current = Lampa.Player.playdata() || {};
+              if (copyTo(current, 'current')) result.copied = true;
+              try {
+                if (Lampa.Player.playdata.length > 0) {
+                  Lampa.Player.playdata(current);
+                  result.setter = true;
+                }
+              } catch (setterErr) { result.errors.push('playdata-setter:' + (setterErr && (setterErr.message || setterErr.toString()) || setterErr)); }
+            }
+          } catch (epd) { result.errors.push('playdata:' + (epd && (epd.message || epd.toString()) || epd)); }
+        } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+        stelsLog('zetflixnet-player-quality-state-sync', result);
+        return result;
       }
       function zetflixnetPreselectQualityInPlay(play, wantedLabel, voiceName, item) {
         if (!play || !wantedLabel || !play.quality) return play;
@@ -19688,8 +19788,10 @@
                   voiceovers: zetflixnetVoiceovers(item, voiceName)
                 }, 'zetflixnet-voice-switch');
                 var isTizenVoice = zetflixnetIsTizenPlatform();
+                var voiceMaxQuality = zetflixnetVoiceQualityLabel(voiceName, item && (item.season || item.media && item.media.season) || 0) || '';
+                if (isTizenVoice && !wantedQuality && voiceMaxQuality) wantedQuality = voiceMaxQuality;
                 var useHlsVoice = isTizenVoice && voiceQualityFixActive && zetflixnetTizenHlsVoiceEnabled();
-                if (voiceQualityFixActive && wantedQuality && !useHlsVoice) {
+                if ((voiceQualityFixActive || isTizenVoice) && wantedQuality && !useHlsVoice) {
                   play = zetflixnetPreselectQualityInPlay(play, wantedQuality, voiceName, item);
                 }
                 if (useHlsVoice && play.quality) {
@@ -19705,16 +19807,17 @@
                   }
                 }
                 zetflixnetUpdateVoiceSelectionState(play, voiceName, item);
+                zetflixnetApplyQualityStateToPlayer(play, voiceName, item, 'voice-switch-before-play');
                 try { zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'before-play'); } catch (evc0) {}
-                stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], wanted_quality: zetflixnetNormalizeQualityLabel(wantedQuality || ''), quality_preselected: !!play._stels_zetflixnet_voice_quality_preselected, tizen_hls_voice: useHlsVoice });
+                stelsLog('zetflixnet-voice-switch-play', { voice: voiceName, data_id: item.data_id || '', url: zlogUrlInfo(play.url), quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], wanted_quality: zetflixnetNormalizeQualityLabel(wantedQuality || ''), voice_max_quality: zetflixnetNormalizeQualityLabel(voiceMaxQuality || ''), selected_quality: zetflixnetSelectedQualityLabelFromPlay(play), quality_preselected: !!play._stels_zetflixnet_voice_quality_preselected, tizen_hls_voice: useHlsVoice });
                 if (isTizenVoice) {
                   play._stels_tizen_voice_switch = true;
                   play._stels_tizen_single_player = true;
                   // На Tizen не можна створювати другий Player поверх першого: міняємо src у поточному video,
                   // а всі інші media-елементи глушимо.
                   zetflixnetTizenReplaceSourceInCurrentVideo(play, voiceName, item, currentTimeBeforeVoiceSwitch);
-                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'tizen-after-350'); }, 350);
-                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'tizen-after-1200'); }, 1200);
+                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); zetflixnetApplyQualityStateToPlayer(play, voiceName, item, 'tizen-after-350'); zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'tizen-after-350'); }, 350);
+                  setTimeout(function () { zetflixnetUpdateVoiceSelectionState(play, voiceName, item); zetflixnetApplyQualityStateToPlayer(play, voiceName, item, 'tizen-after-1200'); zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'tizen-after-1200'); }, 1200);
                   setTimeout(function () { zetflixnetRefreshVisibleVoiceCheckmark(voiceName, 'tizen-after-2200'); }, 2200);
                 } else {
                   // У Windows/Electron і частині TV-збірок Lampa.Player.play() може залишати старий audio/video живим.
@@ -26584,7 +26687,7 @@
       }, {
         name: 'rc-mirage',
         title: 'Mirage',
-        source: new lampauaRemoteSource(this, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true }),
+        source: new lampauaRemoteSource(this, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true, sourceQualityHint: true }),
         search: true,
         kp: true,
         imdb: true
@@ -27588,7 +27691,7 @@
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
-          if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true });
+          if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true, sourceQualityHint: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
@@ -31137,7 +31240,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.149: для Eneyida додано службову підказку якості 1080p у картки/element precheck, бо HDVBUA HLS часто не містить 1080p у URL або quality-map; захист меню джерел із 1.1.148 залишено.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.150: Mirage отримує sourceQualityHint з RC life/events (`Mirage - 2160p`) для badge якості; ZetflixNet на Tizen після зміни перекладу синхронізує quality-map і вибрану якість у playdata/поточному плеєрі.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
