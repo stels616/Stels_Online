@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.143';
+    var STELS_ONLINE_VERSION = '1.1.144';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -27250,6 +27250,26 @@
 
       var stelsSourceMenuObserver = null;
       var stelsSourceMenuPatchTimer = null;
+      function stelsIsSourceSortMenuOpen() {
+        try {
+          if (!$('body').hasClass('selectbox--open')) return false;
+          var sourceMap = {};
+          obj_filter_sources.forEach(function (s) {
+            sourceMap[stelsStripSourceStatusTitle(s.title || '')] = true;
+            sourceMap[stelsStripSourceStatusTitle(stelsSourceTitleWithStatus(s))] = true;
+          });
+          var found = 0;
+          $('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item').each(function () {
+            if (found > 2) return;
+            var raw = ($(this).text() || '').replace(/\s+/g, ' ').trim();
+            if (!raw || raw.length > 160) return;
+            if (sourceMap[stelsStripSourceStatusTitle(raw)]) found++;
+          });
+          return found > 2;
+        } catch (e) {}
+        return false;
+      }
+
       function stelsScheduleSourceMenuPatch(delay) {
         try {
           if (stelsSourceMenuPatchTimer) clearTimeout(stelsSourceMenuPatchTimer);
@@ -27298,6 +27318,19 @@
           var existing = need || {};
           existing.source = selectedIndex;
           Lampa.Storage.set('stels_online_filter', existing);
+
+          // 1.1.144: коли користувач вже відкрив меню джерел, не викликаємо
+          // filter.set('sort') / filter.chosen('sort') під час precheck або async
+          // оновлення якості озвучок. У Lampa це перебудовує SelectBox і меню
+          // саме закривається. Патчимо тільки DOM вже відкритого списку.
+          if (stelsIsSourceSortMenuOpen()) {
+            stelsPatchOpenSourceSortMenu();
+            stelsUpdateFloatingSourceButton();
+            stelsEnsureSourceMenuObserver();
+            setTimeout(stelsPatchOpenSourceSortMenu, 120);
+            return;
+          }
+
           filter.chosen('sort', [stelsSourceTitleWithStatus(obj_filter_sources[selectedIndex] || balanser)]);
           filter.set('sort', obj_filter_sources.map(function (e) {
             return { source: e.name, title: stelsSourceTitleWithStatus(e), selected: e.name === balanser };
@@ -27523,6 +27556,16 @@
           var active = 0;
           var limit = Math.min(3, Math.max(1, queue.length));
           stelsLog('source-precheck-start', { count: queue.length, limit: limit, sources: queue.map(function (s) { return s.name; }) });
+          // 1.1.144: показуємо джерела, що ще очікують своєї черги, як ⏳ одразу.
+          // Інакше пізні RC-джерела на кшталт iRemux виглядали так, ніби precheck
+          // їх пропустив, доки черга не дійшла саме до них.
+          try {
+            queue.forEach(function (entry) {
+              if (!entry || !entry.name) return;
+              var info = stelsSourceStatus[entry.name] || {};
+              if (!info.status) stelsMarkSourceStatus(entry.name, 'wait', '');
+            });
+          } catch (epw) {}
           stelsRefreshSourceFilterTitles();
           function pump() {
             if (token !== stelsPrecheckToken) { stelsPrecheckRunning = false; return; }
@@ -28601,6 +28644,12 @@
         var source_obj = obj_filter_sources.filter(function (e) {
           return e.name === balanser;
         })[0];
+        if (stelsIsSourceSortMenuOpen()) {
+          stelsPatchOpenSourceSortMenu();
+          stelsEnsureSourceMenuObserver();
+          setTimeout(stelsPatchOpenSourceSortMenu, 120);
+          return;
+        }
         filter.chosen('filter', select);
         filter.chosen('sort', [source_obj ? stelsSourceTitleWithStatus(source_obj) : balanser]);
       };
@@ -30965,7 +31014,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.143: виправлено падіння iRemux при відкритті відео: stelsClampSourceQualityValue винесено у глобальний scope, щоб voice-quality callback не обривав плеєр; структурована картка/фільтр iRemux з 1.1.142 збережені.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.144: виправлено самозакриття меню джерел під час precheck/async quality update: відкритий список тепер патчиться DOM-ом без filter.set(sort); pending-джерела, зокрема iRemux, одразу показуються як очікування ⏳.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
