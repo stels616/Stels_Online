@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.146';
+    var STELS_ONLINE_VERSION = '1.1.147';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -27205,6 +27205,13 @@
         return text;
       }
 
+      function stelsSourceMenuKey(title) {
+        // 1.1.147: SelectBox Lampa інколи нормалізує назву `iRemux` як `IRemux`.
+        // Через case-sensitive ключі DOM-патч не знаходив рядок iRemux, тому він
+        // лишався plain-text: `IRemux ✓ 1080p` замість зеленої ✓ і жовтого badge справа.
+        return stelsStripSourceStatusTitle(title || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      }
+
       function stelsSourceStatusIconHtml(kind) {
         if (kind === 'ok') return '<span class="stels-online-source-status-icon stels-online-source-status-ok" style="color:#00d36f!important;-webkit-text-fill-color:#00d36f!important">✓</span>';
         if (kind === 'error') return '<span class="stels-online-source-status-icon stels-online-source-status-error" style="color:#ff3b30!important;-webkit-text-fill-color:#ff3b30!important">✕</span>';
@@ -27231,11 +27238,14 @@
         try {
           var map = {};
           obj_filter_sources.forEach(function (s) {
-            var base = stelsStripSourceStatusTitle(s.title || '');
-            var titled = stelsStripSourceStatusTitle(stelsSourceTitleWithStatus(s));
+            var base = stelsSourceMenuKey(s.title || '');
+            var titled = stelsSourceMenuKey(stelsSourceTitleWithStatus(s));
+            var plain = stelsStripSourceStatusTitle(s.title || '');
             var html = stelsSourceTitleWithStatusHtml(s);
             if (base) map[base] = html;
             if (titled) map[titled] = html;
+            // Додатково тримаємо оригінальний ключ для старих рядків/локалізацій.
+            if (plain) map[plain] = html;
           });
 
           // Важливо: патчимо тільки рядки меню, а не всі span/div всередині.
@@ -27247,11 +27257,13 @@
             var raw = (row.text() || '').replace(/\s+/g, ' ').trim();
             if (!raw || raw.length > 140) return;
             var clean = stelsStripSourceStatusTitle(raw);
-            if (!map[clean]) return;
+            var mkey = stelsSourceMenuKey(raw);
+            var replacement = map[mkey] || map[clean];
+            if (!replacement) return;
 
             var target = row.children().filter(function () {
               var t = ($(this).text() || '').replace(/\s+/g, ' ').trim();
-              return t && t.length < 140 && stelsStripSourceStatusTitle(t) === clean;
+              return t && t.length < 140 && stelsSourceMenuKey(t) === mkey;
             }).first();
 
             if (!target.length) {
@@ -27260,12 +27272,12 @@
                 if (!t || t.length > 140) return false;
                 // Не чіпаємо вже наші вставки і системну галочку вибору Lampa.
                 if ($(this).closest('.stels-online-source-status-line').length) return false;
-                return stelsStripSourceStatusTitle(t) === clean;
+                return stelsSourceMenuKey(t) === mkey;
               }).first();
             }
 
-            if (target.length) target.html(map[clean]);
-            else row.html(map[clean]);
+            if (target.length) target.html(replacement);
+            else row.html(replacement);
           });
           stelsPatchUaFlagIcons(document.body);
         } catch (e) {}
@@ -27278,15 +27290,15 @@
           if (!$('body').hasClass('selectbox--open')) return false;
           var sourceMap = {};
           obj_filter_sources.forEach(function (s) {
-            sourceMap[stelsStripSourceStatusTitle(s.title || '')] = true;
-            sourceMap[stelsStripSourceStatusTitle(stelsSourceTitleWithStatus(s))] = true;
+            sourceMap[stelsSourceMenuKey(s.title || '')] = true;
+            sourceMap[stelsSourceMenuKey(stelsSourceTitleWithStatus(s))] = true;
           });
           var found = 0;
           $('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item').each(function () {
             if (found > 2) return;
             var raw = ($(this).text() || '').replace(/\s+/g, ' ').trim();
             if (!raw || raw.length > 160) return;
-            if (sourceMap[stelsStripSourceStatusTitle(raw)]) found++;
+            if (sourceMap[stelsSourceMenuKey(raw)]) found++;
           });
           return found > 2;
         } catch (e) {}
@@ -31064,7 +31076,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.146: повернено limit=3 для precheck; iRemux/KinoTochka піднято на початок черги, а для iRemux додано швидкий sourceQualityHint-precheck із life/events, щоб ✓/1080p зʼявлялися без ручного відкриття джерела.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.147: виправлено DOM-патч рядка iRemux у меню джерел: Lampa інколи показує iRemux як IRemux, тому plain `IRemux ✓ 1080p` тепер замінюється на однаковий HTML із зеленою ✓ і жовтим badge справа.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
