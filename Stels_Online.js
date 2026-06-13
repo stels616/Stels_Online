@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.157';
+    var STELS_ONLINE_VERSION = '1.1.158';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -23271,6 +23271,10 @@
         return !!remoteOptions.voiceFromSimilar && (/mirage|pidtor/i.test(sourceTitle || '') || /pidtor/i.test(remoteOptions.directPath || remoteOptions.directBalanser || ''));
       }
 
+      function lampauaIsUafilmMeSource() {
+        return sourceTitle === 'UafilmMe' || wanted.indexOf('uafilmme') !== -1 || wanted.indexOf('lmeuafilmme') !== -1;
+      }
+
       function lampauaNormalizeMirageUrl(url) {
         url = String(url || '');
         if (lampauaIsMirageSource()) url = url.replace(/^https:\/\/rc\.bwa\.ad\//i, 'http://rc.bwa.ad/');
@@ -23289,6 +23293,33 @@
           data.url_reserve = urls[1];
         }
         return data;
+      }
+
+      function lampauaStabilizeUafilmMePlayable(play, ctx) {
+        if (!lampauaIsUafilmMeSource() || !play || typeof play !== 'object') return play;
+        try {
+          var url = String(play.url || play.file || '');
+          if (/^https?:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
+            if (!play.url_reserve) {
+              play.url_reserve = /^http:\/\//i.test(url) ? url.replace(/^http:/i, 'https:') : url.replace(/^https:/i, 'http:');
+            }
+            var timeout = parseInt(play.hls_manifest_timeout || 0, 10) || 0;
+            if (!timeout || timeout < 60000) play.hls_manifest_timeout = 60000;
+            play._stels_uafilmme_proxy_stabilized = true;
+            stelsLog('lampaua-uafilmme-playable-stabilized', {
+              ctx: ctx || '',
+              title: play.title || '',
+              season: play.season || 0,
+              episode: play.episode || 0,
+              has_reserve: !!play.url_reserve,
+              hls_manifest_timeout: play.hls_manifest_timeout || 0,
+              url_preview: previewUrl(url)
+            });
+          }
+        } catch (e) {
+          stelsLog('lampaua-uafilmme-playable-stabilize-error', { ctx: ctx || '', error: e && (e.message || e.toString()) || '' });
+        }
+        return play;
       }
 
       function normalizeQualityMap(q) {
@@ -23608,6 +23639,7 @@
           play.vast_screen = json.vast.screen;
         }
         orUrlReserve(play);
+        lampauaStabilizeUafilmMePlayable(play, 'preparePlayable');
         stelsLog('lampaua-playable-prepared', {
           source: sourceTitle,
           title: play.title,
@@ -24164,7 +24196,11 @@
                 var first = preparePlayable(element, json, json_call || {});
                 if (lampauaSupportsVoiceFilter()) first.voiceovers = lampauaRezkaVoiceovers(element, choice.voice);
                 var playlist = [];
-                if (element.season) {
+                var stelsNoLazyPlaylist = !!(remoteOptions.noLazyPlaylist && element.season);
+                if (stelsNoLazyPlaylist) {
+                  playlist.push(first);
+                  stelsLog('lampaua-single-playlist-mode', { source: sourceTitle, reason: 'noLazyPlaylist', season: element.season, episode: element.episode });
+                } else if (element.season) {
                   current_videos.forEach(function (elem) {
                     if (elem === element) playlist.push(first);
                     else playlist.push({
@@ -24297,6 +24333,14 @@
                   choice.voice_url = saved_voice.url || choice.voice_url || '';
                   choice.voice_name = saved_voice.title || choice.voice_name || sourceTitle;
                 }
+              } else if (lampauaIsUafilmMeSource()) {
+                // 1.1.158: у UafilmMe серіали часто мають один вбудований переклад
+                // без окремих buttons. Не залишаємо voice filter порожнім: це ламало
+                // структуру джерела й voiceovers у плеєрі.
+                filter_find.voice = [{ title: sourceTitle || 'UafilmMe', url: '', active: true }];
+                choice.voice = 0;
+                choice.voice_url = '';
+                choice.voice_name = sourceTitle || 'UafilmMe';
               } else {
                 filter_find.voice = [];
                 choice.voice = 0;
@@ -24411,6 +24455,11 @@
             component.saveChoice(choice);
             component.loading(true);
             if (voice.item && lampauaDisplaySelectedMovieVoice()) return setTimeout(component.closeFilter, 10);
+            if (!voice.url) {
+              stelsLog('lampaua-voice-select-noop', { source: sourceTitle, voice: voice.title || '', reason: 'no-url-single-voice' });
+              component.loading(false);
+              return setTimeout(component.closeFilter, 10);
+            }
             request(voice.url);
           }
         } else if (a.stype == 'season') {
@@ -26670,7 +26719,7 @@
       }, {
         name: 'lampaua-uafilmme',
         title: 'UafilmMe',
-        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true }),
+        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true, noLazyPlaylist: true }),
         search: true,
         kp: true,
         imdb: true
@@ -27733,7 +27782,7 @@
           if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno', { movieVoiceFilter: true });
           if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino', { movieVoiceFilter: true });
-          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true });
+          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true, noLazyPlaylist: true });
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
           if (name === 'makhno' || engine === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'starlight' || engine === 'starlight') return new cdnvideohub(fake, object, { sourceTitle: 'Midnight', movieVoiceFilter: true, precheckAllVoices: true });
@@ -31332,7 +31381,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.157: виправлено UafilmMe після 1.1.156 — прибрано помилковий матч alias uafilm, щоб UafilmMe не підхоплював UaFilm/groupdeny; для одного playable-перекладу UafilmMe тепер будується фільтр/voiceovers. VKMovie 4K-логіка збережена.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.158: стабілізовано відтворення UafilmMe — для proxy-HLS додано reserve http/https і hls_manifest_timeout=60000; серіальні епізоди UafilmMe відкриваються без lazy-плейлиста всіх серій, щоб плеєр не зависав і не ловив випадкові помилки; один вбудований переклад лишається у фільтрі/voiceovers.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
