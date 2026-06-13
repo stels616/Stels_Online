@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.159';
+    var STELS_ONLINE_VERSION = '1.1.160';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1229,10 +1229,11 @@
           '.stels-online-thumb__loader{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));pointer-events:none;}' +
           '.stels-online-episode-badge{position:absolute;right:.45em;top:.28em;z-index:2;color:#fff;font-size:.88em;font-weight:700;text-shadow:0 .08em .25em #000;background:linear-gradient(90deg,rgba(0,0,0,0),rgba(0,0,0,.42));padding:.12em .28em .14em .9em;border-radius:.15em;}' +
           '.stels-online-progress{height:.3em;width:100%;background:rgba(255,255,255,.34);border-radius:5em;margin:.55em 0 .72em 0;overflow:hidden;}' +
-          '.stels-online-progress__bar{height:100%;width:0%;background:rgba(255,255,255,.86);border-radius:5em;}' +
+          '.stels-online-progress__bar{height:100%;width:0%;background:#00d36f!important;border-radius:5em;}' +
           '.online.stels-online-with-thumb>.time-line{display:none!important;}' +
           '.stels-online-progress>.time-line{display:block!important;position:relative!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:100%!important;height:100%!important;margin:0!important;padding:0!important;background:transparent!important;}' +
           '.stels-online-progress>.time-line>*{height:100%!important;border-radius:5em!important;}' +
+          '.stels-online-progress>.time-line>*:first-child,.stels-online-progress>.time-line .time-line__progress,.stels-online-progress>.time-line [class*=\"progress\"],.stels-online-progress>.time-line [style*=\"width\"]{background:#00d36f!important;background-color:#00d36f!important;}' +
           '.stels-online-meta-left{min-width:0;overflow:hidden;text-overflow:ellipsis;}' +
           '.stels-online-meta-dot{opacity:.8;margin:0 .25em;}' +
           '.stels-online-quality-right{margin-left:auto;text-align:right;font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:45%;}' +
@@ -12494,6 +12495,61 @@
         return out;
       }
 
+      function allohaVoiceIsSubtitle(voice) {
+        return /(?:субтит|subtitle)/i.test(String(voice || ''));
+      }
+
+      function allohaItemQualityValue(item) {
+        try {
+          var media = item && item.media || {};
+          var raw = media && media.raw || {};
+          return stelsExtractMaxQualityFromAny([
+            item && item.quality,
+            item && item.qualitys,
+            item && item.title,
+            item && item.info,
+            media && media.quality,
+            raw && raw.quality,
+            raw && raw.qualities,
+            raw && raw.hls,
+            raw && raw.file
+          ], 0, 'quality');
+        } catch (e) {}
+        return 0;
+      }
+
+      function allohaPrimeVoiceQualityFromItems(reason) {
+        try {
+          var items = extract.items || [];
+          var voices = filter_items.voice || [];
+          var season = allohaCurrentSeasonForQuality();
+          if (!(items.length && voices.length)) return;
+          var perVoice = {}, seasonMax = 0, applied = [];
+          items.forEach(function (it) {
+            if (!it) return;
+            if (season && parseInt(it.season || 0, 10) !== parseInt(season || 0, 10)) return;
+            var q = allohaItemQualityValue(it);
+            if (!q) return;
+            seasonMax = Math.max(seasonMax, q);
+            var v = String(it.voice || it.translate_voice || it.voice_name || '').trim();
+            if (v) perVoice[v] = Math.max(perVoice[v] || 0, q);
+          });
+          voices.forEach(function (voice) {
+            voice = String(voice || '').trim();
+            if (!voice || allohaVoiceIsSubtitle(voice)) return;
+            var qv = perVoice[voice] || seasonMax;
+            if (!qv) return;
+            var key = allohaVoiceQualityKey(voice, season || 0);
+            var prev = stelsQualityToValue(allohaVoiceQualityCache[key] || '');
+            if (qv > prev) {
+              allohaRememberVoiceQuality(voice, season || 0, qv);
+              applied.push({ voice: voice, quality: stelsQualityLabel(qv) });
+            }
+          });
+          if (applied.length) log('voice-quality-primed', { reason: reason || '', season: season || 0, season_quality: stelsQualityLabel(seasonMax), applied: applied });
+        } catch (e) { log('voice-quality-prime-error', { error: e && (e.message || e.toString()) || '' }); }
+      }
+
       function allohaVoiceQualityCandidates() {
         var out = [];
         var seen = {};
@@ -12501,9 +12557,10 @@
         var season = allohaCurrentSeasonForQuality();
         var voices = filter_items.voice || [];
         if (!(items.length && voices.length)) return out;
+        allohaPrimeVoiceQualityFromItems('candidates');
         items.forEach(function (it) {
           var voice = it && (it.voice || it.translate_voice || it.voice_name) || '';
-          if (!voice || voices.indexOf(voice) == -1) return;
+          if (!voice || voices.indexOf(voice) == -1 || allohaVoiceIsSubtitle(voice)) return;
           if (season && it.season != season) return;
           var key = allohaVoiceQualityKey(voice, season || 0);
           if (seen[key]) return;
@@ -12569,6 +12626,7 @@
           var inx = filter_items.voice.indexOf(choice.voice_name);
           if (inx >= 0) choice.voice = inx;
         }
+        allohaPrimeVoiceQualityFromItems('filter-build');
         filter_items.voice_quality = (filter_items.voice || []).map(function (v) { return allohaVoiceQualityLabel(v, currentSeason); });
         log('voice-filter-build', { voices: filter_items.voice || [], voice_quality: filter_items.voice_quality || [], season: currentSeason || 0 });
         component.filter(filter_items, choice);
@@ -29079,7 +29137,11 @@
             clearTimeout(self.__stels_future_episode_timer);
             self.__stels_future_episode_timer = setTimeout(function () {
               try { self.appendGlobalFutureEpisodeCards(); } catch (egfAppend) {}
-            }, 720);
+            }, 140);
+            clearTimeout(self.__stels_future_episode_timer2);
+            self.__stels_future_episode_timer2 = setTimeout(function () {
+              try { self.appendGlobalFutureEpisodeCards(); } catch (egfAppend2) {}
+            }, 620);
           }
         } catch (egfAppendOuter) {}
       };
@@ -29100,6 +29162,13 @@
             }
           }
         } catch (eAttr) {}
+        try {
+          var selfContext = this;
+          if (params && params.element && (params.element.season || params.element.episode)) {
+            setTimeout(function () { try { selfContext.appendGlobalFutureEpisodeCards(); } catch (egfCtx0) {} }, 80);
+            setTimeout(function () { try { selfContext.appendGlobalFutureEpisodeCards(); } catch (egfCtx1) {} }, 360);
+          }
+        } catch (egfCtx) {}
         try {
           params.item.on('hover:enter', function () {
             stelsSaveWatchHistory(object.movie, balanser, stelsSourceTitle(balanser), params.element || {}, { item_title: params.item && params.item.find ? params.item.find('.online__title').text() : '' });
@@ -29385,7 +29454,7 @@
           function parseSeasonEpisodeText(text) {
             text = String(text || '').replace(/\s+/g, ' ').trim();
             var s = 0, e = 0, m;
-            m = text.match(/\bS\s*(\d{1,2})\s*(?:\/|[-–— ]+)?\s*(?:E|Ep|Episode|Серія|Серия)\s*(\d{1,3})\b/i);
+            m = text.match(/\bS\s*(\d{1,2})\s*(?::|\.|\/|[-–— ]+)?\s*(?:E|Ep|Episode|Серія|Серия)?\s*(\d{1,3})\b/i);
             if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
             m = text.match(/(?:Сезон|Season|Sezon)\s*(\d{1,2})[\s\/\-–—|]+(?:Серія|Серия|Episode|Ep\.?)\s*(\d{1,3})/i);
             if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
@@ -29465,6 +29534,20 @@
             parsedRows.push(se);
             if (se.season) seasonCount[se.season] = (seasonCount[se.season] || 0) + 1;
           });
+          if (!parsedRows.length && contextmenu_all && contextmenu_all.length) {
+            try {
+              contextmenu_all.forEach(function (params) {
+                var el = params && params.element || {};
+                var sNum = parseInt(el.season || el.s || 0, 10) || 0;
+                var eNum = parseInt(el.episode || el.e || 0, 10) || 0;
+                if (!eNum) return;
+                if (!sNum && storageSeason) sNum = storageSeason;
+                parsedRows.push({ season: sNum, episode: eNum });
+                if (sNum) seasonCount[sNum] = (seasonCount[sNum] || 0) + 1;
+              });
+              if (parsedRows.length) stelsLog('global-future-episodes-context-fallback', { source: balanser, rows: rows.length, parsed: parsedRows.length, storage_season: storageSeason || 0 });
+            } catch (efctx) {}
+          }
           if (!parsedRows.length) {
             stelsLog('global-future-episodes-skip', { source: balanser, reason: 'no-parsed-episodes', rows: rows.length, storage_season: storageSeason || 0 });
             return;
@@ -29581,6 +29664,12 @@
             render(window.__stels_global_tmdb_season_cache[key]);
             return;
           }
+          if (stels_tmdb_season_cache && stels_tmdb_season_cache[key]) {
+            window.__stels_global_tmdb_season_cache[key] = stels_tmdb_season_cache[key];
+            stelsLog('global-future-episodes-cache-hit', { source: balanser, season: season, cache: 'local-episode-meta' });
+            render(window.__stels_global_tmdb_season_cache[key]);
+            return;
+          }
           window.__stels_global_future_pending[pendingKey] = true;
           Lampa.Api.sources.tmdb.get('tv/' + tmdb_id + '/season/' + season, {}, function (data) {
             try { delete window.__stels_global_future_pending[pendingKey]; } catch (edp1) {}
@@ -29629,9 +29718,10 @@
         if (this.inActivity()) Lampa.Controller.toggle('content');
         try {
           var self = this;
-          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf0) {} }, 520);
-          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf1) {} }, 1450);
-          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf2) {} }, 2850);
+          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf0) {} }, 120);
+          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf1) {} }, 420);
+          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf2) {} }, 980);
+          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf3) {} }, 2200);
         } catch (egf) {}
         if (first_select) setTimeout(stelsMaybeShowResumePrompt, 260);
       };
@@ -31419,7 +31509,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.159: у списку вибору джерела прибрано показ версії після назви Stels_Online; версія лишається у логах і в налаштуваннях плагіна.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.160: прогрес перегляду в картках тепер зелений; Alloha одразу підставляє якість перекладів з legacy quality/season fallback; майбутні серії стабільніше визначають сезон/серію та рендеряться швидше.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
