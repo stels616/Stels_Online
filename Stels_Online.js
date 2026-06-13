@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.151';
+    var STELS_ONLINE_VERSION = '1.1.152';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -27528,7 +27528,7 @@
 
       function stelsIsDeepVoiceQualitySource(sourceName) {
         sourceName = stelsNormalizeSourceKey(sourceName || '');
-        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'getstv' || sourceName === 'hdvb';
+        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'getstv' || sourceName === 'hdvb';
       }
 
       function stelsMakeProbeComponent(sourceName, token, done) {
@@ -27717,6 +27717,10 @@
           if (name === 'getstv' || engine === 'getstv') return new cdnvideohub(fake, object, { sourceTitle: 'GetsTV', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'hdvb' || engine === 'hdvb') return new cdnvideohub(fake, object, { sourceTitle: 'HDVB', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'vokino') return new cdnvideohub(fake, object, { sourceTitle: 'Vokino', movieVoiceFilter: true, precheckAllVoices: true });
+          // 1.1.152: IPTVOnline є видимим alias на CDNVideoHub. Для precheck не можна
+          // створювати голий cdnvideohub(fake, object), бо він перевіряє тільки вибрану
+          // озвучку і фіксує 1080p до того, як `ТО Дубляжная` віддасть 4K.
+          if (name === 'iptvonline') return new cdnvideohub(fake, object, { sourceTitle: 'IPTVOnline', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'cdnvideohub') return new cdnvideohub(fake, object, { sourceTitle: 'CDNVideoHub', movieVoiceFilter: true, precheckAllVoices: true });
           if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
           if (engine === 'anilibria') return new anilibria(fake, object);
@@ -27750,6 +27754,10 @@
               if (info.status === 'wait') return true;
               if (entry.name === 'iremux' && (info.status === 'empty' || info.status === 'error')) return true;
               if (entry.name === currentName && info.status === 'ok' && !info.quality) return true;
+              // 1.1.152: після 1.1.151 у кеші IPTVOnline міг лишитись ok 1080p,
+              // хоча активне джерело вже має 4K-озвучку. Активний IPTVOnline
+              // перевіряємо повторно, якщо badge нижче 4K.
+              if (entry.name === 'iptvonline' && entry.name === currentName && info.status === 'ok' && stelsQualityToValue(info.quality || '') < 2160) return true;
               if (info.status === 'ok' && !info.quality) return true;
               return false;
             }
@@ -28775,9 +28783,18 @@
           // джерела до максимального значення з фільтра, не перебудовуючи SelectBox.
           var __vfq = stelsExtractMaxQualityFromAny((filter_items || {}).voice_quality || [], 0, 'quality');
           if (__vfq) {
-            stelsMarkSourceStatus(balanser, 'ok', '', stelsQualityLabel(__vfq));
-            if (stelsNormalizeSourceKey(balanser) === 'vokino') {
-              stelsLog('source-quality-from-voice-filter', { source: balanser, quality: stelsQualityLabel(stelsClampSourceQualityValue(balanser, __vfq)), voice_quality: (filter_items || {}).voice_quality || [] });
+            var __activeSource = stelsNormalizeSourceKey(balanser);
+            var __qlabel = stelsQualityLabel(stelsClampSourceQualityValue(__activeSource, __vfq));
+            var __prevLabel = stelsSourceStatus[__activeSource] && stelsSourceStatus[__activeSource].quality || '';
+            stelsMarkSourceStatus(__activeSource, 'ok', '', __qlabel);
+            if (['vokino', 'iptvonline'].indexOf(__activeSource) !== -1) {
+              stelsLog('source-quality-from-voice-filter', { source: __activeSource, quality: __qlabel, previous_quality: __prevLabel || '', voice_quality: (filter_items || {}).voice_quality || [] });
+            }
+            // 1.1.152: активні CDNVideoHub-alias-и (Vokino/IPTVOnline) можуть отримати
+            // 4K лише після асинхронного prefetch voice_quality. Одразу оновлюємо
+            // заголовок джерела, щоб badge не лишався на старому 1080p.
+            if (__qlabel && __qlabel !== __prevLabel && ['vokino', 'iptvonline'].indexOf(__activeSource) !== -1) {
+              try { stelsRefreshSourceFilterTitles(); } catch (eRefreshSourceQuality) {}
             }
           }
         } catch (eVfq) {}
@@ -31254,7 +31271,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.151: Vokino більше не занижує badge до 1080p: максимальна якість береться з voice_quality активного CDNVideoHub-alias, а precheck для Vokino проходить усі озвучки й бачить 4K.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.152: IPTVOnline виправлено аналогічно Vokino: активний CDNVideoHub-alias піднімає badge з voice_quality до 4K, а precheck IPTVOnline проходить усі озвучки замість фіксації першої 1080p.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
