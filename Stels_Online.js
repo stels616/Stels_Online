@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.148';
+    var STELS_ONLINE_VERSION = '1.1.149';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -208,6 +208,10 @@
       source = stelsNormalizeSourceKey(source || '');
       if (source === 'filmix' || source === 'filmixtv' || source === 'fxapi') return 480;
       if (source === 'iremux') return 1080;
+      // 1.1.149: Eneyida віддає HDVBUA HLS без явної мітки 1080p у URL/quality-map,
+      // але саме джерело в LampUA/lifeevents позначене як 1080p. Не даємо випадковим
+      // службовим назвам підняти badge вище цього рівня.
+      if (source === 'eneyida') return 1080;
       return 0;
     }
 
@@ -14569,6 +14573,14 @@
         };
       }
 
+      function eneyidaSourceQualityHint() {
+        // 1.1.149: Playerjs/HDVBUA у Eneyida для серіалів часто дає прямий HLS
+        // без quality-map і без `1080p` у URL. Через це precheck бачить `ok`, але
+        // не може самостійно витягнути badge якості. Даємо службову підказку тільки
+        // для статусу джерела; назву озвучки/серії не змінюємо.
+        return '1080p';
+      }
+
       function addDirectStream(list, url, title, info, referer, season, episode, poster) {
         url = normalizeStreamUrl(url, referer);
         if (!url) return;
@@ -14578,6 +14590,7 @@
         uniquePush(list, {
           title: title || (episode ? component.formatEpisodeTitle(season || 1, episode) : select_title),
           quality: 'Eneyida',
+          _stels_source_quality_hint: eneyidaSourceQualityHint(),
           info: info || '',
           season: season || 0,
           episode: episode || 0,
@@ -14597,6 +14610,7 @@
         uniquePush(list, {
           title: title || (episode ? component.formatEpisodeTitle(season || 1, episode) : select_title),
           quality: 'Eneyida',
+          _stels_source_quality_hint: eneyidaSourceQualityHint(),
           info: info || '',
           season: season || 0,
           episode: episode || 0,
@@ -14876,6 +14890,7 @@
         uniquePush(list, {
           title: title,
           quality: 'Eneyida',
+          _stels_source_quality_hint: eneyidaSourceQualityHint(),
           info: voiceName ? ' / ' + voiceName : '',
           voice: voiceName,
           season: seasonNum,
@@ -15296,6 +15311,7 @@
         if (list.length && list[0].stream) {
           element.stream = list[0].stream;
           element.qualitys = false;
+          if (!element._stels_source_quality_hint) element._stels_source_quality_hint = eneyidaSourceQualityHint();
           stelsLog('eneyida-stream-resolve', {
             title: element.title,
             iframe: iframeUrl,
@@ -15320,6 +15336,7 @@
         if (direct) {
           element.stream = normalizeStreamUrl(direct[0], iframeUrl);
           element.qualitys = false;
+          if (!element._stels_source_quality_hint) element._stels_source_quality_hint = eneyidaSourceQualityHint();
           success(element);
           return;
         }
@@ -27009,6 +27026,9 @@
         // 1.1.142: RC iRemux у life/events позначений як `iRemux - 1080p`,
         // тому не дозволяємо службовим prefetch/quality-map підняти badge джерела вище 1080p.
         if (source === 'iremux') return 1080;
+        // 1.1.149: Eneyida має робочі HDVBUA HLS-потоки, але вони часто не містять
+        // 1080p у URL або quality-map. Badge джерела має лишатись на безпечному максимумі 1080p.
+        if (source === 'eneyida') return 1080;
         return 0;
       }
 
@@ -27431,7 +27451,7 @@
           try {
             var before = probeMaxQuality || 0;
             probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || ''));
-            if (probeMaxQuality > before && (stelsNormalizeSourceKey(sourceName) === 'kinotochka' || stelsNormalizeSourceKey(sourceName) === 'iremux')) {
+            if (probeMaxQuality > before && ['kinotochka', 'iremux', 'eneyida'].indexOf(stelsNormalizeSourceKey(sourceName)) !== -1) {
               stelsLog('source-precheck-quality-captured', { source: sourceName, reason: keyHint || '', quality: stelsQualityLabel(probeMaxQuality) });
             }
           } catch (e) {}
@@ -27479,6 +27499,13 @@
             // але 1.1.123 обмежує Filmix/FilmixTV/FxAPI, щоб помилкові 4K-підказки не лишались у badge.
             qvalue = stelsClampSourceQualityValue(sourceName, Math.max(qvalue || 0, existingQuality || 0, renderedQ || 0));
           } catch (eqp) {}
+          // 1.1.149: запасний шлях для Eneyida. Якщо precheck знайшов робочі серії,
+          // але жодна DOM/element-підказка не встигла потрапити в probe, показуємо
+          // безпечний максимум джерела 1080p замість порожнього badge.
+          if (!qvalue && status === 'ok' && stelsNormalizeSourceKey(sourceName) === 'eneyida') {
+            qvalue = stelsClampSourceQualityValue(sourceName, 1080);
+            stelsLog('source-precheck-quality-fallback', { source: sourceName, quality: stelsQualityLabel(qvalue), reason: 'eneyida-ok-no-quality' });
+          }
           var qlabel = quality || (qvalue ? stelsQualityLabel(qvalue) : '');
           stelsMarkSourceStatus(sourceName, status, message || '', qlabel);
           stelsLog('source-precheck-result', { source: sourceName, status: status, message: message || '', quality: qlabel || '', verified_quality: probeVerifiedQuality ? stelsQualityLabel(probeVerifiedQuality) : '' });
@@ -31110,7 +31137,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.148: захист відкритого меню джерел від самозакриття: під час async оновлення станів/precheck або якості перекладів не викликаємо filter.set/filter.chosen, якщо меню джерел відкрите або щойно було пропатчене.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.149: для Eneyida додано службову підказку якості 1080p у картки/element precheck, бо HDVBUA HLS часто не містить 1080p у URL або quality-map; захист меню джерел із 1.1.148 залишено.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
