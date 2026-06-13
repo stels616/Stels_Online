@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.144';
+    var STELS_ONLINE_VERSION = '1.1.145';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -27544,29 +27544,40 @@
         stelsPrecheckTimer = setTimeout(function () {
           if (stelsPrecheckRunning) return;
           var now = Date.now();
+          var currentName = stelsNormalizeSourceKey(balanser);
           var queue = obj_filter_sources.filter(function (entry) {
             if (!entry || !entry.name || entry.disabled) return false;
-            if (entry.name === balanser) return false;
             var info = stelsSourceStatus[entry.name];
-            return !(info && info.time && now - info.time < 20 * 60 * 1000);
+            // 1.1.145: не пропускаємо активне джерело (наприклад iRemux), інакше
+            // його статус/якість з'являлися тільки після ручного відкриття. Також
+            // не вважаємо свіжий wait фінальною перевіркою — завислий ⏳ має
+            // перезапускатися, а ok без quality має добирати badge якості.
+            if (info && info.time && now - info.time < 20 * 60 * 1000) {
+              if (info.status === 'wait') return true;
+              if (entry.name === currentName && info.status === 'ok' && !info.quality) return true;
+              if (info.status === 'ok' && !info.quality) return true;
+              return false;
+            }
+            return true;
           });
+          // Активне джерело ставимо першим, щоб iRemux не чекав усю чергу й одразу
+          // отримував ✓/1080p у списку джерел без відкриття картки.
+          try {
+            queue.sort(function (a, b) {
+              var ak = a && a.name === currentName ? -1 : 0;
+              var bk = b && b.name === currentName ? -1 : 0;
+              return ak - bk;
+            });
+          } catch (eqs) {}
           if (!queue.length) return;
           stelsPrecheckRunning = true;
           var token = ++stelsPrecheckToken;
           var active = 0;
-          var limit = Math.min(3, Math.max(1, queue.length));
+          // 1.1.145: повертаємо послідовну перевірку. Паралельні 3 запити разом із
+          // RCH/CDNVideoHub/iRemux могли підвисати Lampa й не давали стабільно
+          // оновлювати статуси джерел.
+          var limit = 1;
           stelsLog('source-precheck-start', { count: queue.length, limit: limit, sources: queue.map(function (s) { return s.name; }) });
-          // 1.1.144: показуємо джерела, що ще очікують своєї черги, як ⏳ одразу.
-          // Інакше пізні RC-джерела на кшталт iRemux виглядали так, ніби precheck
-          // їх пропустив, доки черга не дійшла саме до них.
-          try {
-            queue.forEach(function (entry) {
-              if (!entry || !entry.name) return;
-              var info = stelsSourceStatus[entry.name] || {};
-              if (!info.status) stelsMarkSourceStatus(entry.name, 'wait', '');
-            });
-          } catch (epw) {}
-          stelsRefreshSourceFilterTitles();
           function pump() {
             if (token !== stelsPrecheckToken) { stelsPrecheckRunning = false; return; }
             while (active < limit && queue.length) runOne(queue.shift());
@@ -27580,13 +27591,15 @@
           function runOne(entry) {
             active++;
             stelsPrecheckNotyMuteOn('source-precheck:' + (entry && entry.name || ''));
+            // Wait показуємо тільки для джерела, яке реально зараз перевіряється,
+            // а не для всієї черги разом.
             stelsMarkSourceStatus(entry.name, 'wait', '');
             stelsRefreshSourceFilterTitles();
             var probe = null;
             var probePack = stelsMakeProbeComponent.call(self, entry.name, token, function () {
               try { if (probe && probe.destroy) probe.destroy(); } catch (e) {}
               active--;
-              setTimeout(pump, 80);
+              setTimeout(pump, 180);
             });
             probe = stelsMakeProbeSource(entry, probePack.component);
             if (!probe) {
@@ -31014,7 +31027,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.144: виправлено самозакриття меню джерел під час precheck/async quality update: відкритий список тепер патчиться DOM-ом без filter.set(sort); pending-джерела, зокрема iRemux, одразу показуються як очікування ⏳.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.145: precheck знову послідовний (limit=1), не виставляє ⏳ всій черзі одночасно; активне джерело, зокрема iRemux, теж перевіряється і ставиться першим у чергу, щоб ✓/якість зʼявлялися без ручного відкриття.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
