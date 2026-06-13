@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.139';
+    var STELS_ONLINE_VERSION = '1.1.140';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -22872,13 +22872,13 @@
         var hkey = remoteHostKey();
         if (!window.nwsClient) window.nwsClient = {};
         var client = window.nwsClient[hkey];
-        if (client && client.connectionId != null) return call();
+        if (client && client.connectionId != null) return call(true);
         if (client) {
           stelsLog('remote-rch-reconnecting', { source: sourceTitle, host: remoteHostBase() });
           try {
-            client.reconnect(function () { call(); });
+            client.reconnect(function () { call(true); });
           } catch (e) {
-            call();
+            call(true);
           }
           return;
         }
@@ -22886,7 +22886,7 @@
         window.nwsClient[hkey] = new NativeWsClient(json.nws, { autoReconnect: true });
         client = window.nwsClient[hkey];
         client.on('Connected', function () {
-          remoteRchRegistry(client, function () { call(); });
+          remoteRchRegistry(client, function () { call(true); });
         });
         client.connect();
       }
@@ -23317,7 +23317,7 @@
           if (json && json.rch) {
             stelsLog('lampaua-rch-needed', { source: sourceTitle, url: file.url, title: file.title || file.text, season: file.season, episode: file.episode, stage: 'getfile' });
             return remoteRchRun(json, function (ok) {
-              if (!ok) return call(false, {});
+              if (ok === false) return call(false, {});
               var retry = new Lampa.Reguest();
               retry.timeout(20000);
               retry['native'](account(absolute(file.url)), function (json2) {
@@ -23938,6 +23938,17 @@
           element.title = element.title || element.text || (element.season ? ('Сезон ' + element.season + ' / Серія ' + (element.episode || index + 1)) : select_title);
           element.info = element.info || element.voice_name || sourceTitle;
           element.quality = element.quality || '';
+          var source_hint_q = 0;
+          try {
+            // 1.1.140: RC KinoTochka у списку life/events віддає якість у назві
+            // джерела (`Kinotochka - 480p`), а сам прямий mp4 не містить мітки
+            // 480p у URL/quality-map. Для precheck і поточного badge переносимо
+            // цю підказку в службове поле/атрибут, не змінюючи playable.quality.
+            if (remoteOptions.sourceQualityHint) {
+              source_hint_q = stelsExtractMaxQualityFromAny(remote_quality_hint || (current_source && current_source.name) || '', 0, 'quality');
+              if (source_hint_q) element._stels_source_quality_hint = stelsQualityLabel(source_hint_q);
+            }
+          } catch (eqh) {}
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title || object.movie.original_name || select_title].join('') : (object.movie.original_title || object.movie.original_name || select_title));
           var hash_file = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title || object.movie.original_name || select_title, element.voice_name].join('') : (object.movie.original_title || object.movie.original_name || select_title) + element.title + element.voice_name);
           var view = Lampa.Timeline.view(hash);
@@ -23948,7 +23959,8 @@
               stelsExtractMaxQualityFromAny(element.quality, 0, 'quality'),
               stelsExtractMaxQualityFromAny(element.qualitys, 0, 'qualitys'),
               stelsExtractMaxQualityFromAny(element.url || element.stream || element.file || '', 0, 'url'),
-              stelsExtractMaxQualityFromAny(element.text || element.title || '', 0, 'title')
+              stelsExtractMaxQualityFromAny(element.text || element.title || '', 0, 'title'),
+              source_hint_q || 0
             );
             if (actual_q) {
               item.attr('data-stels-quality-value', actual_q);
@@ -23956,6 +23968,9 @@
             }
           } catch (e) {}
           item.append(Lampa.Timeline.render(view));
+          try {
+            if (source_hint_q && stelsNormalizeSourceKey(balanser) === stelsNormalizeSourceKey(sourceTitle)) stelsUpdateSourceQualityFromRenderedCard(item);
+          } catch (eshq) {}
           if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
           if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
           item.on('hover:enter', function () {
@@ -24047,7 +24062,7 @@
         if (json && json.rch) {
           stelsLog('lampaua-rch-needed', { source: sourceTitle, stage: 'parse', json: json });
           return remoteRchRun(json, function (ok) {
-            if (!ok) return component.empty('Джерело потребує RCH/NativeWs, але NativeWs не запустився. Дивись лог Stels_Online.');
+            if (ok === false) return component.empty('Джерело потребує RCH/NativeWs, але NativeWs не запустився. Дивись лог Stels_Online.');
             if (source_url) request(requestParams(source_url));
             else loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { component.empty(err); });
           });
@@ -26476,7 +26491,7 @@
       }, {
         name: 'rc-kinotochka',
         title: 'KinoTochka',
-        source: new lampauaRemoteSource(this, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka' }),
+        source: new lampauaRemoteSource(this, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka', sourceQualityHint: true }),
         search: true,
         kp: true,
         imdb: true
@@ -27398,7 +27413,7 @@
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
           if (name === 'makhno' || engine === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'starlight' || engine === 'starlight') return new cdnvideohub(fake, object, { sourceTitle: 'Midnight', movieVoiceFilter: true, precheckAllVoices: true });
-          if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka', sourceQualityHint: true });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
@@ -30902,7 +30917,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.139: база 1.1.138; точково виправлено precheck badge якості для HDVB/deep voice джерел, коли voice_quality уже отримана, але статус джерела лишався без якості.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.140: точково виправлено precheck KinoTochka: RCH/NativeWs success callback більше не трактується як помилка; якість 480p береться з RC life/events назви джерела.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
