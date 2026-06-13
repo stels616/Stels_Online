@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.147';
+    var STELS_ONLINE_VERSION = '1.1.148';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -26905,6 +26905,7 @@
             return { source: e.name, title: stelsSourceTitleWithStatus(e), selected: e.name === balanser };
           }));
           filter.show('Джерело', 'sort');
+          stelsMarkSourceSortMenuOpen('floating-source-open');
           stelsPatchOpenSourceSortMenu();
           stelsEnsureSourceMenuObserver();
           setTimeout(stelsPatchOpenSourceSortMenu, 80);
@@ -27234,6 +27235,24 @@
       var stelsPrecheckTimer = null;
       var stelsPrecheckToken = 0;
       var stelsPrecheckRunning = false;
+      var stelsSourceSortMenuOpenUntil = 0;
+
+      function stelsMarkSourceSortMenuOpen(reason) {
+        try {
+          stelsSourceSortMenuOpenUntil = Date.now() + 1600;
+          if (reason) stelsLog('source-sort-menu-guard-on', { reason: reason, until_ms: stelsSourceSortMenuOpenUntil - Date.now() });
+        } catch (e) {}
+      }
+
+      function stelsIsSourceSortMenuProtected() {
+        try {
+          if (!stelsIsSelectBoxOpen()) return false;
+          if (Date.now() < stelsSourceSortMenuOpenUntil) return true;
+          return stelsIsSourceSortMenuOpen();
+        } catch (e) {}
+        return false;
+      }
+
       function stelsPatchOpenSourceSortMenu() {
         try {
           var map = {};
@@ -27251,6 +27270,7 @@
           // Важливо: патчимо тільки рядки меню, а не всі span/div всередині.
           // У 1.1.76 MutationObserver заходив у вкладені елементи і створював дублікати badge якості.
           var rows = $('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item');
+          var patchedCount = 0;
           rows.each(function () {
             var row = $(this);
             if (!row.length) return;
@@ -27276,9 +27296,10 @@
               }).first();
             }
 
-            if (target.length) target.html(replacement);
-            else row.html(replacement);
+            if (target.length) { target.html(replacement); patchedCount++; }
+            else { row.html(replacement); patchedCount++; }
           });
+          if (patchedCount > 2) stelsMarkSourceSortMenuOpen('patch-open-source-sort-menu');
           stelsPatchUaFlagIcons(document.body);
         } catch (e) {}
       }
@@ -27300,7 +27321,11 @@
             if (!raw || raw.length > 160) return;
             if (sourceMap[stelsSourceMenuKey(raw)]) found++;
           });
-          return found > 2;
+          if (found > 2) {
+            stelsSourceSortMenuOpenUntil = Date.now() + 1600;
+            return true;
+          }
+          return false;
         } catch (e) {}
         return false;
       }
@@ -27358,11 +27383,12 @@
           // filter.set('sort') / filter.chosen('sort') під час precheck або async
           // оновлення якості озвучок. У Lampa це перебудовує SelectBox і меню
           // саме закривається. Патчимо тільки DOM вже відкритого списку.
-          if (stelsIsSourceSortMenuOpen()) {
+          if (stelsIsSourceSortMenuProtected()) {
             stelsPatchOpenSourceSortMenu();
             stelsUpdateFloatingSourceButton();
             stelsEnsureSourceMenuObserver();
             setTimeout(stelsPatchOpenSourceSortMenu, 120);
+            stelsLog('source-sort-menu-refresh-skip', { reason: 'open-source-menu-protected', source: balanser });
             return;
           }
 
@@ -28612,6 +28638,8 @@
         var prev_filter_items = stels_last_filter_items || {};
         var display_filter_items = stelsBuildDisplayFilterItems(filter_items || {}, balanser);
         var patch_open_only = stelsIsOnlyVoiceQualityUpdate(prev_filter_items, filter_items || {});
+        var source_sort_menu_protected = stelsIsSourceSortMenuProtected();
+        if (source_sort_menu_protected) patch_open_only = true;
         try {
           stelsRememberVoiceQualityDisplayMap((filter_items || {}).voice || [], display_filter_items.voice || [], balanser);
           stels_last_filter_items = filter_items || {};
@@ -28659,12 +28687,17 @@
         if (patch_open_only) {
           stelsPatchVisibleVoiceQualityFromMap('component-filter-open');
           stelsScheduleVoiceQualityColor('component-filter-open');
-          stelsLog('component-filter-open-quality-patch', { selected: balanser, voices: (filter_items.voice || []).length, voice_quality: filter_items.voice_quality || [] });
+          if (source_sort_menu_protected) {
+            stelsPatchOpenSourceSortMenu();
+            stelsEnsureSourceMenuObserver();
+            setTimeout(stelsPatchOpenSourceSortMenu, 120);
+          }
+          stelsLog('component-filter-open-quality-patch', { selected: balanser, voices: (filter_items.voice || []).length, voice_quality: filter_items.voice_quality || [], source_menu_protected: !!source_sort_menu_protected });
         } else {
           filter.set('filter', select);
           stelsScheduleVoiceQualityColor('component-filter');
         }
-        stelsLog('sort-menu-build', { count: obj_filter_sources.length, sources: obj_filter_sources.map(function(e){ return e.name + ':' + e.title; }), selected: balanser });
+        stelsLog('sort-menu-build', { count: obj_filter_sources.length, sources: obj_filter_sources.map(function(e){ return e.name + ':' + e.title; }), selected: balanser, source_menu_protected: !!source_sort_menu_protected, set_sort: !patch_open_only });
         if (!patch_open_only) {
           filter.set('sort', obj_filter_sources.map(function (e) {
             return {
@@ -28706,10 +28739,11 @@
         var source_obj = obj_filter_sources.filter(function (e) {
           return e.name === balanser;
         })[0];
-        if (stelsIsSourceSortMenuOpen()) {
+        if (stelsIsSourceSortMenuProtected()) {
           stelsPatchOpenSourceSortMenu();
           stelsEnsureSourceMenuObserver();
           setTimeout(stelsPatchOpenSourceSortMenu, 120);
+          stelsLog('source-sort-menu-selected-skip', { reason: 'open-source-menu-protected', source: balanser });
           return;
         }
         filter.chosen('filter', select);
@@ -31076,7 +31110,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.147: виправлено DOM-патч рядка iRemux у меню джерел: Lampa інколи показує iRemux як IRemux, тому plain `IRemux ✓ 1080p` тепер замінюється на однаковий HTML із зеленою ✓ і жовтим badge справа.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.148: захист відкритого меню джерел від самозакриття: під час async оновлення станів/precheck або якості перекладів не викликаємо filter.set/filter.chosen, якщо меню джерел відкрите або щойно було пропатчене.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
