@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.153';
+    var STELS_ONLINE_VERSION = '1.1.155';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -211,6 +211,10 @@
       // 1.1.153: VeoVeo у RC life/events позначений як `VeoVeo - 1080p`;
       // його потоки часто є master.m3u8 без quality-map, тому badge беремо з підказки.
       if (source === 'veoveo') return 1080;
+      // 1.1.155: UAKino/LampUA не має 4K у цьому джерелі. У life/events поруч
+      // можуть бути PidTor/Mirage/JackTor 2160p, а асинхронний voice_quality іншого
+      // джерела не повинен піднімати badge UAKino вище фактичних 1080p.
+      if (source === 'uakino' || source === 'uakino-lampaua' || source === 'lampaua-uakino') return 1080;
       // 1.1.149: Eneyida віддає HDVBUA HLS без явної мітки 1080p у URL/quality-map,
       // але саме джерело в LampUA/lifeevents позначене як 1080p. Не даємо випадковим
       // службовим назвам підняти badge вище цього рівня.
@@ -27134,6 +27138,9 @@
         if (source === 'iremux') return 1080;
         // 1.1.153: VeoVeo отримує максимум 1080p з RC sourceQualityHint.
         if (source === 'veoveo') return 1080;
+        // 1.1.155: UAKino/LampUA обмежуємо до 1080p. Інакше generic extractor
+        // може підхопити 2160p з сусідніх life/events джерел або stale voice_quality.
+        if (source === 'uakino' || source === 'uakino-lampaua' || source === 'lampaua-uakino') return 1080;
         // 1.1.149: Eneyida має робочі HDVBUA HLS-потоки, але вони часто не містять
         // 1080p у URL або quality-map. Badge джерела має лишатись на безпечному максимумі 1080p.
         if (source === 'eneyida') return 1080;
@@ -28789,17 +28796,24 @@
           var __vfq = stelsExtractMaxQualityFromAny((filter_items || {}).voice_quality || [], 0, 'quality');
           if (__vfq) {
             var __activeSource = stelsNormalizeSourceKey(balanser);
-            var __qlabel = stelsQualityLabel(stelsClampSourceQualityValue(__activeSource, __vfq));
-            var __prevLabel = stelsSourceStatus[__activeSource] && stelsSourceStatus[__activeSource].quality || '';
-            stelsMarkSourceStatus(__activeSource, 'ok', '', __qlabel);
-            if (['vokino', 'iptvonline'].indexOf(__activeSource) !== -1) {
+            var __voiceQualityBadgeSources = ['vokino', 'iptvonline'];
+            // 1.1.155: не можна переносити будь-який async voice_quality на поточне джерело.
+            // component.filter глобальний для activity, тому запізнілий callback HDVB/CDNVideoHub
+            // після перемикання на UAKino міг записати UAKino як 4K. Badge з voice_quality
+            // піднімаємо тільки для alias-ів, для яких це було спеціально додано у 1.1.151/1.1.152.
+            if (__voiceQualityBadgeSources.indexOf(__activeSource) !== -1) {
+              var __qlabel = stelsQualityLabel(stelsClampSourceQualityValue(__activeSource, __vfq));
+              var __prevLabel = stelsSourceStatus[__activeSource] && stelsSourceStatus[__activeSource].quality || '';
+              stelsMarkSourceStatus(__activeSource, 'ok', '', __qlabel);
               stelsLog('source-quality-from-voice-filter', { source: __activeSource, quality: __qlabel, previous_quality: __prevLabel || '', voice_quality: (filter_items || {}).voice_quality || [] });
-            }
-            // 1.1.152: активні CDNVideoHub-alias-и (Vokino/IPTVOnline) можуть отримати
-            // 4K лише після асинхронного prefetch voice_quality. Одразу оновлюємо
-            // заголовок джерела, щоб badge не лишався на старому 1080p.
-            if (__qlabel && __qlabel !== __prevLabel && ['vokino', 'iptvonline'].indexOf(__activeSource) !== -1) {
-              try { stelsRefreshSourceFilterTitles(); } catch (eRefreshSourceQuality) {}
+              // 1.1.152: активні CDNVideoHub-alias-и (Vokino/IPTVOnline) можуть отримати
+              // 4K лише після асинхронного prefetch voice_quality. Одразу оновлюємо
+              // заголовок джерела, щоб badge не лишався на старому 1080p.
+              if (__qlabel && __qlabel !== __prevLabel) {
+                try { stelsRefreshSourceFilterTitles(); } catch (eRefreshSourceQuality) {}
+              }
+            } else if (__activeSource === 'uakino-lampaua' || __activeSource === 'uakino') {
+              stelsLog('source-quality-from-voice-filter-skip', { source: __activeSource, reason: 'not-cdn-alias', detected_quality: stelsQualityLabel(stelsClampSourceQualityValue(__activeSource, __vfq)), voice_quality: (filter_items || {}).voice_quality || [] });
             }
           }
         } catch (eVfq) {}
@@ -31276,7 +31290,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.153: VeoVeo переведено в структурований режим як RC/LampUA movieVoiceFilter: одна картка фільму, переклади у фільтрі/кнопці плеєра; badge 1080p береться з RC life/events sourceQualityHint.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.155: база повернена до 1.1.153 без правки Mirage 1.1.154; виправлено хибний 4K для UAKino — voice_quality більше не переноситься з інших async-джерел, UAKino обмежено фактичним максимумом 1080p.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
