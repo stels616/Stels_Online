@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.155';
+    var STELS_ONLINE_VERSION = '1.1.156';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -211,10 +211,13 @@
       // 1.1.153: VeoVeo у RC life/events позначений як `VeoVeo - 1080p`;
       // його потоки часто є master.m3u8 без quality-map, тому badge беремо з підказки.
       if (source === 'veoveo') return 1080;
-      // 1.1.155: UAKino/LampUA не має 4K у цьому джерелі. У life/events поруч
+      // 1.1.156: UAKino/LampUA не має 4K у цьому джерелі. У life/events поруч
       // можуть бути PidTor/Mirage/JackTor 2160p, а асинхронний voice_quality іншого
       // джерела не повинен піднімати badge UAKino вище фактичних 1080p.
       if (source === 'uakino' || source === 'uakino-lampaua' || source === 'lampaua-uakino') return 1080;
+      // 1.1.156: UafilmMe також LampUA-джерело без 4K. Не дозволяємо
+      // чужому async voice_quality з CDNVideoHub/VKMovie підняти його badge вище 1080p.
+      if (source === 'uafilmme' || source === 'uafilmme-lampaua' || source === 'lampaua-uafilmme') return 1080;
       // 1.1.149: Eneyida віддає HDVBUA HLS без явної мітки 1080p у URL/quality-map,
       // але саме джерело в LampUA/lifeevents позначене як 1080p. Не даємо випадковим
       // службовим назвам підняти badge вище цього рівня.
@@ -22806,6 +22809,7 @@
       var current_videos = [];
       var current_source = null;
       var remote_quality_hint = '';
+      var preferred_title_override = '';
       var lampauaVoiceQualityCache = {};
       var lampauaVoiceQualityPending = {};
       var lampauaVoiceQualityRunId = 0;
@@ -23064,13 +23068,15 @@
         query.push('id=' + encodeURIComponent(movie.id || ''));
         if (movie.imdb_id) query.push('imdb_id=' + encodeURIComponent(movie.imdb_id || ''));
         if (movie.kinopoisk_id) query.push('kinopoisk_id=' + encodeURIComponent(movie.kinopoisk_id || ''));
-        if (movie.tmdb_id) query.push('tmdb_id=' + encodeURIComponent(movie.tmdb_id || ''));
-        query.push('title=' + encodeURIComponent(object.clarification ? object.search : movie.title || movie.name || select_title || ''));
+        var tmdbId = movie.tmdb_id || (/^cub$/i.test(card_source || '') && sourceTitle === 'UafilmMe' ? movie.id : '');
+        if (tmdbId) query.push('tmdb_id=' + encodeURIComponent(tmdbId || ''));
+        var requestTitle = object.clarification ? object.search : (preferred_title_override || movie.title || movie.name || select_title || '');
+        query.push('title=' + encodeURIComponent(requestTitle));
         query.push('original_title=' + encodeURIComponent(movie.original_title || movie.original_name || ''));
         query.push('serial=' + (movie.name ? 1 : 0));
         query.push('original_language=' + (movie.original_language || ''));
         query.push('year=' + ((movie.release_date || movie.first_air_date || '0000') + '').slice(0, 4));
-        query.push('source=' + card_source);
+        query.push('source=' + (/^cub$/i.test(card_source || '') && sourceTitle === 'UafilmMe' && tmdbId ? 'tmdb' : card_source));
         query.push('clarification=' + (object.clarification ? 1 : 0));
         query.push('similar=' + (object.similar ? true : false));
         var rch_state = remoteRchEnsure();
@@ -24338,6 +24344,29 @@
         }
       }
 
+      function lampauaPreparePreferredTitle(done) {
+        preferred_title_override = '';
+        try {
+          var movie = object && object.movie || {};
+          var source = String(movie.source || '').toLowerCase();
+          var tmdbId = movie.tmdb_id || (source === 'cub' && sourceTitle === 'UafilmMe' ? movie.id : '');
+          if (sourceTitle !== 'UafilmMe' || object.clarification || !tmdbId || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) return done();
+          var apiPath = (movie.name ? 'tv/' : 'movie/') + tmdbId;
+          Lampa.Api.sources.tmdb.get(apiPath, { language: 'uk-UA' }, function (info) {
+            try {
+              var title = (info && (info.title || info.name) || '').trim();
+              var original = (movie.original_title || movie.original_name || '').trim();
+              if (title && title !== original && norm(title) !== norm(movie.title || movie.name || '')) {
+                preferred_title_override = title;
+                select_title = title;
+                stelsLog('lampaua-preferred-title', { source: sourceTitle, tmdb_id: tmdbId, old_title: movie.title || movie.name || '', new_title: title });
+              }
+            } catch (e1) {}
+            done();
+          }, function () { done(); });
+        } catch (e) { done(); }
+      }
+
       this.search = function (_object, kinopoisk_id, data) {
         object = _object;
         select_title = object.search || object.movie.title || object.movie.name || '';
@@ -24347,7 +24376,9 @@
           return;
         }
         source_url = '';
-        loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { stelsLog('lampaua-source-error', { source: sourceTitle, error: err }); component.empty(err); });
+        lampauaPreparePreferredTitle(function () {
+          loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { stelsLog('lampaua-source-error', { source: sourceTitle, error: err }); component.empty(err); });
+        });
       };
 
       this.extendChoice = function (saved) {
@@ -26632,7 +26663,7 @@
       }, {
         name: 'lampaua-uafilmme',
         title: 'UafilmMe',
-        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe'),
+        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true }),
         search: true,
         kp: true,
         imdb: true
@@ -27138,7 +27169,7 @@
         if (source === 'iremux') return 1080;
         // 1.1.153: VeoVeo отримує максимум 1080p з RC sourceQualityHint.
         if (source === 'veoveo') return 1080;
-        // 1.1.155: UAKino/LampUA обмежуємо до 1080p. Інакше generic extractor
+        // 1.1.156: UAKino/LampUA обмежуємо до 1080p. Інакше generic extractor
         // може підхопити 2160p з сусідніх life/events джерел або stale voice_quality.
         if (source === 'uakino' || source === 'uakino-lampaua' || source === 'lampaua-uakino') return 1080;
         // 1.1.149: Eneyida має робочі HDVBUA HLS-потоки, але вони часто не містять
@@ -27540,7 +27571,7 @@
 
       function stelsIsDeepVoiceQualitySource(sourceName) {
         sourceName = stelsNormalizeSourceKey(sourceName || '');
-        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'getstv' || sourceName === 'hdvb';
+        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'vkmovie' || sourceName === 'getstv' || sourceName === 'hdvb';
       }
 
       function stelsMakeProbeComponent(sourceName, token, done) {
@@ -27695,7 +27726,7 @@
           if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno', { movieVoiceFilter: true });
           if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino', { movieVoiceFilter: true });
-          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
+          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true });
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
           if (name === 'makhno' || engine === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'starlight' || engine === 'starlight') return new cdnvideohub(fake, object, { sourceTitle: 'Midnight', movieVoiceFilter: true, precheckAllVoices: true });
@@ -27733,6 +27764,10 @@
           // створювати голий cdnvideohub(fake, object), бо він перевіряє тільки вибрану
           // озвучку і фіксує 1080p до того, як `ТО Дубляжная` віддасть 4K.
           if (name === 'iptvonline') return new cdnvideohub(fake, object, { sourceTitle: 'IPTVOnline', movieVoiceFilter: true, precheckAllVoices: true });
+          // 1.1.156: VKMovie також видимий alias на CDNVideoHub. Його не можна
+          // перевіряти голим cdnvideohub, бо тоді badge фіксується по першій 1080p
+          // озвучці і не чекає 4K у `ТО Дубляжная`.
+          if (name === 'vkmovie') return new cdnvideohub(fake, object, { sourceTitle: 'VKMovie', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'cdnvideohub') return new cdnvideohub(fake, object, { sourceTitle: 'CDNVideoHub', movieVoiceFilter: true, precheckAllVoices: true });
           if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
           if (engine === 'anilibria') return new anilibria(fake, object);
@@ -27769,7 +27804,7 @@
               // 1.1.152: після 1.1.151 у кеші IPTVOnline міг лишитись ok 1080p,
               // хоча активне джерело вже має 4K-озвучку. Активний IPTVOnline
               // перевіряємо повторно, якщо badge нижче 4K.
-              if (entry.name === 'iptvonline' && entry.name === currentName && info.status === 'ok' && stelsQualityToValue(info.quality || '') < 2160) return true;
+              if ((entry.name === 'iptvonline' || entry.name === 'vkmovie') && entry.name === currentName && info.status === 'ok' && stelsQualityToValue(info.quality || '') < 2160) return true;
               if (info.status === 'ok' && !info.quality) return true;
               return false;
             }
@@ -28796,8 +28831,8 @@
           var __vfq = stelsExtractMaxQualityFromAny((filter_items || {}).voice_quality || [], 0, 'quality');
           if (__vfq) {
             var __activeSource = stelsNormalizeSourceKey(balanser);
-            var __voiceQualityBadgeSources = ['vokino', 'iptvonline'];
-            // 1.1.155: не можна переносити будь-який async voice_quality на поточне джерело.
+            var __voiceQualityBadgeSources = ['vokino', 'iptvonline', 'vkmovie'];
+            // 1.1.156: не можна переносити будь-який async voice_quality на поточне джерело.
             // component.filter глобальний для activity, тому запізнілий callback HDVB/CDNVideoHub
             // після перемикання на UAKino міг записати UAKino як 4K. Badge з voice_quality
             // піднімаємо тільки для alias-ів, для яких це було спеціально додано у 1.1.151/1.1.152.
@@ -28812,7 +28847,7 @@
               if (__qlabel && __qlabel !== __prevLabel) {
                 try { stelsRefreshSourceFilterTitles(); } catch (eRefreshSourceQuality) {}
               }
-            } else if (__activeSource === 'uakino-lampaua' || __activeSource === 'uakino') {
+            } else if (__activeSource === 'uakino-lampaua' || __activeSource === 'uakino' || __activeSource === 'uafilmme-lampaua' || __activeSource === 'uafilmme') {
               stelsLog('source-quality-from-voice-filter-skip', { source: __activeSource, reason: 'not-cdn-alias', detected_quality: stelsQualityLabel(stelsClampSourceQualityValue(__activeSource, __vfq)), voice_quality: (filter_items || {}).voice_quality || [] });
             }
           }
@@ -31290,7 +31325,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.155: база повернена до 1.1.153 без правки Mirage 1.1.154; виправлено хибний 4K для UAKino — voice_quality більше не переноситься з інших async-джерел, UAKino обмежено фактичним максимумом 1080p.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.156: виправлено UafilmMe після 1.1.155 — для CUB-карток підтягується українська назва TMDB і tmdb_id/source=tmdb, UafilmMe повернено в movieVoiceFilter; VKMovie перевіряється як окремий CDNVideoHub-alias з precheckAllVoices і може підняти badge до 4K.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
