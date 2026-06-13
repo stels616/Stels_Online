@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.136';
+    var STELS_ONLINE_VERSION = '1.1.137';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13,43 +13,89 @@
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
     var stelsPrecheckSilentNoty = 0;
+    var stelsPrecheckSilentUntil = 0;
     var stelsOriginalNotyShow = null;
+    var stelsPrecheckNotyGuardFn = null;
 
-    function stelsIsPrecheckNoiseMessage(msg) {
-      var text = String(msg == null ? '' : msg).replace(/\s+/g, ' ').trim();
-      if (!text) return false;
-      return /(?:неможливо\s+отримати\s+посилання|не\s+вдалося\s+(?:отримати|завантажити|знайти)|не\s+удалось|failed\s+to\s+(?:fetch|load)|failed\s+link|unable\s+to\s+get|no\s+file|no\s+link)/i.test(text);
+    function stelsNotyMessageToText(msg) {
+      try {
+        if (msg == null) return '';
+        if (typeof msg === 'string') return msg;
+        if (typeof msg === 'number' || typeof msg === 'boolean') return String(msg);
+        if (msg.message) return String(msg.message || '');
+        if (msg.text) return String(msg.text || '');
+        if (msg.title) return String(msg.title || '');
+        if (msg.toString && msg.toString !== Object.prototype.toString) return String(msg.toString());
+      } catch (e) {}
+      try { return JSON.stringify(msg); } catch (e2) { return ''; }
     }
 
-    function stelsInstallPrecheckNotyGuard() {
+    function stelsIsPrecheckNoiseMessage(msg) {
+      var text = stelsNotyMessageToText(msg).replace(/\s+/g, ' ').trim();
+      if (!text) return false;
+      return /(?:неможливо\s+отримати\s+посилання|не\s+вдалося\s+(?:отримати|завантажити|знайти|витягти)|не\s+удалось|не\s+удалося|не\s+получилось|failed\s+to\s+(?:fetch|load|get|extract)|failed\s+link|unable\s+to\s+(?:get|fetch|load|extract)|could\s+not\s+(?:get|fetch|load|extract)|no\s+(?:file|link|stream)|online_mod_nolink|stels_online_nolink)/i.test(text);
+    }
+
+    function stelsPrecheckNotyMuted() {
+      return stelsPrecheckSilentNoty > 0 || Date.now() < stelsPrecheckSilentUntil;
+    }
+
+    function stelsArmPrecheckNotyMute(ms) {
+      try {
+        stelsInstallPrecheckNotyGuard(true);
+        var until = Date.now() + (parseInt(ms, 10) || 0);
+        if (until > stelsPrecheckSilentUntil) stelsPrecheckSilentUntil = until;
+      } catch (e) {}
+    }
+
+    function stelsInstallPrecheckNotyGuard(force) {
       try {
         if (!Lampa || !Lampa.Noty || typeof Lampa.Noty.show !== 'function') return;
-        if (Lampa.Noty._stels_precheck_guard) return;
-        stelsOriginalNotyShow = Lampa.Noty.show;
-        Lampa.Noty.show = function () {
+        var current = Lampa.Noty.show;
+        // Lampa/плеєр іноді перевизначає Lampa.Noty.show після старту плагіна.
+        // Старий прапорець _stels_precheck_guard тоді лишався true, але реальний show вже був не нашим wrapper.
+        if (!force && current && current._stels_precheck_guard_wrapped) return;
+        if (current && current._stels_precheck_guard_wrapped && stelsPrecheckNotyGuardFn === current) return;
+        stelsOriginalNotyShow = current && current._stels_precheck_guard_wrapped && stelsOriginalNotyShow ? stelsOriginalNotyShow : current;
+        stelsPrecheckNotyGuardFn = function () {
           try {
-            if (stelsPrecheckSilentNoty > 0 && stelsIsPrecheckNoiseMessage(arguments[0])) {
-              try { stelsLog('precheck-noty-suppressed', { message: String(arguments[0] || '').slice(0, 220), depth: stelsPrecheckSilentNoty }); } catch (elog) {}
+            if (stelsPrecheckNotyMuted() && stelsIsPrecheckNoiseMessage(arguments[0])) {
+              try {
+                stelsLog('precheck-noty-suppressed', {
+                  message: stelsNotyMessageToText(arguments[0]).slice(0, 220),
+                  depth: stelsPrecheckSilentNoty,
+                  silent_ms_left: Math.max(0, stelsPrecheckSilentUntil - Date.now())
+                });
+              } catch (elog) {}
               return;
             }
           } catch (e) {}
           return stelsOriginalNotyShow.apply(this, arguments);
         };
+        stelsPrecheckNotyGuardFn._stels_precheck_guard_wrapped = true;
+        Lampa.Noty.show = stelsPrecheckNotyGuardFn;
         Lampa.Noty._stels_precheck_guard = true;
       } catch (e) {}
     }
 
     function stelsPrecheckNotyMuteOn(reason) {
-      try { stelsInstallPrecheckNotyGuard(); stelsPrecheckSilentNoty++; } catch (e) {}
-      try { stelsLog('precheck-noty-mute-on', { reason: reason || '', depth: stelsPrecheckSilentNoty }); } catch (e2) {}
+      try {
+        stelsInstallPrecheckNotyGuard(true);
+        stelsPrecheckSilentNoty++;
+        stelsArmPrecheckNotyMute(20000);
+      } catch (e) {}
+      try { stelsLog('precheck-noty-mute-on', { reason: reason || '', depth: stelsPrecheckSilentNoty, silent_ms_left: Math.max(0, stelsPrecheckSilentUntil - Date.now()) }); } catch (e2) {}
     }
 
     function stelsPrecheckNotyMuteOff(reason) {
       try {
+        // Частина джерел показує nolink вже після callback finish/timeout, тому не вимикаємо тишу одразу.
+        // Залишаємо коротке grace-вікно, але тільки для службових no-link повідомлень.
+        stelsArmPrecheckNotyMute(10000);
         setTimeout(function () {
           stelsPrecheckSilentNoty = Math.max(0, stelsPrecheckSilentNoty - 1);
-          try { stelsLog('precheck-noty-mute-off', { reason: reason || '', depth: stelsPrecheckSilentNoty }); } catch (e2) {}
-        }, 80);
+          try { stelsLog('precheck-noty-mute-off', { reason: reason || '', depth: stelsPrecheckSilentNoty, silent_ms_left: Math.max(0, stelsPrecheckSilentUntil - Date.now()) }); } catch (e2) {}
+        }, 10000);
       } catch (e) { stelsPrecheckSilentNoty = Math.max(0, stelsPrecheckSilentNoty - 1); }
     }
 
@@ -27353,7 +27399,12 @@
           function pump() {
             if (token !== stelsPrecheckToken) { stelsPrecheckRunning = false; return; }
             while (active < limit && queue.length) runOne(queue.shift());
-            if (!active && !queue.length) { stelsPrecheckRunning = false; stelsRefreshSourceFilterTitles(); stelsLog('source-precheck-finish', {}); }
+            if (!active && !queue.length) {
+              stelsPrecheckRunning = false;
+              try { stelsArmPrecheckNotyMute(8000); } catch (e) {}
+              stelsRefreshSourceFilterTitles();
+              stelsLog('source-precheck-finish', { silent_ms_left: Math.max(0, stelsPrecheckSilentUntil - Date.now()) });
+            }
           }
           function runOne(entry) {
             active++;
@@ -27401,7 +27452,10 @@
         clearTimeout(stelsPrecheckTimer);
         stelsPrecheckToken++;
         stelsPrecheckRunning = false;
-        try { stelsPrecheckSilentNoty = 0; } catch (e) {}
+        try {
+          stelsPrecheckSilentNoty = 0;
+          stelsArmPrecheckNotyMute(2500);
+        } catch (e) {}
       }
       var sources = {};
       obj_filter_sources.forEach(function (s) {
@@ -30783,7 +30837,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.136: база 1.1.135; виправлено player audio menu: прибирається нумерація 1/2/3, уламок p перетворюється назад у повний badge якості через DOM-мапу; precheck приглушує фонові Noty Неможливо отримати посилання, щоб перевірка джерел не показувала помилку користувачу.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.137: база 1.1.136; посилено guard для Lampa.Noty.show під час source-precheck: повторне встановлення wrapper якщо Lampa його перезаписала, grace-вікно після finish/timeout, підтримка object/text повідомлень і додаткові no-link шаблони.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
