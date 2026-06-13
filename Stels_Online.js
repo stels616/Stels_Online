@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.137';
+    var STELS_ONLINE_VERSION = '1.1.138';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -240,6 +240,10 @@
       // Деякі плеєри Lampa витягують із "1080p AlexFilm" лише службову мову "p" і показують "1 / p AlexFilm".
       // Для порівняння з нашою мапою перекладів цей уламок треба прибрати.
       text = text.replace(/^\s*p\s+(?=\S)/i, '').trim();
+      // 1.1.138: для "4K ТО Дубляжная" частина збірок Lampa може відрізати цифру 4
+      // і показати в аудіодоріжках "5 / K ТО Дубляжная". Для matching з raw voice
+      // прибираємо тільки одиночний службовий "K " на початку, не зачіпаючи назви типу KerobTV.
+      text = text.replace(/^\s*k\s+(?=\S)/i, '').trim();
       return text.replace(/\s+/g, ' ').trim();
     }
 
@@ -279,6 +283,7 @@
         var sourceSuffix = /\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga)\s*$/i;
         var rowBefore = String(row.textContent || '');
         var hasBrokenPQuality = /^\s*\d+\s*\/\s*p\s+\S/i.test(rowBefore) || /^\s*p\s+\S/i.test(rowBefore);
+        var hasBrokenKQuality = /^\s*\d+\s*\/\s*k\s+\S/i.test(rowBefore) || /^\s*k\s+\S/i.test(rowBefore);
         var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, null);
         var nodes = [];
         var n;
@@ -290,6 +295,9 @@
               node.nodeValue = '';
               result.removed++;
             } else if (hasBrokenPQuality && /^\s*p\s*$/.test(value)) {
+              node.nodeValue = '';
+              result.removed++;
+            } else if (hasBrokenKQuality && /^\s*k\s*$/.test(value)) {
               node.nodeValue = '';
               result.removed++;
             } else if (sourceSuffix.test(value) && value.replace(sourceSuffix, '').trim() === '') {
@@ -321,7 +329,7 @@
         var n;
         while ((n = walker.nextNode())) {
           var nv = String(n.nodeValue || '').trim();
-          if (/^p\s+/i.test(nv)) { best = n; break; }
+          if (/^[pk]\s+/i.test(nv)) { best = n; break; }
           if (!best || String(n.nodeValue || '').length > String(best.nodeValue || '').length) best = n;
         }
         if (!best) return false;
@@ -354,6 +362,34 @@
         }
       } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
       if (result.patched || result.errors.length) try { stelsLog('global-voice-quality-visible-patch', result); } catch (elog) {}
+      return result;
+    }
+
+    function stelsPatchBroken4KVoiceRows(reason) {
+      var result = { reason: reason || '', rows: 0, patched: 0, map: (stelsVoiceQualityDisplayMap || []).length, errors: [] };
+      try {
+        if (!document.querySelectorAll || !(stelsVoiceQualityDisplayMap && stelsVoiceQualityDisplayMap.length)) return result;
+        var rows = document.querySelectorAll('.selectbox-item,.selectbox__item,.selector__item,.menu__item,.selector,.simple-button,.player-panel__line,.player-panel__item,.player-panel .selector,.player-menu__item,.player-settings__item,.player-menu .selector,.player-settings .selector,.modal .selector,.modal .simple-button,.modal .selectbox-item,.modal .selectbox__item,.settings-param,.full-start__button');
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          if (!row) continue;
+          var rowText = String(row.textContent || '').trim();
+          if (!/^\s*\d+\s*\/\s*K\s+\S/i.test(rowText) && !/^\s*K\s+\S/i.test(rowText)) continue;
+          var clean = stelsCleanVoiceDisplayText(rowText);
+          var cmp = stelsVoiceCompareText(clean);
+          if (!cmp) continue;
+          for (var j = 0; j < stelsVoiceQualityDisplayMap.length; j++) {
+            var item = stelsVoiceQualityDisplayMap[j];
+            if (!item || !item.compare || !item.display || !/^\s*4K/i.test(String(item.display || ''))) continue;
+            if (cmp === item.compare) {
+              result.rows++;
+              if (stelsPatchTextNodeWithDisplay(row, item.display)) result.patched++;
+              break;
+            }
+          }
+        }
+      } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+      if (result.patched || result.errors.length) try { stelsLog('global-voice-quality-broken-4k-patch', result); } catch (elog) {}
       return result;
     }
 
@@ -453,6 +489,7 @@
       var result = { reason: reason || '', rows: 0, colored: 0, errors: [] };
       try {
         stelsPatchVisibleVoiceQualityFromMap(reason || 'colorize');
+        stelsPatchBroken4KVoiceRows(reason || 'colorize');
         stelsInstallVoiceQualityColorStyle();
         if (!document.querySelectorAll) return result;
         var rows = document.querySelectorAll('.selectbox-item,.selectbox__item,.selector__item,.menu__item,.selector,.simple-button,.player-panel__line,.player-panel__item,.player-panel .selector,.player-menu__item,.player-settings__item,.player-menu .selector,.player-settings .selector,.modal .selector,.modal .simple-button,.modal .selectbox-item,.modal .selectbox__item');
@@ -30837,7 +30874,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.137: база 1.1.136; посилено guard для Lampa.Noty.show під час source-precheck: повторне встановлення wrapper якщо Lampa його перезаписала, grace-вікно після finish/timeout, підтримка object/text повідомлень і додаткові no-link шаблони.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.138: база 1.1.137; точково виправлено пропуски якості в аудіодоріжках, коли Lampa розриває 4K-переклад і показує службове `5 / K ...` замість `4K ...`.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
