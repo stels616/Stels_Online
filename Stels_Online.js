@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.152';
+    var STELS_ONLINE_VERSION = '1.1.153';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -208,6 +208,9 @@
       source = stelsNormalizeSourceKey(source || '');
       if (source === 'filmix' || source === 'filmixtv' || source === 'fxapi') return 480;
       if (source === 'iremux') return 1080;
+      // 1.1.153: VeoVeo у RC life/events позначений як `VeoVeo - 1080p`;
+      // його потоки часто є master.m3u8 без quality-map, тому badge беремо з підказки.
+      if (source === 'veoveo') return 1080;
       // 1.1.149: Eneyida віддає HDVBUA HLS без явної мітки 1080p у URL/quality-map,
       // але саме джерело в LampUA/lifeevents позначене як 1080p. Не даємо випадковим
       // службовим назвам підняти badge вище цього рівня.
@@ -23623,10 +23626,10 @@
 
       function lampauaVoiceQualityEnabled() {
         var titleKey = norm(sourceTitle || '');
-        var allowed = ['rezka720', 'uakino', 'uafilmme', 'klonfun', 'batkomakhno', 'iremux'];
+        var allowed = ['rezka720', 'uakino', 'uafilmme', 'klonfun', 'batkomakhno', 'iremux', 'veoveo'];
         if (allowed.indexOf(titleKey) !== -1) return true;
         return wanted.some(function (w) {
-          return allowed.indexOf(w) !== -1 || w.indexOf('rezka720') !== -1 || w.indexOf('pizdatoehd') !== -1 || w.indexOf('uakino') !== -1 || w.indexOf('uafilmme') !== -1 || w.indexOf('klonfun') !== -1 || w.indexOf('batkomakhno') !== -1 || w.indexOf('iremux') !== -1;
+          return allowed.indexOf(w) !== -1 || w.indexOf('rezka720') !== -1 || w.indexOf('pizdatoehd') !== -1 || w.indexOf('uakino') !== -1 || w.indexOf('uafilmme') !== -1 || w.indexOf('klonfun') !== -1 || w.indexOf('batkomakhno') !== -1 || w.indexOf('iremux') !== -1 || w.indexOf('veoveo') !== -1;
         });
       }
 
@@ -26671,7 +26674,7 @@
       }, {
         name: 'rc-veoveo',
         title: 'VeoVeo',
-        source: new lampauaRemoteSource(this, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
+        source: new lampauaRemoteSource(this, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true }),
         search: true,
         kp: true,
         imdb: true
@@ -27129,6 +27132,8 @@
         // 1.1.142: RC iRemux у life/events позначений як `iRemux - 1080p`,
         // тому не дозволяємо службовим prefetch/quality-map підняти badge джерела вище 1080p.
         if (source === 'iremux') return 1080;
+        // 1.1.153: VeoVeo отримує максимум 1080p з RC sourceQualityHint.
+        if (source === 'veoveo') return 1080;
         // 1.1.149: Eneyida має робочі HDVBUA HLS-потоки, але вони часто не містять
         // 1080p у URL або quality-map. Badge джерела має лишатись на безпечному максимумі 1080p.
         if (source === 'eneyida') return 1080;
@@ -27689,7 +27694,7 @@
           if (name === 'starlight' || engine === 'starlight') return new cdnvideohub(fake, object, { sourceTitle: 'Midnight', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'kinotochka' || engine === 'rc-kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka', sourceQualityHint: true });
           if (name === 'iremux' || engine === 'rc-iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux', 'iremux 1080p'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true });
-          if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
+          if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true, sourceQualityHint: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
@@ -31271,7 +31276,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.152: IPTVOnline виправлено аналогічно Vokino: активний CDNVideoHub-alias піднімає badge з voice_quality до 4K, а precheck IPTVOnline проходить усі озвучки замість фіксації першої 1080p.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.153: VeoVeo переведено в структурований режим як RC/LampUA movieVoiceFilter: одна картка фільму, переклади у фільтрі/кнопці плеєра; badge 1080p береться з RC life/events sourceQualityHint.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
