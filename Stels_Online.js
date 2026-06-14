@@ -1394,7 +1394,11 @@ function stelsPatchBroken4KVoiceRows(reason) {
         var nativePlaylist = Lampa.Player.playlist;
         if (typeof nativePlay == 'function') {
           Lampa.Player.play = function (data) {
-            if (stelsAndroidPlayerFixEnabled()) data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
+            if (stelsAndroidPlayerFixEnabled()) {
+              try {
+                data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
+              } catch (e) {}
+            }
             return nativePlay.apply(this, arguments.length ? [data] : arguments);
           };
         }
