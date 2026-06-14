@@ -1326,7 +1326,13 @@ function stelsPatchBroken4KVoiceRows(reason) {
     function stelsSanitizeAndroidPlayable(play, ctx) {
       if (!stelsAndroidPlayerFixEnabled() || !play || typeof play !== 'object') return play;
       try {
-        var out = JSON.parse(JSON.stringify(play)); // глибока копія без циклів
+        // Глибока копія без circular references
+        var out = JSON.parse(JSON.stringify(play, function (key, value) {
+          // Уникаємо circular в playlist/quality
+          if (key === 'playlist' && Array.isArray(value)) return value.slice(0, 5); // обмежуємо
+          if (key === 'quality' && typeof value === 'object') return '[quality object]';
+          return value;
+        }));
 
         var url = out.url || out.file || '';
         if (typeof url == 'string' && url.indexOf(' or ') !== -1) {
@@ -1355,7 +1361,6 @@ function stelsPatchBroken4KVoiceRows(reason) {
         var timeout = parseInt(out.hls_manifest_timeout || 0, 10) || 0;
         if (!timeout || timeout < 30000) out.hls_manifest_timeout = 30000;
 
-        // Логування без circular error
         stelsLog('android-player-fix-playable', {
           ctx: ctx || '',
           title: out.title || '',
@@ -1374,8 +1379,9 @@ function stelsPatchBroken4KVoiceRows(reason) {
           error: e && (e.message || e.toString()) 
         });
       }
-      return play; // повертаємо оригінал, щоб не поламати плеєр
+      return play; // повертаємо оригінальний об'єкт
     }
+    
 
     function stelsInstallAndroidPlayerFixPatch() {
       try {
