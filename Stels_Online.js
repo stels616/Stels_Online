@@ -450,8 +450,7 @@
       if (result.patched || result.errors.length) try { stelsLog('global-voice-quality-visible-patch', result); } catch (elog) {}
       return result;
     }
-
-    function stelsPatchBroken4KVoiceRows(reason) {
+function stelsPatchBroken4KVoiceRows(reason) {
       var result = { reason: reason || '', rows: 0, patched: 0, map: (stelsVoiceQualityDisplayMap || []).length, errors: [] };
       try {
         if (!document.querySelectorAll || !(stelsVoiceQualityDisplayMap && stelsVoiceQualityDisplayMap.length)) return result;
@@ -465,7 +464,7 @@
           var rowText = String(row.textContent || '').trim();
           if (!rowText) continue;
 
-          // Розширені умови для "K" (Lampa відрізала 4)
+          // Розширені умови для "K" (Lampa відрізала "4")
           if (!/^\s*\d+\s*\/\s*K\s+\S/i.test(rowText) && 
               !/^\s*K\s+\S/i.test(rowText) && 
               !/\sK\s+\S/i.test(rowText)) continue;
@@ -479,7 +478,7 @@
             if (!item || !item.compare || !item.display) continue;
 
             var display = String(item.display || '');
-            // Шукаємо будь-яку 4K/8K тощо
+            // Шукаємо будь-яку якість 4K/8K/2K
             if (!/(?:^|\s)(4K|8K|2K|2160p|4320p)/i.test(display)) continue;
 
             if (cmp === item.compare) {
@@ -500,6 +499,7 @@
       }
       return result;
     }
+    
     function stelsIsSelectBoxOpen() {
       try { if (typeof $ != 'undefined' && $('body').hasClass('selectbox--open')) return true; } catch (e) {}
       try { return !!(document.querySelector && document.querySelector('.selectbox--open,.selectbox.open,.selectbox.active,.selectbox--visible')); } catch (e2) {}
