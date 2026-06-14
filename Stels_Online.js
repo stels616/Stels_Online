@@ -299,6 +299,7 @@
       text = text.replace(/^\s*\/\s*K\s+/i, '').trim();           // нове
       text = text.replace(/\s+K\s+(?=\S)/i, ' ').trim();         // нове
       return text.replace(/\s+/g, ' ').trim();
+    }
 
     function stelsVoiceCompareText(value) {
       return stelsStripVoiceQuality(stelsCleanVoiceDisplayText(value)).replace(/\s+/g, ' ').toLowerCase();
