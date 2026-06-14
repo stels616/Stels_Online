@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.163';
+    var STELS_ONLINE_VERSION = '1.1.164';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -256,18 +256,25 @@
       return q ? stelsQualityLabel(q) : '';
     }
 
-    function stelsVoiceDisplayName(name, quality, episodeCount) {
+    function stelsVoiceDisplayName(name, quality) {
       name = String(name == null ? '' : name).trim();
       quality = String(quality == null ? '' : quality).trim();
       if (!name) return name;
-      var ep = parseInt(episodeCount, 10) || 0;
-      var epSuffix = ep > 0 ? (' E' + ep) : '';
-      // Якщо назва вже містить " E<число>" в кінці (повторний виклик display-функції) — не дублюємо.
-      var alreadyHasEp = /\sE\d+\s*$/.test(name);
-      if (stelsVoiceQualityPrefix(name)) return alreadyHasEp || !epSuffix ? name : (name + epSuffix);
-      if (!quality && STELS_VOICE_QUALITY_RE.test(name)) return alreadyHasEp || !epSuffix ? name : (name + epSuffix);
-      var withEp = alreadyHasEp ? name : (name + epSuffix);
-      return quality ? (quality + '  ' + withEp) : withEp;
+      if (stelsVoiceQualityPrefix(name)) return name;
+      if (!quality && STELS_VOICE_QUALITY_RE.test(name)) return name;
+      return quality ? (quality + '  ' + name) : name;
+    }
+
+    function stelsVoiceEpisodeLabel(info) {
+      try {
+        if (!info) return '';
+        var count = parseInt(
+          info.episode_count || info.episodes_count || info.episodes || info.count || info.last_episode || 0,
+          10
+        ) || 0;
+        return count > 0 ? ('E' + count) : '';
+      } catch (e) {}
+      return '';
     }
 
     var stelsVoiceQualityDisplayMap = [];
@@ -362,7 +369,7 @@
           acceptNode: function (n) {
             if (!n || !n.nodeValue || !String(n.nodeValue).trim()) return NodeFilter.FILTER_REJECT;
             var p = n.parentNode;
-            if (p && p.classList && (p.classList.contains('stels-online-voice-quality-prefix') || p.classList.contains('stels-zetflixnet-voice-quality-prefix') || p.classList.contains('stels-online-voice-episode-suffix'))) return NodeFilter.FILTER_REJECT;
+            if (p && p.classList && (p.classList.contains('stels-online-voice-quality-prefix') || p.classList.contains('stels-zetflixnet-voice-quality-prefix'))) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
           }
         });
@@ -477,13 +484,13 @@
         if (filterItems.voice && filterItems.voice.length) {
           var qarr = filterItems.voice_quality || [];
           var info = filterItems.voice_info || [];
-          var earr = filterItems.voice_episodes || [];
           out.voice = filterItems.voice.map(function (voice, index) {
             var q = qarr[index] || '';
             if (!q && info[index]) q = stelsVoiceQualityLabelFromAny(info[index]);
             if (!q) q = stelsVoiceQualityPrefix(voice || '');
-            var ep = parseInt(earr[index], 10) || 0;
-            return stelsVoiceDisplayName(voice, q, ep);
+            var display = stelsVoiceDisplayName(voice, q);
+            var ep = stelsVoiceEpisodeLabel(info[index]);
+            return ep ? (display + ' ' + ep) : display;
           });
         }
       } catch (e) {}
@@ -497,9 +504,7 @@
         st.id = 'stels-global-voice-quality-color-style';
         st.textContent = '' +
           '.stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;font-weight:700!important;text-shadow:0 0 2px rgba(0,0,0,.45)!important;}' +
-          '.selectbox-item .stels-online-voice-quality-prefix,.selectbox__item .stels-online-voice-quality-prefix,.selector__item .stels-online-voice-quality-prefix,.menu__item .stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}' +
-          '.stels-online-voice-episode-suffix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;font-weight:700!important;text-shadow:0 0 2px rgba(0,0,0,.45)!important;}' +
-          '.selectbox-item .stels-online-voice-episode-suffix,.selectbox__item .stels-online-voice-episode-suffix,.selector__item .stels-online-voice-episode-suffix,.menu__item .stels-online-voice-episode-suffix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}';
+          '.selectbox-item .stels-online-voice-quality-prefix,.selectbox__item .stels-online-voice-quality-prefix,.selector__item .stels-online-voice-quality-prefix,.menu__item .stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}';
         (document.head || document.documentElement).appendChild(st);
       } catch (e) {}
     }
@@ -508,7 +513,7 @@
       try {
         if (!node || node.nodeType !== 3 || !node.parentNode) return false;
         var parent = node.parentNode;
-        if (parent.classList && (parent.classList.contains('stels-online-voice-quality-prefix') || parent.classList.contains('stels-zetflixnet-voice-quality-prefix') || parent.classList.contains('stels-online-voice-episode-suffix'))) return false;
+        if (parent.classList && (parent.classList.contains('stels-online-voice-quality-prefix') || parent.classList.contains('stels-zetflixnet-voice-quality-prefix'))) return false;
         var txt = node.nodeValue || '';
         var m = txt.match(/^(\s*(?:(?:\d+\s*\/\s*)?))(8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)(\s+)([\s\S]*)$/i);
         if (!m) return false;
@@ -518,11 +523,6 @@
         // і " / Джерело" після неї. Для наших synthetic voiceovers це службовий шум.
         if (/^\s*\d+\s*\/\s*$/i.test(prefix)) prefix = '';
         rest = rest.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno)\s*$/i, '');
-        // Витягуємо суфікс " E<число>" (кількість серій для цього перекладу),
-        // щоб підсвітити його тим самим жовтим кольором, що й якість.
-        var epSuffix = '';
-        var epMatch = rest.match(/^([\s\S]*?)(\s+E\d+)\s*$/i);
-        if (epMatch) { rest = epMatch[1]; epSuffix = epMatch[2]; }
         var frag = document.createDocumentFragment();
         if (prefix) frag.appendChild(document.createTextNode(prefix));
         var span = document.createElement('span');
@@ -530,12 +530,6 @@
         span.textContent = m[2];
         frag.appendChild(span);
         frag.appendChild(document.createTextNode(m[3] + rest));
-        if (epSuffix) {
-          var espan = document.createElement('span');
-          espan.className = 'stels-online-voice-episode-suffix';
-          espan.textContent = epSuffix;
-          frag.appendChild(espan);
-        }
         parent.replaceChild(frag, node);
         return true;
       } catch (e) { return false; }
@@ -8542,9 +8536,6 @@
             try { (v.items || []).forEach(function (it) { maxQ = Math.max(maxQ, parseInt(it.quality || 0, 10) || 0); }); } catch (e) {}
             return maxQ ? stelsQualityLabel(maxQ) : '';
           });
-          filter_items.voice_episodes = extract.seasons[choice.season].voices.map(function (v) {
-            return (v.items || []).length;
-          });
         }
 
         if (!filter_items.voice[choice.voice]) choice.voice = 0;
@@ -12656,9 +12647,6 @@
         }
         allohaPrimeVoiceQualityFromItems('filter-build');
         filter_items.voice_quality = (filter_items.voice || []).map(function (v) { return allohaVoiceQualityLabel(v, currentSeason); });
-        filter_items.voice_episodes = (filter_items.voice || []).map(function (v) {
-          return items.filter(function (it) { return (!currentSeason || it.season == currentSeason) && (it.voice || '') === v; }).length;
-        });
         log('voice-filter-build', { voices: filter_items.voice || [], voice_quality: filter_items.voice_quality || [], season: currentSeason || 0 });
         component.filter(filter_items, choice);
         allohaStartVoiceQualityPrefetch('filter-build');
@@ -13144,7 +13132,7 @@
         selectedVoice = selectedVoice || element && (element.voice || element.translate_voice || element.voice_name) || voices[choice.voice] || '';
         stelsScheduleVoiceQualityColor('alloha-player-voiceovers');
         return voices.map(function (voiceName, index) {
-          var displayName = stelsVoiceDisplayName(voiceName, allohaVoiceQualityLabel(voiceName, element && element.season || allohaCurrentSeasonForQuality()), filter_items.voice_episodes && filter_items.voice_episodes[index]);
+          var displayName = stelsVoiceDisplayName(voiceName, allohaVoiceQualityLabel(voiceName, element && element.season || allohaCurrentSeasonForQuality()));
           return {
             language: displayName,
             name: displayName,
@@ -15404,12 +15392,6 @@
           season_num: seasonNums,
           voice: voices
         };
-        if (seasonNums.length) {
-          var selSeason = seasonNums[choice.season] || seasonNums[0];
-          filter_items.voice_episodes = voices.map(function (v) {
-            return (matrix[selSeason] && matrix[selSeason][v]) || 0;
-          });
-        }
         if (!filter_items.season[choice.season]) choice.season = 0;
         if (!filter_items.voice[choice.voice]) choice.voice = 0;
         if (choice.voice_name) {
