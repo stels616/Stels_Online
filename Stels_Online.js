@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.163';
+    var STELS_ONLINE_VERSION = '1.1.160';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1265,11 +1265,6 @@
           '.stels-online-source-row.focus,.stels-online-source-row.stels-online-source-focused,.stels-online-source-row:hover{background:rgba(255,255,255,.12);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
           '.stels-online-source-row.stels-online-source-disabled{opacity:.48;}' +
           '.stels-online-source-arrows{display:flex;gap:.45em;align-items:center;margin-left:auto;margin-right:.7em}.stels-online-source-arrow{color:#00d36f;font-size:1.25em;font-weight:900;line-height:1;padding:.28em .38em;border-radius:.3em;background:rgba(0,211,111,.10)}.stels-online-source-arrow.focus,.stels-online-source-arrow:hover{background:rgba(0,211,111,.24)}' +
-          '.stels-online-nonblocking-loading .stels-online-keep-filter-visible,.stels-online-nonblocking-loading-root .explorer__files-head,.stels-online-nonblocking-loading-root .filter{display:flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;}' +
-          '.stels-online-head-source-button{display:none!important;visibility:hidden!important;pointer-events:none!important;}' +
-          '.stels-online-loading-spinner{display:none!important;position:fixed!important;left:50%!important;top:50%!important;width:3.1em!important;height:3.1em!important;min-width:3.1em!important;margin-left:-1.55em!important;margin-top:-1.55em!important;border:.26em solid rgba(255,255,255,.28)!important;border-top-color:#00d36f!important;border-right-color:#00d36f!important;border-radius:50%!important;box-sizing:border-box!important;animation:stels-online-loading-spin .72s linear infinite!important;z-index:99999!important;pointer-events:none!important;filter:drop-shadow(0 0 .45em rgba(0,0,0,.7))!important;}' +
-          '.stels-online-nonblocking-loading .stels-online-loading-spinner{display:block!important;visibility:visible!important;opacity:1!important;}' +
-          '@keyframes stels-online-loading-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}' +
           '.stels-online-advanced-settings{margin-top:.35em;border-top:1px solid rgba(255,255,255,.08);padding-top:.35em;}' +
           '.online.stels-online-future-episode{opacity:.54!important;filter:grayscale(.45)!important;background:rgba(35,35,35,.72)!important;border-color:rgba(255,255,255,.35)!important;}' +
           '.online.stels-online-future-episode.focus,.online.stels-online-future-episode.selector:hover{opacity:.72!important;border-color:rgba(255,255,255,.62)!important;background:rgba(45,45,45,.82)!important;}' +
@@ -28106,7 +28101,7 @@
       this.create = function () {
         var _this = this;
 
-        this.loading(true);
+        this.activity.loader(true);
 
         filter.onSearch = function (value) {
           Lampa.Activity.replace({
@@ -28139,10 +28134,12 @@
         };
 
         filter.render().find('.filter--sort span').text(Lampa.Lang.translate('stels_online_balanser'));
-        // 1.1.162: кнопку "Джерело" прибрано саме з верхнього горизонтального меню.
-        // Вибір джерела лишається через штатний пункт "Балансер", а під час non-blocking
-        // завантаження показуємо тільки індикатор-спінер без перекриття меню.
-        try { filter.render().find('.stels-online-head-source-button').remove(); } catch (e) {}
+        var stelsHeaderSourceButton = $('<div class="simple-button selector stels-online-head-source-button" style="margin-right:.6em">Джерело</div>');
+        stelsHeaderSourceButton.on('hover:enter click', function (event) {
+          if (event && event.preventDefault) event.preventDefault();
+          stelsOpenFloatingSourceMenu();
+        });
+        try { filter.render().prepend(stelsHeaderSourceButton); } catch (e) {}
         files.appendHead(filter.render());
         files.appendFiles(scroll.render());
         this.search();
@@ -28190,7 +28187,7 @@
 
       this.search = function () {
         stelsLog('search-start', { balanser: balanser, title: object && object.movie && (object.movie.title || object.movie.name), original_title: object && object.movie && (object.movie.original_title || object.movie.original_name), imdb_id: object && object.movie && object.movie.imdb_id, kinopoisk_id: object && object.movie && object.movie.kinopoisk_id, tmdb_id: object && object.movie && (object.movie.tmdb_id || object.movie.id) });
-        this.loading(true);
+        this.activity.loader(true);
         this.filter({
           source: filter_sources
         }, {
@@ -28847,7 +28844,7 @@
           elem.info = info.length ? ' / ' + info.join(' / ') : '';
           var item = Lampa.Template.get('stels_online_folder', elem);
           item.on('hover:enter', function () {
-            _this5.loading(true);
+            _this5.activity.loader(true);
 
             _this5.reset();
 
@@ -28871,7 +28868,7 @@
           };
           var item = Lampa.Template.get('stels_online_folder', elem);
           item.on('hover:enter', function () {
-            _this5.loading(true);
+            _this5.activity.loader(true);
 
             _this5.reset();
 
@@ -28902,57 +28899,13 @@
        */
 
 
-      var stelsNonBlockingLoadingActive = false;
-      function stelsEnsureNonBlockingSpinner() {
-        try {
-          var root = filter && filter.render ? filter.render() : null;
-          if (root && root.length) {
-            try { root.find('.stels-online-head-source-button').remove(); } catch (eRemove) {}
-            try { root.find('.stels-online-loading-spinner').remove(); } catch (eRootSpinner) {}
-          }
-          if ($('body > .stels-online-loading-spinner').length) return;
-          // 1.1.163: спінер має бути по центру екрана, але без blocking overlay,
-          // щоб верхнє меню Пошук / Балансер / Фільтр залишалося доступним.
-          $('body').append($('<span class="stels-online-loading-spinner" aria-label="Завантаження" title="Завантаження"></span>'));
-        } catch (e) {}
-      }
-
-      function stelsSetNonBlockingLoadingUi(status) {
-        try {
-          stelsEnsureNonBlockingSpinner();
-          if (status) {
-            $('body').addClass('stels-online-nonblocking-loading');
-            try { files.render().addClass('stels-online-nonblocking-loading-root'); } catch (eFilesOn) {}
-            try { filter.render().addClass('stels-online-keep-filter-visible'); } catch (eFilterOn) {}
-          } else {
-            $('body').removeClass('stels-online-nonblocking-loading');
-            try { files.render().removeClass('stels-online-nonblocking-loading-root'); } catch (eFilesOff) {}
-            try { filter.render().removeClass('stels-online-keep-filter-visible'); } catch (eFilterOff) {}
-          }
-        } catch (e) {}
-      }
-
       this.loading = function (status) {
         if (status) {
-          // 1.1.161/1.1.163: глобальне правило Stels_Online — під час довгого завантаження
-          // джерела не вмикаємо штатний activity.loader(true), бо він перекриває/ховає
-          // верхнє меню Lampa (Пошук / Балансер / Фільтр). Залишаємо activity
-          // відкритою, показуємо зелений спінер по центру екрана без blocking overlay, а користувач може одразу змінити балансер, фільтр або пошук.
-          stelsShowFloatingSourceButton(false);
-          stelsSetNonBlockingLoadingUi(true);
-          try { if (this.activity && this.activity.loader) this.activity.loader(false); } catch (eLoaderOff) {}
-          if (!stelsNonBlockingLoadingActive) {
-            stelsNonBlockingLoadingActive = true;
-            stelsLog('nonblocking-loading-on', { source: balanser, reason: 'keep-top-menu-available-with-spinner' });
-          }
+          stelsShowFloatingSourceButton(true);
+          this.activity.loader(true);
         } else {
-          stelsSetNonBlockingLoadingUi(false);
-          try { this.activity.loader(false); } catch (eLoaderOff2) {}
+          this.activity.loader(false);
           stelsShowFloatingSourceButton(false);
-          if (stelsNonBlockingLoadingActive) {
-            stelsNonBlockingLoadingActive = false;
-            stelsLog('nonblocking-loading-off', { source: balanser });
-          }
           if (Lampa.Activity.active().activity === this.activity && this.inActivity()) this.activity.toggle();
         }
       };
@@ -31556,7 +31509,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.163: зелений спінер завантаження перенесено з верхнього меню в центр екрана без blocking overlay; верхнє меню Пошук/Балансер/Фільтр лишається доступним, кнопка Джерело у верхньому меню прихована.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.160: прогрес перегляду в картках тепер зелений; Alloha одразу підставляє якість перекладів з legacy quality/season fallback; майбутні серії стабільніше визначають сезон/серію та рендеряться швидше.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
