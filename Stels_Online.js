@@ -294,18 +294,11 @@
     function stelsCleanVoiceDisplayText(value) {
       var text = String(value == null ? '' : value).replace(/&nbsp;/g, ' ').trim();
       text = text.replace(/[✓✔]/g, ' ').trim();
-      // Lampa/Android player може додавати службові частини: "1 /" і " / Source".
-      text = text.replace(/^\s*\d+\s*\/\s*/i, '').trim();
-      text = text.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|Eneyida)\s*$/i, '').trim();
-      // Деякі плеєри Lampa витягують із "1080p AlexFilm" лише службову мову "p" і показують "1 / p AlexFilm".
-      // Для порівняння з нашою мапою перекладів цей уламок треба прибрати.
-      text = text.replace(/^\s*p\s+(?=\S)/i, '').trim();
-      // 1.1.138: для "4K ТО Дубляжная" частина збірок Lampa може відрізати цифру 4
-      // і показати в аудіодоріжках "5 / K ТО Дубляжная". Для matching з raw voice
-      // прибираємо тільки одиночний службовий "K " на початку, не зачіпаючи назви типу KerobTV.
+// 1.1.138 + покращення для Lampa, яка часто відрізає "4" і залишає тільки "K"
       text = text.replace(/^\s*k\s+(?=\S)/i, '').trim();
+      text = text.replace(/^\s*\/\s*K\s+/i, '').trim();           // нове
+      text = text.replace(/\s+K\s+(?=\S)/i, ' ').trim();         // нове
       return text.replace(/\s+/g, ' ').trim();
-    }
 
     function stelsVoiceCompareText(value) {
       return stelsStripVoiceQuality(stelsCleanVoiceDisplayText(value)).replace(/\s+/g, ' ').toLowerCase();
@@ -462,30 +455,51 @@
       var result = { reason: reason || '', rows: 0, patched: 0, map: (stelsVoiceQualityDisplayMap || []).length, errors: [] };
       try {
         if (!document.querySelectorAll || !(stelsVoiceQualityDisplayMap && stelsVoiceQualityDisplayMap.length)) return result;
+
         var rows = document.querySelectorAll('.selectbox-item,.selectbox__item,.selector__item,.menu__item,.selector,.simple-button,.player-panel__line,.player-panel__item,.player-panel .selector,.player-menu__item,.player-settings__item,.player-menu .selector,.player-settings .selector,.modal .selector,.modal .simple-button,.modal .selectbox-item,.modal .selectbox__item,.settings-param,.full-start__button');
+
         for (var i = 0; i < rows.length; i++) {
           var row = rows[i];
           if (!row) continue;
+
           var rowText = String(row.textContent || '').trim();
-          if (!/^\s*\d+\s*\/\s*K\s+\S/i.test(rowText) && !/^\s*K\s+\S/i.test(rowText)) continue;
+          if (!rowText) continue;
+
+          // Розширені умови для "K" (Lampa відрізала 4)
+          if (!/^\s*\d+\s*\/\s*K\s+\S/i.test(rowText) && 
+              !/^\s*K\s+\S/i.test(rowText) && 
+              !/\sK\s+\S/i.test(rowText)) continue;
+
           var clean = stelsCleanVoiceDisplayText(rowText);
           var cmp = stelsVoiceCompareText(clean);
           if (!cmp) continue;
+
           for (var j = 0; j < stelsVoiceQualityDisplayMap.length; j++) {
             var item = stelsVoiceQualityDisplayMap[j];
-            if (!item || !item.compare || !item.display || !/^\s*4K/i.test(String(item.display || ''))) continue;
+            if (!item || !item.compare || !item.display) continue;
+
+            var display = String(item.display || '');
+            // Шукаємо будь-яку 4K/8K тощо
+            if (!/(?:^|\s)(4K|8K|2K|2160p|4320p)/i.test(display)) continue;
+
             if (cmp === item.compare) {
               result.rows++;
-              if (stelsPatchRowWithDisplay(row, item.display)) result.patched++;
+              if (stelsPatchRowWithDisplay(row, display)) {
+                result.patched++;
+              }
               break;
             }
           }
         }
-      } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
-      if (result.patched || result.errors.length) try { stelsLog('global-voice-quality-broken-4k-patch', result); } catch (elog) {}
+      } catch (e) { 
+        result.errors.push(e && (e.message || e.toString()) || ''); 
+      }
+
+      if (result.patched || result.errors.length) {
+        try { stelsLog('global-voice-quality-broken-4k-patch', result); } catch (elog) {}
+      }
       return result;
     }
-
     function stelsIsSelectBoxOpen() {
       try { if (typeof $ != 'undefined' && $('body').hasClass('selectbox--open')) return true; } catch (e) {}
       try { return !!(document.querySelector && document.querySelector('.selectbox--open,.selectbox.open,.selectbox.active,.selectbox--visible')); } catch (e2) {}
