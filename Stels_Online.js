@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.163';
+    var STELS_ONLINE_VERSION = '1.1.165';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -7413,6 +7413,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
           var view = Lampa.Timeline.view(hash);
@@ -7477,6 +7478,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               call({
                 file: element.file
@@ -11186,6 +11188,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               call(getFile(element));
             }
@@ -18745,6 +18748,29 @@
         filter_items.voice = rawVoices.map(function (voice) { return zetflixnetVoiceDisplayName(voice, season); });
       }
 
+      function zetflixnetApplyVoiceEpisodes() {
+        try {
+          var rawVoices = filter_items.voice_raw || [];
+          if (!(rawVoices && rawVoices.length) || !(extract && extract.items && extract.items.length)) return;
+          var season = zetflixnetCurrentSeasonForQuality();
+          var byVoice = {};
+          extract.items.forEach(function (data) {
+            if (!data) return;
+            if (season && data.season != season) return;
+            var voice = zetflixnetVoiceNameOf(data);
+            var episode = parseInt(data.episode || data.e || 0, 10) || 0;
+            if (!voice || !episode) return;
+            byVoice[voice] = byVoice[voice] || {};
+            byVoice[voice][episode] = true;
+          });
+          var counts = rawVoices.map(function (voice) {
+            var episodes = byVoice[voice] || {};
+            return Object.keys(episodes).length || 0;
+          });
+          if (counts.some(function (count) { return count > 0; })) filter_items.voice_episodes = counts;
+        } catch (e) {}
+      }
+
       function zetflixnetVoiceRaw(index) {
         if (filter_items.voice_raw && filter_items.voice_raw[index] != null) return filter_items.voice_raw[index];
         return zetflixnetStripVoiceQuality(filter_items.voice && filter_items.voice[index] || '');
@@ -18937,9 +18963,10 @@
             if (vinx == -1) choice.voice = 0;else if (vinx !== choice.voice) choice.voice = vinx;
           }
         }
+        zetflixnetApplyVoiceEpisodes();
         choice.voice_name = zetflixnetVoiceRaw(choice.voice) || choice.voice_name || '';
         choice.voice_quality = filter_items.voice_quality && filter_items.voice_quality[choice.voice] || '';
-        stelsLog('zetflixnet-filter-build', { seasons: filter_items.season || [], voices: filter_items.voice || [], voice_raw: filter_items.voice_raw || [], voice_quality: filter_items.voice_quality || [], selected_season: choice.season, selected_voice: choice.voice_name || '', selected_voice_label: filter_items.voice && filter_items.voice[choice.voice] || '', is_movie: !(extract.seasons && extract.seasons.length), items_count: extract.items ? extract.items.length : 0 });
+        stelsLog('zetflixnet-filter-build', { seasons: filter_items.season || [], voices: filter_items.voice || [], voice_raw: filter_items.voice_raw || [], voice_quality: filter_items.voice_quality || [], voice_episodes: filter_items.voice_episodes || [], selected_season: choice.season, selected_voice: choice.voice_name || '', selected_voice_label: filter_items.voice && filter_items.voice[choice.voice] || '', is_movie: !(extract.seasons && extract.seasons.length), items_count: extract.items ? extract.items.length : 0 });
         component.filter(filter_items, choice);
         zetflixnetScheduleVoiceQualityColor('filter-build');
       }
@@ -20132,6 +20159,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'zetflixnet-append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = component.getLastEpisode(items);
@@ -20206,6 +20234,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               getStream(element, function (element) {
                 stelsLog('zetflixnet-context-file', { data_id: element.data_id || '', file: zlogUrlInfo(element.stream), quality_keys: element.qualitys ? Object.keys(element.qualitys) : [] });
