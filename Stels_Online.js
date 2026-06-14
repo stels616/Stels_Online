@@ -1325,52 +1325,55 @@ function stelsPatchBroken4KVoiceRows(reason) {
 
     function stelsSanitizeAndroidPlayable(play, ctx) {
       if (!stelsAndroidPlayerFixEnabled() || !play || typeof play !== 'object') return play;
-      try {
-        // Глибока копія без circular references
-        var out = JSON.parse(JSON.stringify(play, function (key, value) {
-          // Уникаємо circular в playlist/quality
-          if (key === 'playlist' && Array.isArray(value)) return value.slice(0, 5); // обмежуємо
-          if (key === 'quality' && typeof value === 'object') return '[quality object]';
-          return value;
-        }));
 
-        var url = out.url || out.file || '';
+      try {
+        // Максимально безпечна глибока копія
+        function safeClone(obj, depth = 0) {
+          if (depth > 8) return '[deep object]';
+          if (obj === null || typeof obj !== 'object') return obj;
+          if (Array.isArray(obj)) {
+            return obj.slice(0, 10).map(item => safeClone(item, depth + 1)); // обмежуємо масиви
+          }
+          const clone = {};
+          for (let key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+              if (key === 'playlist' || key === 'files' || key === 'quality' || key === 'sources') {
+                clone[key] = '[complex data]';
+              } else {
+                clone[key] = safeClone(obj[key], depth + 1);
+              }
+            }
+          }
+          return clone;
+        }
+
+        var safePlay = safeClone(play);
+
+        var url = safePlay.url || safePlay.file || '';
         if (typeof url == 'string' && url.indexOf(' or ') !== -1) {
           var parts = url.split(' or ');
-          out.url = parts[0];
-          if (!out.url_reserve && parts[1]) out.url_reserve = parts[1];
-          url = out.url;
+          safePlay.url = parts[0];
+          if (!safePlay.url_reserve && parts[1]) safePlay.url_reserve = parts[1];
         }
 
-        if (typeof url == 'string' && /^https?:\/\//i.test(url)) {
-          if (/^https:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
-            out.url = url.replace(/^https:/i, 'http:');
-            if (!out.url_reserve) out.url_reserve = url;
-            url = out.url;
-          }
-          else if (/^http:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
-            if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
-          }
+        if (typeof (safePlay.url || safePlay.file) == 'string' && /\.m3u8(?:$|\?)/i.test(safePlay.url || safePlay.file)) {
+          safePlay._stels_original_quality = safePlay.quality;
+          safePlay.quality = false;
         }
 
-        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
-          out._stels_original_quality = out.quality;
-          out.quality = false;
-        }
-
-        var timeout = parseInt(out.hls_manifest_timeout || 0, 10) || 0;
-        if (!timeout || timeout < 30000) out.hls_manifest_timeout = 30000;
+        var timeout = parseInt(safePlay.hls_manifest_timeout || 0, 10) || 0;
+        if (!timeout || timeout < 30000) safePlay.hls_manifest_timeout = 30000;
 
         stelsLog('android-player-fix-playable', {
           ctx: ctx || '',
-          title: out.title || '',
-          season: out.season || 0,
-          episode: out.episode || 0,
-          has_url: !!(out.url || out.file),
-          has_reserve: !!out.url_reserve,
-          has_file: !!out.file,
-          quality_disabled: !!out._stels_original_quality,
-          url_preview: stelsPreviewUrl(out.url || out.file || '')
+          title: safePlay.title || '',
+          season: safePlay.season || 0,
+          episode: safePlay.episode || 0,
+          has_url: !!(safePlay.url || safePlay.file),
+          has_reserve: !!safePlay.url_reserve,
+          has_file: !!safePlay.file,
+          quality_disabled: !!safePlay._stels_original_quality,
+          url_preview: stelsPreviewUrl(safePlay.url || safePlay.file || '')
         });
 
       } catch (e) {
@@ -1379,7 +1382,8 @@ function stelsPatchBroken4KVoiceRows(reason) {
           error: e && (e.message || e.toString()) 
         });
       }
-      return play; // повертаємо оригінальний об'єкт
+
+      return play; // завжди повертаємо оригінал
     }
     
 
