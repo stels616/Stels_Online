@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.153';
+    var STELS_ONLINE_VERSION = '1.1.165';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -211,6 +211,13 @@
       // 1.1.153: VeoVeo у RC life/events позначений як `VeoVeo - 1080p`;
       // його потоки часто є master.m3u8 без quality-map, тому badge беремо з підказки.
       if (source === 'veoveo') return 1080;
+      // 1.1.156: UAKino/LampUA не має 4K у цьому джерелі. У life/events поруч
+      // можуть бути PidTor/Mirage/JackTor 2160p, а асинхронний voice_quality іншого
+      // джерела не повинен піднімати badge UAKino вище фактичних 1080p.
+      if (source === 'uakino' || source === 'uakino-lampaua' || source === 'lampaua-uakino') return 1080;
+      // 1.1.156: UafilmMe також LampUA-джерело без 4K. Не дозволяємо
+      // чужому async voice_quality з CDNVideoHub/VKMovie підняти його badge вище 1080p.
+      if (source === 'uafilmme' || source === 'uafilmme-lampaua' || source === 'lampaua-uafilmme') return 1080;
       // 1.1.149: Eneyida віддає HDVBUA HLS без явної мітки 1080p у URL/quality-map,
       // але саме джерело в LampUA/lifeevents позначене як 1080p. Не даємо випадковим
       // службовим назвам підняти badge вище цього рівня.
@@ -249,13 +256,18 @@
       return q ? stelsQualityLabel(q) : '';
     }
 
-    function stelsVoiceDisplayName(name, quality) {
+    function stelsVoiceDisplayName(name, quality, episodeCount) {
       name = String(name == null ? '' : name).trim();
       quality = String(quality == null ? '' : quality).trim();
       if (!name) return name;
-      if (stelsVoiceQualityPrefix(name)) return name;
-      if (!quality && STELS_VOICE_QUALITY_RE.test(name)) return name;
-      return quality ? (quality + '  ' + name) : name;
+      var ep = parseInt(episodeCount, 10) || 0;
+      var epSuffix = ep > 0 ? (' E' + ep) : '';
+      // Якщо назва вже містить " E<число>" в кінці (повторний виклик display-функції) — не дублюємо.
+      var alreadyHasEp = /\sE\d+\s*$/.test(name);
+      if (stelsVoiceQualityPrefix(name)) return alreadyHasEp || !epSuffix ? name : (name + epSuffix);
+      if (!quality && STELS_VOICE_QUALITY_RE.test(name)) return alreadyHasEp || !epSuffix ? name : (name + epSuffix);
+      var withEp = alreadyHasEp ? name : (name + epSuffix);
+      return quality ? (quality + '  ' + withEp) : withEp;
     }
 
     var stelsVoiceQualityDisplayMap = [];
@@ -350,7 +362,7 @@
           acceptNode: function (n) {
             if (!n || !n.nodeValue || !String(n.nodeValue).trim()) return NodeFilter.FILTER_REJECT;
             var p = n.parentNode;
-            if (p && p.classList && (p.classList.contains('stels-online-voice-quality-prefix') || p.classList.contains('stels-zetflixnet-voice-quality-prefix'))) return NodeFilter.FILTER_REJECT;
+            if (p && p.classList && (p.classList.contains('stels-online-voice-quality-prefix') || p.classList.contains('stels-zetflixnet-voice-quality-prefix') || p.classList.contains('stels-online-voice-episode-suffix'))) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
           }
         });
@@ -465,11 +477,13 @@
         if (filterItems.voice && filterItems.voice.length) {
           var qarr = filterItems.voice_quality || [];
           var info = filterItems.voice_info || [];
+          var earr = filterItems.voice_episodes || [];
           out.voice = filterItems.voice.map(function (voice, index) {
             var q = qarr[index] || '';
             if (!q && info[index]) q = stelsVoiceQualityLabelFromAny(info[index]);
             if (!q) q = stelsVoiceQualityPrefix(voice || '');
-            return stelsVoiceDisplayName(voice, q);
+            var ep = parseInt(earr[index], 10) || 0;
+            return stelsVoiceDisplayName(voice, q, ep);
           });
         }
       } catch (e) {}
@@ -483,7 +497,9 @@
         st.id = 'stels-global-voice-quality-color-style';
         st.textContent = '' +
           '.stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;font-weight:700!important;text-shadow:0 0 2px rgba(0,0,0,.45)!important;}' +
-          '.selectbox-item .stels-online-voice-quality-prefix,.selectbox__item .stels-online-voice-quality-prefix,.selector__item .stels-online-voice-quality-prefix,.menu__item .stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}';
+          '.selectbox-item .stels-online-voice-quality-prefix,.selectbox__item .stels-online-voice-quality-prefix,.selector__item .stels-online-voice-quality-prefix,.menu__item .stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}' +
+          '.stels-online-voice-episode-suffix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;font-weight:700!important;text-shadow:0 0 2px rgba(0,0,0,.45)!important;}' +
+          '.selectbox-item .stels-online-voice-episode-suffix,.selectbox__item .stels-online-voice-episode-suffix,.selector__item .stels-online-voice-episode-suffix,.menu__item .stels-online-voice-episode-suffix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}';
         (document.head || document.documentElement).appendChild(st);
       } catch (e) {}
     }
@@ -492,7 +508,7 @@
       try {
         if (!node || node.nodeType !== 3 || !node.parentNode) return false;
         var parent = node.parentNode;
-        if (parent.classList && (parent.classList.contains('stels-online-voice-quality-prefix') || parent.classList.contains('stels-zetflixnet-voice-quality-prefix'))) return false;
+        if (parent.classList && (parent.classList.contains('stels-online-voice-quality-prefix') || parent.classList.contains('stels-zetflixnet-voice-quality-prefix') || parent.classList.contains('stels-online-voice-episode-suffix'))) return false;
         var txt = node.nodeValue || '';
         var m = txt.match(/^(\s*(?:(?:\d+\s*\/\s*)?))(8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)(\s+)([\s\S]*)$/i);
         if (!m) return false;
@@ -502,6 +518,11 @@
         // і " / Джерело" після неї. Для наших synthetic voiceovers це службовий шум.
         if (/^\s*\d+\s*\/\s*$/i.test(prefix)) prefix = '';
         rest = rest.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno)\s*$/i, '');
+        // Витягуємо суфікс " E<число>" (кількість серій для цього перекладу),
+        // щоб підсвітити його тим самим жовтим кольором, що й якість.
+        var epSuffix = '';
+        var epMatch = rest.match(/^([\s\S]*?)(\s+E\d+)\s*$/i);
+        if (epMatch) { rest = epMatch[1]; epSuffix = epMatch[2]; }
         var frag = document.createDocumentFragment();
         if (prefix) frag.appendChild(document.createTextNode(prefix));
         var span = document.createElement('span');
@@ -509,6 +530,12 @@
         span.textContent = m[2];
         frag.appendChild(span);
         frag.appendChild(document.createTextNode(m[3] + rest));
+        if (epSuffix) {
+          var espan = document.createElement('span');
+          espan.className = 'stels-online-voice-episode-suffix';
+          espan.textContent = epSuffix;
+          frag.appendChild(espan);
+        }
         parent.replaceChild(frag, node);
         return true;
       } catch (e) { return false; }
@@ -709,8 +736,38 @@
         var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
         var text = (el.text() || '').replace(/\s+/g, ' ').trim();
         if (componentKey === 'stels_online' || el.hasClass('view--stels_online') || el.hasClass('stels-online-settings-folder')) return true;
-        if (text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text)) return true;
+        if (text === 'Stels_Online' || /^Stels_Online\s*\d+\.\d+\.\d+$/.test(text)) return true;
         return false;
+      }
+
+      function stelsIsSettingsFolderElement(el) {
+        try {
+          if (!el || !el.length) return false;
+          if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return true;
+          if (el.find('.settings-folder__name, .settings-folder__icon').length) return true;
+        } catch (e) {}
+        return false;
+      }
+
+      function stelsRemovePluginVersionFromSourceEntry(el) {
+        try {
+          if (!el || !el.length || stelsIsSettingsFolderElement(el)) return;
+          el.removeAttr('data-subtitle');
+          el.find('.full-start__subtitle, .selector__subtitle, .source__subtitle, .extensions__subtitle, .menu__subtitle, .item__subtitle').filter(function () {
+            return /^\s*\d+\.\d+\.\d+\s*$/.test(($(this).text() || '').trim());
+          }).remove();
+          el.find('*').filter(function () {
+            var node = $(this);
+            if (node.children().length) return false;
+            return /^\s*\d+\.\d+\.\d+\s*$/.test((node.text() || '').trim());
+          }).remove();
+          el.contents().filter(function () { return this.nodeType === 3; }).each(function () {
+            this.nodeValue = String(this.nodeValue || '').replace(/Stels_Online\s*\d+\.\d+\.\d+/g, 'Stels_Online').replace(/\b\d+\.\d+\.\d+\b/g, '');
+          });
+          el.find('*').contents().filter(function () { return this.nodeType === 3; }).each(function () {
+            this.nodeValue = String(this.nodeValue || '').replace(/Stels_Online\s*\d+\.\d+\.\d+/g, 'Stels_Online');
+          });
+        } catch (e) {}
       }
 
       function stelsPatchSettingsFolderElement(el) {
@@ -739,14 +796,20 @@
           scope.find('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').addBack('[data-component="stels_online"], .view--stels_online, .stels-online-settings-folder').each(function () {
             var el = $(this);
             var componentKey = String(el.attr('data-component') || el.data('component') || '').toLowerCase();
-            if (componentKey === 'stels_online' || el.hasClass('stels-online-settings-folder')) stelsPatchSettingsFolderElement(el);
+            var isSettingsFolder = stelsIsSettingsFolderElement(el);
+            // 1.1.159: у списку "Джерело" Lampa також ставить data-component=stels_online,
+            // але це не налаштування плагіна. Не додаємо туди підпис з версією —
+            // лишаємо тільки назву Stels_Online. Версія лишається під назвою у меню налаштувань.
+            if ((componentKey === 'stels_online' && isSettingsFolder) || el.hasClass('stels-online-settings-folder')) stelsPatchSettingsFolderElement(el);
             if (!shouldPatch(el)) return;
-            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
+            if (isSettingsFolder || el.hasClass('stels-online-settings-folder')) return;
+            stelsRemovePluginVersionFromSourceEntry(el);
             var display = el.css('display');
             if (display === 'inline') el.css('display', 'inline-flex');
             else if (display === 'block') el.css('display', 'flex');
             el.css('align-items', 'center');
             if (!el.find('.stels-online-plugin-icon').length) el.prepend(STELS_ICON_HTML);
+            stelsRemovePluginVersionFromSourceEntry(el);
           });
           // Деякі екрани Lampa (наприклад список джерел "Джерело") будуються не через data-component,
           // а простим пунктом з текстом Stels_Online + версія. Патчимо їх окремо по тексту.
@@ -754,14 +817,16 @@
             var el = $(this);
             if (el.find('.stels-online-plugin-icon').length) return;
             var text = (el.text() || '').replace(/\s+/g, ' ').trim();
-            if (!(text === 'Stels_Online' || /^Stels_Online\s+\d+\.\d+\.\d+$/.test(text))) return;
-            if (el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
+            if (!(text === 'Stels_Online' || /^Stels_Online\s*\d+\.\d+\.\d+$/.test(text))) return;
+            if (stelsIsSettingsFolderElement(el) || el.hasClass('settings-folder') || el.hasClass('stels-online-settings-folder')) return;
             el.addClass('stels-online-source-entry');
+            stelsRemovePluginVersionFromSourceEntry(el);
             var display = el.css('display');
             if (display === 'inline') el.css('display', 'inline-flex');
             else if (display === 'block') el.css('display', 'flex');
             el.css('align-items', 'center');
             el.prepend('<img class="stels-online-plugin-icon stels-online-source-icon" src="' + STELS_ICON_URL + '" style="width:2.15em;height:2.15em;object-fit:contain;display:block;flex-shrink:0;margin-right:.7em" alt="Stels_Online">');
+            stelsRemovePluginVersionFromSourceEntry(el);
           });
           stelsPatchUaFlagIcons(scope);
         } catch (e) {
@@ -1184,10 +1249,11 @@
           '.stels-online-thumb__loader{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));pointer-events:none;}' +
           '.stels-online-episode-badge{position:absolute;right:.45em;top:.28em;z-index:2;color:#fff;font-size:.88em;font-weight:700;text-shadow:0 .08em .25em #000;background:linear-gradient(90deg,rgba(0,0,0,0),rgba(0,0,0,.42));padding:.12em .28em .14em .9em;border-radius:.15em;}' +
           '.stels-online-progress{height:.3em;width:100%;background:rgba(255,255,255,.34);border-radius:5em;margin:.55em 0 .72em 0;overflow:hidden;}' +
-          '.stels-online-progress__bar{height:100%;width:0%;background:rgba(255,255,255,.86);border-radius:5em;}' +
+          '.stels-online-progress__bar{height:100%;width:0%;background:#00d36f!important;border-radius:5em;}' +
           '.online.stels-online-with-thumb>.time-line{display:none!important;}' +
           '.stels-online-progress>.time-line{display:block!important;position:relative!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:100%!important;height:100%!important;margin:0!important;padding:0!important;background:transparent!important;}' +
           '.stels-online-progress>.time-line>*{height:100%!important;border-radius:5em!important;}' +
+          '.stels-online-progress>.time-line>*:first-child,.stels-online-progress>.time-line .time-line__progress,.stels-online-progress>.time-line [class*=\"progress\"],.stels-online-progress>.time-line [style*=\"width\"]{background:#00d36f!important;background-color:#00d36f!important;}' +
           '.stels-online-meta-left{min-width:0;overflow:hidden;text-overflow:ellipsis;}' +
           '.stels-online-meta-dot{opacity:.8;margin:0 .25em;}' +
           '.stels-online-quality-right{margin-left:auto;text-align:right;font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:45%;}' +
@@ -1219,6 +1285,11 @@
           '.stels-online-source-row.focus,.stels-online-source-row.stels-online-source-focused,.stels-online-source-row:hover{background:rgba(255,255,255,.12);border-radius:.35em;padding-left:.55em!important;padding-right:.55em!important;}' +
           '.stels-online-source-row.stels-online-source-disabled{opacity:.48;}' +
           '.stels-online-source-arrows{display:flex;gap:.45em;align-items:center;margin-left:auto;margin-right:.7em}.stels-online-source-arrow{color:#00d36f;font-size:1.25em;font-weight:900;line-height:1;padding:.28em .38em;border-radius:.3em;background:rgba(0,211,111,.10)}.stels-online-source-arrow.focus,.stels-online-source-arrow:hover{background:rgba(0,211,111,.24)}' +
+          '.stels-online-nonblocking-loading .stels-online-keep-filter-visible,.stels-online-nonblocking-loading-root .explorer__files-head,.stels-online-nonblocking-loading-root .filter{display:flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;}' +
+          '.stels-online-head-source-button{display:none!important;visibility:hidden!important;pointer-events:none!important;}' +
+          '.stels-online-loading-spinner{display:none!important;position:fixed!important;left:50%!important;top:50%!important;width:3.1em!important;height:3.1em!important;min-width:3.1em!important;margin-left:-1.55em!important;margin-top:-1.55em!important;border:.26em solid rgba(255,255,255,.28)!important;border-top-color:#00d36f!important;border-right-color:#00d36f!important;border-radius:50%!important;box-sizing:border-box!important;animation:stels-online-loading-spin .72s linear infinite!important;z-index:99999!important;pointer-events:none!important;filter:drop-shadow(0 0 .45em rgba(0,0,0,.7))!important;}' +
+          '.stels-online-nonblocking-loading .stels-online-loading-spinner{display:block!important;visibility:visible!important;opacity:1!important;}' +
+          '@keyframes stels-online-loading-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}' +
           '.stels-online-advanced-settings{margin-top:.35em;border-top:1px solid rgba(255,255,255,.08);padding-top:.35em;}' +
           '.online.stels-online-future-episode{opacity:.54!important;filter:grayscale(.45)!important;background:rgba(35,35,35,.72)!important;border-color:rgba(255,255,255,.35)!important;}' +
           '.online.stels-online-future-episode.focus,.online.stels-online-future-episode.selector:hover{opacity:.72!important;border-color:rgba(255,255,255,.62)!important;background:rgba(45,45,45,.82)!important;}' +
@@ -2737,6 +2808,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -3153,6 +3225,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -4112,6 +4185,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -4940,6 +5014,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -5613,6 +5688,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -6818,6 +6894,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -7336,6 +7413,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
           var view = Lampa.Timeline.view(hash);
@@ -7400,6 +7478,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               call({
                 file: element.file
@@ -7845,6 +7924,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -8471,6 +8551,9 @@
             try { (v.items || []).forEach(function (it) { maxQ = Math.max(maxQ, parseInt(it.quality || 0, 10) || 0); }); } catch (e) {}
             return maxQ ? stelsQualityLabel(maxQ) : '';
           });
+          filter_items.voice_episodes = extract.seasons[choice.season].voices.map(function (v) {
+            return (v.items || []).length;
+          });
         }
 
         if (!filter_items.voice[choice.voice]) choice.voice = 0;
@@ -8532,6 +8615,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -8907,6 +8991,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -9528,6 +9613,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -10025,6 +10111,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -10497,6 +10584,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -11100,6 +11188,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               call(getFile(element));
             }
@@ -12449,6 +12538,61 @@
         return out;
       }
 
+      function allohaVoiceIsSubtitle(voice) {
+        return /(?:субтит|subtitle)/i.test(String(voice || ''));
+      }
+
+      function allohaItemQualityValue(item) {
+        try {
+          var media = item && item.media || {};
+          var raw = media && media.raw || {};
+          return stelsExtractMaxQualityFromAny([
+            item && item.quality,
+            item && item.qualitys,
+            item && item.title,
+            item && item.info,
+            media && media.quality,
+            raw && raw.quality,
+            raw && raw.qualities,
+            raw && raw.hls,
+            raw && raw.file
+          ], 0, 'quality');
+        } catch (e) {}
+        return 0;
+      }
+
+      function allohaPrimeVoiceQualityFromItems(reason) {
+        try {
+          var items = extract.items || [];
+          var voices = filter_items.voice || [];
+          var season = allohaCurrentSeasonForQuality();
+          if (!(items.length && voices.length)) return;
+          var perVoice = {}, seasonMax = 0, applied = [];
+          items.forEach(function (it) {
+            if (!it) return;
+            if (season && parseInt(it.season || 0, 10) !== parseInt(season || 0, 10)) return;
+            var q = allohaItemQualityValue(it);
+            if (!q) return;
+            seasonMax = Math.max(seasonMax, q);
+            var v = String(it.voice || it.translate_voice || it.voice_name || '').trim();
+            if (v) perVoice[v] = Math.max(perVoice[v] || 0, q);
+          });
+          voices.forEach(function (voice) {
+            voice = String(voice || '').trim();
+            if (!voice || allohaVoiceIsSubtitle(voice)) return;
+            var qv = perVoice[voice] || seasonMax;
+            if (!qv) return;
+            var key = allohaVoiceQualityKey(voice, season || 0);
+            var prev = stelsQualityToValue(allohaVoiceQualityCache[key] || '');
+            if (qv > prev) {
+              allohaRememberVoiceQuality(voice, season || 0, qv);
+              applied.push({ voice: voice, quality: stelsQualityLabel(qv) });
+            }
+          });
+          if (applied.length) log('voice-quality-primed', { reason: reason || '', season: season || 0, season_quality: stelsQualityLabel(seasonMax), applied: applied });
+        } catch (e) { log('voice-quality-prime-error', { error: e && (e.message || e.toString()) || '' }); }
+      }
+
       function allohaVoiceQualityCandidates() {
         var out = [];
         var seen = {};
@@ -12456,9 +12600,10 @@
         var season = allohaCurrentSeasonForQuality();
         var voices = filter_items.voice || [];
         if (!(items.length && voices.length)) return out;
+        allohaPrimeVoiceQualityFromItems('candidates');
         items.forEach(function (it) {
           var voice = it && (it.voice || it.translate_voice || it.voice_name) || '';
-          if (!voice || voices.indexOf(voice) == -1) return;
+          if (!voice || voices.indexOf(voice) == -1 || allohaVoiceIsSubtitle(voice)) return;
           if (season && it.season != season) return;
           var key = allohaVoiceQualityKey(voice, season || 0);
           if (seen[key]) return;
@@ -12524,7 +12669,11 @@
           var inx = filter_items.voice.indexOf(choice.voice_name);
           if (inx >= 0) choice.voice = inx;
         }
+        allohaPrimeVoiceQualityFromItems('filter-build');
         filter_items.voice_quality = (filter_items.voice || []).map(function (v) { return allohaVoiceQualityLabel(v, currentSeason); });
+        filter_items.voice_episodes = (filter_items.voice || []).map(function (v) {
+          return items.filter(function (it) { return (!currentSeason || it.season == currentSeason) && (it.voice || '') === v; }).length;
+        });
         log('voice-filter-build', { voices: filter_items.voice || [], voice_quality: filter_items.voice_quality || [], season: currentSeason || 0 });
         component.filter(filter_items, choice);
         allohaStartVoiceQualityPrefetch('filter-build');
@@ -13010,7 +13159,7 @@
         selectedVoice = selectedVoice || element && (element.voice || element.translate_voice || element.voice_name) || voices[choice.voice] || '';
         stelsScheduleVoiceQualityColor('alloha-player-voiceovers');
         return voices.map(function (voiceName, index) {
-          var displayName = stelsVoiceDisplayName(voiceName, allohaVoiceQualityLabel(voiceName, element && element.season || allohaCurrentSeasonForQuality()));
+          var displayName = stelsVoiceDisplayName(voiceName, allohaVoiceQualityLabel(voiceName, element && element.season || allohaCurrentSeasonForQuality()), filter_items.voice_episodes && filter_items.voice_episodes[index]);
           return {
             language: displayName,
             name: displayName,
@@ -13138,6 +13287,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -15270,6 +15420,12 @@
           season_num: seasonNums,
           voice: voices
         };
+        if (seasonNums.length) {
+          var selSeason = seasonNums[choice.season] || seasonNums[0];
+          filter_items.voice_episodes = voices.map(function (v) {
+            return (matrix[selSeason] && matrix[selSeason][v]) || 0;
+          });
+        }
         if (!filter_items.season[choice.season]) choice.season = 0;
         if (!filter_items.voice[choice.voice]) choice.voice = 0;
         if (choice.voice_name) {
@@ -15439,6 +15595,7 @@
         items = items || [];
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
 
         stelsLog('eneyida-render', {
           count: items.length,
@@ -16752,6 +16909,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -17225,6 +17383,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -18589,6 +18748,29 @@
         filter_items.voice = rawVoices.map(function (voice) { return zetflixnetVoiceDisplayName(voice, season); });
       }
 
+      function zetflixnetApplyVoiceEpisodes() {
+        try {
+          var rawVoices = filter_items.voice_raw || [];
+          if (!(rawVoices && rawVoices.length) || !(extract && extract.items && extract.items.length)) return;
+          var season = zetflixnetCurrentSeasonForQuality();
+          var byVoice = {};
+          extract.items.forEach(function (data) {
+            if (!data) return;
+            if (season && data.season != season) return;
+            var voice = zetflixnetVoiceNameOf(data);
+            var episode = parseInt(data.episode || data.e || 0, 10) || 0;
+            if (!voice || !episode) return;
+            byVoice[voice] = byVoice[voice] || {};
+            byVoice[voice][episode] = true;
+          });
+          var counts = rawVoices.map(function (voice) {
+            var episodes = byVoice[voice] || {};
+            return Object.keys(episodes).length || 0;
+          });
+          if (counts.some(function (count) { return count > 0; })) filter_items.voice_episodes = counts;
+        } catch (e) {}
+      }
+
       function zetflixnetVoiceRaw(index) {
         if (filter_items.voice_raw && filter_items.voice_raw[index] != null) return filter_items.voice_raw[index];
         return zetflixnetStripVoiceQuality(filter_items.voice && filter_items.voice[index] || '');
@@ -18781,9 +18963,10 @@
             if (vinx == -1) choice.voice = 0;else if (vinx !== choice.voice) choice.voice = vinx;
           }
         }
+        zetflixnetApplyVoiceEpisodes();
         choice.voice_name = zetflixnetVoiceRaw(choice.voice) || choice.voice_name || '';
         choice.voice_quality = filter_items.voice_quality && filter_items.voice_quality[choice.voice] || '';
-        stelsLog('zetflixnet-filter-build', { seasons: filter_items.season || [], voices: filter_items.voice || [], voice_raw: filter_items.voice_raw || [], voice_quality: filter_items.voice_quality || [], selected_season: choice.season, selected_voice: choice.voice_name || '', selected_voice_label: filter_items.voice && filter_items.voice[choice.voice] || '', is_movie: !(extract.seasons && extract.seasons.length), items_count: extract.items ? extract.items.length : 0 });
+        stelsLog('zetflixnet-filter-build', { seasons: filter_items.season || [], voices: filter_items.voice || [], voice_raw: filter_items.voice_raw || [], voice_quality: filter_items.voice_quality || [], voice_episodes: filter_items.voice_episodes || [], selected_season: choice.season, selected_voice: choice.voice_name || '', selected_voice_label: filter_items.voice && filter_items.voice[choice.voice] || '', is_movie: !(extract.seasons && extract.seasons.length), items_count: extract.items ? extract.items.length : 0 });
         component.filter(filter_items, choice);
         zetflixnetScheduleVoiceQualityColor('filter-build');
       }
@@ -19976,6 +20159,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'zetflixnet-append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = component.getLastEpisode(items);
@@ -20050,6 +20234,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               getStream(element, function (element) {
                 stelsLog('zetflixnet-context-file', { data_id: element.data_id || '', file: zlogUrlInfo(element.stream), quality_keys: element.qualitys ? Object.keys(element.qualitys) : [] });
@@ -21297,6 +21482,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -21958,6 +22144,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -22802,6 +22989,7 @@
       var current_videos = [];
       var current_source = null;
       var remote_quality_hint = '';
+      var preferred_title_override = '';
       var lampauaVoiceQualityCache = {};
       var lampauaVoiceQualityPending = {};
       var lampauaVoiceQualityRunId = 0;
@@ -23060,13 +23248,15 @@
         query.push('id=' + encodeURIComponent(movie.id || ''));
         if (movie.imdb_id) query.push('imdb_id=' + encodeURIComponent(movie.imdb_id || ''));
         if (movie.kinopoisk_id) query.push('kinopoisk_id=' + encodeURIComponent(movie.kinopoisk_id || ''));
-        if (movie.tmdb_id) query.push('tmdb_id=' + encodeURIComponent(movie.tmdb_id || ''));
-        query.push('title=' + encodeURIComponent(object.clarification ? object.search : movie.title || movie.name || select_title || ''));
+        var tmdbId = movie.tmdb_id || (/^cub$/i.test(card_source || '') && sourceTitle === 'UafilmMe' ? movie.id : '');
+        if (tmdbId) query.push('tmdb_id=' + encodeURIComponent(tmdbId || ''));
+        var requestTitle = object.clarification ? object.search : (preferred_title_override || movie.title || movie.name || select_title || '');
+        query.push('title=' + encodeURIComponent(requestTitle));
         query.push('original_title=' + encodeURIComponent(movie.original_title || movie.original_name || ''));
         query.push('serial=' + (movie.name ? 1 : 0));
         query.push('original_language=' + (movie.original_language || ''));
         query.push('year=' + ((movie.release_date || movie.first_air_date || '0000') + '').slice(0, 4));
-        query.push('source=' + card_source);
+        query.push('source=' + (/^cub$/i.test(card_source || '') && sourceTitle === 'UafilmMe' && tmdbId ? 'tmdb' : card_source));
         query.push('clarification=' + (object.clarification ? 1 : 0));
         query.push('similar=' + (object.similar ? true : false));
         var rch_state = remoteRchEnsure();
@@ -23261,6 +23451,10 @@
         return !!remoteOptions.voiceFromSimilar && (/mirage|pidtor/i.test(sourceTitle || '') || /pidtor/i.test(remoteOptions.directPath || remoteOptions.directBalanser || ''));
       }
 
+      function lampauaIsUafilmMeSource() {
+        return sourceTitle === 'UafilmMe' || wanted.indexOf('uafilmme') !== -1 || wanted.indexOf('lmeuafilmme') !== -1;
+      }
+
       function lampauaNormalizeMirageUrl(url) {
         url = String(url || '');
         if (lampauaIsMirageSource()) url = url.replace(/^https:\/\/rc\.bwa\.ad\//i, 'http://rc.bwa.ad/');
@@ -23279,6 +23473,33 @@
           data.url_reserve = urls[1];
         }
         return data;
+      }
+
+      function lampauaStabilizeUafilmMePlayable(play, ctx) {
+        if (!lampauaIsUafilmMeSource() || !play || typeof play !== 'object') return play;
+        try {
+          var url = String(play.url || play.file || '');
+          if (/^https?:\/\/lampaua\.mooo\.com\/proxy\//i.test(url)) {
+            if (!play.url_reserve) {
+              play.url_reserve = /^http:\/\//i.test(url) ? url.replace(/^http:/i, 'https:') : url.replace(/^https:/i, 'http:');
+            }
+            var timeout = parseInt(play.hls_manifest_timeout || 0, 10) || 0;
+            if (!timeout || timeout < 60000) play.hls_manifest_timeout = 60000;
+            play._stels_uafilmme_proxy_stabilized = true;
+            stelsLog('lampaua-uafilmme-playable-stabilized', {
+              ctx: ctx || '',
+              title: play.title || '',
+              season: play.season || 0,
+              episode: play.episode || 0,
+              has_reserve: !!play.url_reserve,
+              hls_manifest_timeout: play.hls_manifest_timeout || 0,
+              url_preview: previewUrl(url)
+            });
+          }
+        } catch (e) {
+          stelsLog('lampaua-uafilmme-playable-stabilize-error', { ctx: ctx || '', error: e && (e.message || e.toString()) || '' });
+        }
+        return play;
       }
 
       function normalizeQualityMap(q) {
@@ -23598,6 +23819,7 @@
           play.vast_screen = json.vast.screen;
         }
         orUrlReserve(play);
+        lampauaStabilizeUafilmMePlayable(play, 'preparePlayable');
         stelsLog('lampaua-playable-prepared', {
           source: sourceTitle,
           title: play.title,
@@ -23930,7 +24152,12 @@
       }
 
       function lampauaShouldGroupMirageMovieVideos(videos) {
-        return (lampauaIsMirageLike() || lampauaIsMovieVoiceFilterSource()) && videos && videos.length > 1 && videos.every(function (v) { return v && !parseInt(v.season || 0, 10); });
+        // 1.1.157: UafilmMe часто повертає один playable як один переклад.
+        // У 1.1.156 через умову `videos.length > 1` фільтр перекладів залишався
+        // порожнім, хоча item існував і мав call/play URL. Для UafilmMe групуємо
+        // навіть один movie-item, а для інших джерел лишаємо стару поведінку.
+        var minCount = (sourceTitle === 'UafilmMe' && lampauaIsMovieVoiceFilterSource()) ? 1 : 2;
+        return (lampauaIsMirageLike() || lampauaIsMovieVoiceFilterSource()) && videos && videos.length >= minCount && videos.every(function (v) { return v && !parseInt(v.season || 0, 10); });
       }
 
       function lampauaMirageMovieVoiceTitle(item, index) {
@@ -24029,7 +24256,9 @@
       }
 
       function lampauaRezkaVoiceovers(element, selected_index) {
-        if (!lampauaSupportsVoiceFilter() || !(filter_find.voice && filter_find.voice.length > 1)) return false;
+        // 1.1.157: для UafilmMe показуємо voiceovers навіть якщо переклад один,
+        // щоб структура була однакова: переклад є у фільтрі й у кнопці плеєра.
+        if (!lampauaSupportsVoiceFilter() || !(filter_find.voice && filter_find.voice.length) || (filter_find.voice.length <= 1 && sourceTitle !== 'UafilmMe')) return false;
         stelsScheduleVoiceQualityColor('lampaua-player-voiceovers');
         return filter_find.voice.map(function (voice, index) {
           var rawTitle = voice.title || ('Voice ' + (index + 1));
@@ -24147,7 +24376,11 @@
                 var first = preparePlayable(element, json, json_call || {});
                 if (lampauaSupportsVoiceFilter()) first.voiceovers = lampauaRezkaVoiceovers(element, choice.voice);
                 var playlist = [];
-                if (element.season) {
+                var stelsNoLazyPlaylist = !!(remoteOptions.noLazyPlaylist && element.season);
+                if (stelsNoLazyPlaylist) {
+                  playlist.push(first);
+                  stelsLog('lampaua-single-playlist-mode', { source: sourceTitle, reason: 'noLazyPlaylist', season: element.season, episode: element.episode });
+                } else if (element.season) {
                   current_videos.forEach(function (elem) {
                     if (elem === element) playlist.push(first);
                     else playlist.push({
@@ -24280,6 +24513,14 @@
                   choice.voice_url = saved_voice.url || choice.voice_url || '';
                   choice.voice_name = saved_voice.title || choice.voice_name || sourceTitle;
                 }
+              } else if (lampauaIsUafilmMeSource()) {
+                // 1.1.158: у UafilmMe серіали часто мають один вбудований переклад
+                // без окремих buttons. Не залишаємо voice filter порожнім: це ламало
+                // структуру джерела й voiceovers у плеєрі.
+                filter_find.voice = [{ title: sourceTitle || 'UafilmMe', url: '', active: true }];
+                choice.voice = 0;
+                choice.voice_url = '';
+                choice.voice_name = sourceTitle || 'UafilmMe';
               } else {
                 filter_find.voice = [];
                 choice.voice = 0;
@@ -24334,6 +24575,29 @@
         }
       }
 
+      function lampauaPreparePreferredTitle(done) {
+        preferred_title_override = '';
+        try {
+          var movie = object && object.movie || {};
+          var source = String(movie.source || '').toLowerCase();
+          var tmdbId = movie.tmdb_id || (source === 'cub' && sourceTitle === 'UafilmMe' ? movie.id : '');
+          if (sourceTitle !== 'UafilmMe' || object.clarification || !tmdbId || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) return done();
+          var apiPath = (movie.name ? 'tv/' : 'movie/') + tmdbId;
+          Lampa.Api.sources.tmdb.get(apiPath, { language: 'uk-UA' }, function (info) {
+            try {
+              var title = (info && (info.title || info.name) || '').trim();
+              var original = (movie.original_title || movie.original_name || '').trim();
+              if (title && title !== original && norm(title) !== norm(movie.title || movie.name || '')) {
+                preferred_title_override = title;
+                select_title = title;
+                stelsLog('lampaua-preferred-title', { source: sourceTitle, tmdb_id: tmdbId, old_title: movie.title || movie.name || '', new_title: title });
+              }
+            } catch (e1) {}
+            done();
+          }, function () { done(); });
+        } catch (e) { done(); }
+      }
+
       this.search = function (_object, kinopoisk_id, data) {
         object = _object;
         select_title = object.search || object.movie.title || object.movie.name || '';
@@ -24343,7 +24607,9 @@
           return;
         }
         source_url = '';
-        loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { stelsLog('lampaua-source-error', { source: sourceTitle, error: err }); component.empty(err); });
+        lampauaPreparePreferredTitle(function () {
+          loadSourceUrl(function (url) { request(requestParams(url)); }, function (err) { stelsLog('lampaua-source-error', { source: sourceTitle, error: err }); component.empty(err); });
+        });
       };
 
       this.extendChoice = function (saved) {
@@ -24369,6 +24635,11 @@
             component.saveChoice(choice);
             component.loading(true);
             if (voice.item && lampauaDisplaySelectedMovieVoice()) return setTimeout(component.closeFilter, 10);
+            if (!voice.url) {
+              stelsLog('lampaua-voice-select-noop', { source: sourceTitle, voice: voice.title || '', reason: 'no-url-single-voice' });
+              component.loading(false);
+              return setTimeout(component.closeFilter, 10);
+            }
             request(voice.url);
           }
         } else if (a.stype == 'season') {
@@ -25626,6 +25897,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -26271,6 +26543,7 @@
     var default_balanser = 'cdnvideohub';
 
     function component(object) {
+      var stels_component_self = this;
       var network = new Lampa.Reguest();
       var scroll = new Lampa.Scroll({
         mask: true,
@@ -26294,8 +26567,85 @@
       var contextmenu_all = [];
       var stels_last_filter_items = {};
       var stels_last_choice = {};
+      var stels_voice_episode_cache = {};
+      var stels_voice_episode_refresh_timer = null;
 
       var stels_tmdb_season_cache = {};
+
+      function stelsVoiceEpisodeMovieKey() {
+        try {
+          var movie = object && object.movie || {};
+          return selected_id || movie.id || movie.tmdb_id || movie.kinopoisk_id || movie.imdb_id || movie.original_title || movie.title || '';
+        } catch (e) {}
+        return '';
+      }
+
+      function stelsVoiceEpisodeKey(season) {
+        return [stelsNormalizeSourceKey(balanser), stelsVoiceEpisodeMovieKey(), parseInt(season, 10) || 0].join('|');
+      }
+
+      function stelsVoiceEpisodeName(value) {
+        var name = stelsCleanVoiceDisplayText(value == null ? '' : value);
+        name = name.replace(/^\s*\/\s*/, '').replace(/\s+E\d+\s*$/i, '').trim();
+        return stelsVoiceCompareText(name);
+      }
+
+      function stelsVoiceNameFromElement(element, fallbackVoice) {
+        var voice = '';
+        try {
+          voice = element && (element.translate_voice || element.voice || element.voice_name || element.translation_name || element.translate && element.translate.name) || '';
+          if (!voice && element && element.info) voice = String(element.info || '').replace(/^\s*\/\s*/, '');
+          if (!voice && element && element.media) voice = element.media.voiceStudio || element.media.voiceType || element.media.translation_name || element.media.translation || '';
+          if (!voice && fallbackVoice) voice = fallbackVoice;
+        } catch (e) {}
+        return stelsCleanVoiceDisplayText(voice || '');
+      }
+
+      function stelsVoiceEpisodeSelectedSeason(filterItems, choiceArg) {
+        try {
+          filterItems = filterItems || {};
+          choiceArg = choiceArg || {};
+          if (filterItems.season_num && filterItems.season_num.length) return parseInt(filterItems.season_num[choiceArg.season || 0], 10) || 0;
+          var seasonTitle = filterItems.season && filterItems.season[choiceArg.season || 0] || '';
+          var m = String(seasonTitle || '').match(/\d+/);
+          if (m) return parseInt(m[0], 10) || 0;
+        } catch (e) {}
+        return 0;
+      }
+
+      function stelsApplyVoiceEpisodeCache(filterItems, choiceArg) {
+        try {
+          filterItems = filterItems || {};
+          if (!(filterItems.voice && filterItems.voice.length)) return filterItems;
+          var season = stelsVoiceEpisodeSelectedSeason(filterItems, choiceArg);
+          var cache = stels_voice_episode_cache[stelsVoiceEpisodeKey(season)] || {};
+          var existing = filterItems.voice_episodes || [];
+          var out = filterItems.voice.map(function (voice, index) {
+            var current = parseInt(existing[index], 10) || 0;
+            var key = stelsVoiceEpisodeName(voice);
+            var rec = key && cache[key];
+            var cached = rec && rec.count || 0;
+            return current || cached || 0;
+          });
+          if (out.some(function (n) { return n > 0; })) filterItems.voice_episodes = out;
+        } catch (e) {}
+        return filterItems;
+      }
+
+      function stelsScheduleVoiceEpisodeFilterRefresh(reason) {
+        try {
+          if (stels_voice_episode_refresh_timer) clearTimeout(stels_voice_episode_refresh_timer);
+          stels_voice_episode_refresh_timer = setTimeout(function () {
+            try {
+              if (stels_last_filter_items && stels_last_filter_items.voice && stels_last_filter_items.voice.length) {
+                stelsApplyVoiceEpisodeCache(stels_last_filter_items, stels_last_choice || {});
+                stels_component_self.filter(stels_last_filter_items, stels_last_choice || {});
+                stelsLog('global-voice-episodes-filter-refresh', { source: balanser, reason: reason || '', voice_episodes: stels_last_filter_items.voice_episodes || [] });
+              }
+            } catch (e) {}
+          }, 120);
+        } catch (e) {}
+      }
 
       function stelsBuildTmdbImage(path, size) {
         path = (path == null ? '' : String(path)).trim();
@@ -26628,7 +26978,7 @@
       }, {
         name: 'lampaua-uafilmme',
         title: 'UafilmMe',
-        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe'),
+        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true, noLazyPlaylist: true }),
         search: true,
         kp: true,
         imdb: true
@@ -27134,6 +27484,9 @@
         if (source === 'iremux') return 1080;
         // 1.1.153: VeoVeo отримує максимум 1080p з RC sourceQualityHint.
         if (source === 'veoveo') return 1080;
+        // 1.1.156: UAKino/LampUA обмежуємо до 1080p. Інакше generic extractor
+        // може підхопити 2160p з сусідніх life/events джерел або stale voice_quality.
+        if (source === 'uakino' || source === 'uakino-lampaua' || source === 'lampaua-uakino') return 1080;
         // 1.1.149: Eneyida має робочі HDVBUA HLS-потоки, але вони часто не містять
         // 1080p у URL або quality-map. Badge джерела має лишатись на безпечному максимумі 1080p.
         if (source === 'eneyida') return 1080;
@@ -27533,7 +27886,7 @@
 
       function stelsIsDeepVoiceQualitySource(sourceName) {
         sourceName = stelsNormalizeSourceKey(sourceName || '');
-        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'getstv' || sourceName === 'hdvb';
+        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'vkmovie' || sourceName === 'getstv' || sourceName === 'hdvb';
       }
 
       function stelsMakeProbeComponent(sourceName, token, done) {
@@ -27688,7 +28041,7 @@
           if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno', { movieVoiceFilter: true });
           if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
           if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino', { movieVoiceFilter: true });
-          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'uafilm', 'lme_uafilmme'], 'UafilmMe');
+          if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true, noLazyPlaylist: true });
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
           if (name === 'makhno' || engine === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'starlight' || engine === 'starlight') return new cdnvideohub(fake, object, { sourceTitle: 'Midnight', movieVoiceFilter: true, precheckAllVoices: true });
@@ -27726,6 +28079,10 @@
           // створювати голий cdnvideohub(fake, object), бо він перевіряє тільки вибрану
           // озвучку і фіксує 1080p до того, як `ТО Дубляжная` віддасть 4K.
           if (name === 'iptvonline') return new cdnvideohub(fake, object, { sourceTitle: 'IPTVOnline', movieVoiceFilter: true, precheckAllVoices: true });
+          // 1.1.156: VKMovie також видимий alias на CDNVideoHub. Його не можна
+          // перевіряти голим cdnvideohub, бо тоді badge фіксується по першій 1080p
+          // озвучці і не чекає 4K у `ТО Дубляжная`.
+          if (name === 'vkmovie') return new cdnvideohub(fake, object, { sourceTitle: 'VKMovie', movieVoiceFilter: true, precheckAllVoices: true });
           if (name === 'cdnvideohub') return new cdnvideohub(fake, object, { sourceTitle: 'CDNVideoHub', movieVoiceFilter: true, precheckAllVoices: true });
           if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
           if (engine === 'anilibria') return new anilibria(fake, object);
@@ -27762,7 +28119,7 @@
               // 1.1.152: після 1.1.151 у кеші IPTVOnline міг лишитись ok 1080p,
               // хоча активне джерело вже має 4K-озвучку. Активний IPTVOnline
               // перевіряємо повторно, якщо badge нижче 4K.
-              if (entry.name === 'iptvonline' && entry.name === currentName && info.status === 'ok' && stelsQualityToValue(info.quality || '') < 2160) return true;
+              if ((entry.name === 'iptvonline' || entry.name === 'vkmovie') && entry.name === currentName && info.status === 'ok' && stelsQualityToValue(info.quality || '') < 2160) return true;
               if (info.status === 'ok' && !info.quality) return true;
               return false;
             }
@@ -27907,7 +28264,7 @@
       this.create = function () {
         var _this = this;
 
-        this.activity.loader(true);
+        this.loading(true);
 
         filter.onSearch = function (value) {
           Lampa.Activity.replace({
@@ -27940,12 +28297,10 @@
         };
 
         filter.render().find('.filter--sort span').text(Lampa.Lang.translate('stels_online_balanser'));
-        var stelsHeaderSourceButton = $('<div class="simple-button selector stels-online-head-source-button" style="margin-right:.6em">Джерело</div>');
-        stelsHeaderSourceButton.on('hover:enter click', function (event) {
-          if (event && event.preventDefault) event.preventDefault();
-          stelsOpenFloatingSourceMenu();
-        });
-        try { filter.render().prepend(stelsHeaderSourceButton); } catch (e) {}
+        // 1.1.162: кнопку "Джерело" прибрано саме з верхнього горизонтального меню.
+        // Вибір джерела лишається через штатний пункт "Балансер", а під час non-blocking
+        // завантаження показуємо тільки індикатор-спінер без перекриття меню.
+        try { filter.render().find('.stels-online-head-source-button').remove(); } catch (e) {}
         files.appendHead(filter.render());
         files.appendFiles(scroll.render());
         this.search();
@@ -27993,7 +28348,7 @@
 
       this.search = function () {
         stelsLog('search-start', { balanser: balanser, title: object && object.movie && (object.movie.title || object.movie.name), original_title: object && object.movie && (object.movie.original_title || object.movie.original_name), imdb_id: object && object.movie && object.movie.imdb_id, kinopoisk_id: object && object.movie && object.movie.kinopoisk_id, tmdb_id: object && object.movie && (object.movie.tmdb_id || object.movie.id) });
-        this.activity.loader(true);
+        this.loading(true);
         this.filter({
           source: filter_sources
         }, {
@@ -28628,6 +28983,41 @@
         data[selected_id || object.movie.id] = choice;
         Lampa.Storage.set('stels_online_choice_' + balanser, data);
       };
+
+      this.rememberVoiceEpisodes = function (items, filterItems, choiceArg, reason) {
+        var changed = false;
+        try {
+          items = items && items.forEach ? items : (items ? [items] : []);
+          filterItems = filterItems || stels_last_filter_items || {};
+          choiceArg = choiceArg || stels_last_choice || {};
+          var fallbackVoice = filterItems.voice && filterItems.voice[choiceArg.voice || 0] || choiceArg.voice_name || '';
+          items.forEach(function (element) {
+            try {
+              if (!element || element._stels_future_episode) return;
+              var episode = parseInt(element.episode || element.e || 0, 10) || 0;
+              if (!episode) return;
+              var season = parseInt(element.season || element.s || 0, 10) || stelsVoiceEpisodeSelectedSeason(filterItems, choiceArg);
+              var voice = stelsVoiceNameFromElement(element, fallbackVoice);
+              var voiceKey = stelsVoiceEpisodeName(voice);
+              if (!voiceKey) return;
+              var cacheKey = stelsVoiceEpisodeKey(season);
+              var cache = stels_voice_episode_cache[cacheKey] || (stels_voice_episode_cache[cacheKey] = {});
+              var rec = cache[voiceKey] || (cache[voiceKey] = { name: voice, episodes: {}, count: 0 });
+              if (!rec.episodes[episode]) {
+                rec.episodes[episode] = true;
+                rec.count = Object.keys(rec.episodes).length;
+                changed = true;
+              }
+              if (voice && (!rec.name || voice.length > rec.name.length)) rec.name = voice;
+            } catch (eItem) {}
+          });
+          if (changed) {
+            stelsApplyVoiceEpisodeCache(filterItems, choiceArg);
+            stelsScheduleVoiceEpisodeFilterRefresh(reason || 'remember');
+          }
+        } catch (e) {}
+        return changed;
+      };
       /**
        * Есть похожие карточки
        * @param {Object} json
@@ -28650,7 +29040,7 @@
           elem.info = info.length ? ' / ' + info.join(' / ') : '';
           var item = Lampa.Template.get('stels_online_folder', elem);
           item.on('hover:enter', function () {
-            _this5.activity.loader(true);
+            _this5.loading(true);
 
             _this5.reset();
 
@@ -28674,7 +29064,7 @@
           };
           var item = Lampa.Template.get('stels_online_folder', elem);
           item.on('hover:enter', function () {
-            _this5.activity.loader(true);
+            _this5.loading(true);
 
             _this5.reset();
 
@@ -28705,13 +29095,57 @@
        */
 
 
+      var stelsNonBlockingLoadingActive = false;
+      function stelsEnsureNonBlockingSpinner() {
+        try {
+          var root = filter && filter.render ? filter.render() : null;
+          if (root && root.length) {
+            try { root.find('.stels-online-head-source-button').remove(); } catch (eRemove) {}
+            try { root.find('.stels-online-loading-spinner').remove(); } catch (eRootSpinner) {}
+          }
+          if ($('body > .stels-online-loading-spinner').length) return;
+          // 1.1.163: спінер має бути по центру екрана, але без blocking overlay,
+          // щоб верхнє меню Пошук / Балансер / Фільтр залишалося доступним.
+          $('body').append($('<span class="stels-online-loading-spinner" aria-label="Завантаження" title="Завантаження"></span>'));
+        } catch (e) {}
+      }
+
+      function stelsSetNonBlockingLoadingUi(status) {
+        try {
+          stelsEnsureNonBlockingSpinner();
+          if (status) {
+            $('body').addClass('stels-online-nonblocking-loading');
+            try { files.render().addClass('stels-online-nonblocking-loading-root'); } catch (eFilesOn) {}
+            try { filter.render().addClass('stels-online-keep-filter-visible'); } catch (eFilterOn) {}
+          } else {
+            $('body').removeClass('stels-online-nonblocking-loading');
+            try { files.render().removeClass('stels-online-nonblocking-loading-root'); } catch (eFilesOff) {}
+            try { filter.render().removeClass('stels-online-keep-filter-visible'); } catch (eFilterOff) {}
+          }
+        } catch (e) {}
+      }
+
       this.loading = function (status) {
         if (status) {
-          stelsShowFloatingSourceButton(true);
-          this.activity.loader(true);
-        } else {
-          this.activity.loader(false);
+          // 1.1.161/1.1.163: глобальне правило Stels_Online — під час довгого завантаження
+          // джерела не вмикаємо штатний activity.loader(true), бо він перекриває/ховає
+          // верхнє меню Lampa (Пошук / Балансер / Фільтр). Залишаємо activity
+          // відкритою, показуємо зелений спінер по центру екрана без blocking overlay, а користувач може одразу змінити балансер, фільтр або пошук.
           stelsShowFloatingSourceButton(false);
+          stelsSetNonBlockingLoadingUi(true);
+          try { if (this.activity && this.activity.loader) this.activity.loader(false); } catch (eLoaderOff) {}
+          if (!stelsNonBlockingLoadingActive) {
+            stelsNonBlockingLoadingActive = true;
+            stelsLog('nonblocking-loading-on', { source: balanser, reason: 'keep-top-menu-available-with-spinner' });
+          }
+        } else {
+          stelsSetNonBlockingLoadingUi(false);
+          try { this.activity.loader(false); } catch (eLoaderOff2) {}
+          stelsShowFloatingSourceButton(false);
+          if (stelsNonBlockingLoadingActive) {
+            stelsNonBlockingLoadingActive = false;
+            stelsLog('nonblocking-loading-off', { source: balanser });
+          }
           if (Lampa.Activity.active().activity === this.activity && this.inActivity()) this.activity.toggle();
         }
       };
@@ -28780,6 +29214,7 @@
       this.filter = function (filter_items, choice) {
         var select = [];
         var prev_filter_items = stels_last_filter_items || {};
+        stelsApplyVoiceEpisodeCache(filter_items || {}, choice || {});
         var display_filter_items = stelsBuildDisplayFilterItems(filter_items || {}, balanser);
         try {
           // 1.1.151: Vokino є видимим alias для CDNVideoHub. Сам CDNVideoHub спочатку
@@ -28789,17 +29224,24 @@
           var __vfq = stelsExtractMaxQualityFromAny((filter_items || {}).voice_quality || [], 0, 'quality');
           if (__vfq) {
             var __activeSource = stelsNormalizeSourceKey(balanser);
-            var __qlabel = stelsQualityLabel(stelsClampSourceQualityValue(__activeSource, __vfq));
-            var __prevLabel = stelsSourceStatus[__activeSource] && stelsSourceStatus[__activeSource].quality || '';
-            stelsMarkSourceStatus(__activeSource, 'ok', '', __qlabel);
-            if (['vokino', 'iptvonline'].indexOf(__activeSource) !== -1) {
+            var __voiceQualityBadgeSources = ['vokino', 'iptvonline', 'vkmovie'];
+            // 1.1.156: не можна переносити будь-який async voice_quality на поточне джерело.
+            // component.filter глобальний для activity, тому запізнілий callback HDVB/CDNVideoHub
+            // після перемикання на UAKino міг записати UAKino як 4K. Badge з voice_quality
+            // піднімаємо тільки для alias-ів, для яких це було спеціально додано у 1.1.151/1.1.152.
+            if (__voiceQualityBadgeSources.indexOf(__activeSource) !== -1) {
+              var __qlabel = stelsQualityLabel(stelsClampSourceQualityValue(__activeSource, __vfq));
+              var __prevLabel = stelsSourceStatus[__activeSource] && stelsSourceStatus[__activeSource].quality || '';
+              stelsMarkSourceStatus(__activeSource, 'ok', '', __qlabel);
               stelsLog('source-quality-from-voice-filter', { source: __activeSource, quality: __qlabel, previous_quality: __prevLabel || '', voice_quality: (filter_items || {}).voice_quality || [] });
-            }
-            // 1.1.152: активні CDNVideoHub-alias-и (Vokino/IPTVOnline) можуть отримати
-            // 4K лише після асинхронного prefetch voice_quality. Одразу оновлюємо
-            // заголовок джерела, щоб badge не лишався на старому 1080p.
-            if (__qlabel && __qlabel !== __prevLabel && ['vokino', 'iptvonline'].indexOf(__activeSource) !== -1) {
-              try { stelsRefreshSourceFilterTitles(); } catch (eRefreshSourceQuality) {}
+              // 1.1.152: активні CDNVideoHub-alias-и (Vokino/IPTVOnline) можуть отримати
+              // 4K лише після асинхронного prefetch voice_quality. Одразу оновлюємо
+              // заголовок джерела, щоб badge не лишався на старому 1080p.
+              if (__qlabel && __qlabel !== __prevLabel) {
+                try { stelsRefreshSourceFilterTitles(); } catch (eRefreshSourceQuality) {}
+              }
+            } else if (__activeSource === 'uakino-lampaua' || __activeSource === 'uakino' || __activeSource === 'uafilmme-lampaua' || __activeSource === 'uafilmme') {
+              stelsLog('source-quality-from-voice-filter-skip', { source: __activeSource, reason: 'not-cdn-alias', detected_quality: stelsQualityLabel(stelsClampSourceQualityValue(__activeSource, __vfq)), voice_quality: (filter_items || {}).voice_quality || [] });
             }
           }
         } catch (eVfq) {}
@@ -28936,7 +29378,11 @@
             clearTimeout(self.__stels_future_episode_timer);
             self.__stels_future_episode_timer = setTimeout(function () {
               try { self.appendGlobalFutureEpisodeCards(); } catch (egfAppend) {}
-            }, 720);
+            }, 140);
+            clearTimeout(self.__stels_future_episode_timer2);
+            self.__stels_future_episode_timer2 = setTimeout(function () {
+              try { self.appendGlobalFutureEpisodeCards(); } catch (egfAppend2) {}
+            }, 620);
           }
         } catch (egfAppendOuter) {}
       };
@@ -28947,6 +29393,7 @@
 
       this.contextmenu = function (params) {
         contextmenu_all.push(params);
+        try { if (params && params.element) this.rememberVoiceEpisodes([params.element], stels_last_filter_items, stels_last_choice, 'contextmenu'); } catch (eVoiceEpisodes) {}
         try {
           if (params && params.item && params.element) {
             var __s = parseInt(params.element.season || params.element.s || 0, 10) || 0;
@@ -28957,6 +29404,13 @@
             }
           }
         } catch (eAttr) {}
+        try {
+          var selfContext = this;
+          if (params && params.element && (params.element.season || params.element.episode)) {
+            setTimeout(function () { try { selfContext.appendGlobalFutureEpisodeCards(); } catch (egfCtx0) {} }, 80);
+            setTimeout(function () { try { selfContext.appendGlobalFutureEpisodeCards(); } catch (egfCtx1) {} }, 360);
+          }
+        } catch (egfCtx) {}
         try {
           params.item.on('hover:enter', function () {
             stelsSaveWatchHistory(object.movie, balanser, stelsSourceTitle(balanser), params.element || {}, { item_title: params.item && params.item.find ? params.item.find('.online__title').text() : '' });
@@ -29242,7 +29696,7 @@
           function parseSeasonEpisodeText(text) {
             text = String(text || '').replace(/\s+/g, ' ').trim();
             var s = 0, e = 0, m;
-            m = text.match(/\bS\s*(\d{1,2})\s*(?:\/|[-–— ]+)?\s*(?:E|Ep|Episode|Серія|Серия)\s*(\d{1,3})\b/i);
+            m = text.match(/\bS\s*(\d{1,2})\s*(?::|\.|\/|[-–— ]+)?\s*(?:E|Ep|Episode|Серія|Серия)?\s*(\d{1,3})\b/i);
             if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
             m = text.match(/(?:Сезон|Season|Sezon)\s*(\d{1,2})[\s\/\-–—|]+(?:Серія|Серия|Episode|Ep\.?)\s*(\d{1,3})/i);
             if (m) return { season: parseInt(m[1], 10) || 0, episode: parseInt(m[2], 10) || 0 };
@@ -29322,6 +29776,20 @@
             parsedRows.push(se);
             if (se.season) seasonCount[se.season] = (seasonCount[se.season] || 0) + 1;
           });
+          if (!parsedRows.length && contextmenu_all && contextmenu_all.length) {
+            try {
+              contextmenu_all.forEach(function (params) {
+                var el = params && params.element || {};
+                var sNum = parseInt(el.season || el.s || 0, 10) || 0;
+                var eNum = parseInt(el.episode || el.e || 0, 10) || 0;
+                if (!eNum) return;
+                if (!sNum && storageSeason) sNum = storageSeason;
+                parsedRows.push({ season: sNum, episode: eNum });
+                if (sNum) seasonCount[sNum] = (seasonCount[sNum] || 0) + 1;
+              });
+              if (parsedRows.length) stelsLog('global-future-episodes-context-fallback', { source: balanser, rows: rows.length, parsed: parsedRows.length, storage_season: storageSeason || 0 });
+            } catch (efctx) {}
+          }
           if (!parsedRows.length) {
             stelsLog('global-future-episodes-skip', { source: balanser, reason: 'no-parsed-episodes', rows: rows.length, storage_season: storageSeason || 0 });
             return;
@@ -29438,6 +29906,12 @@
             render(window.__stels_global_tmdb_season_cache[key]);
             return;
           }
+          if (stels_tmdb_season_cache && stels_tmdb_season_cache[key]) {
+            window.__stels_global_tmdb_season_cache[key] = stels_tmdb_season_cache[key];
+            stelsLog('global-future-episodes-cache-hit', { source: balanser, season: season, cache: 'local-episode-meta' });
+            render(window.__stels_global_tmdb_season_cache[key]);
+            return;
+          }
           window.__stels_global_future_pending[pendingKey] = true;
           Lampa.Api.sources.tmdb.get('tv/' + tmdb_id + '/season/' + season, {}, function (data) {
             try { delete window.__stels_global_future_pending[pendingKey]; } catch (edp1) {}
@@ -29486,9 +29960,10 @@
         if (this.inActivity()) Lampa.Controller.toggle('content');
         try {
           var self = this;
-          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf0) {} }, 520);
-          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf1) {} }, 1450);
-          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf2) {} }, 2850);
+          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf0) {} }, 120);
+          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf1) {} }, 420);
+          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf2) {} }, 980);
+          setTimeout(function () { try { self.appendGlobalFutureEpisodeCards(); } catch (egf3) {} }, 2200);
         } catch (egf) {}
         if (first_select) setTimeout(stelsMaybeShowResumePrompt, 260);
       };
@@ -31276,7 +31751,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.153: VeoVeo переведено в структурований режим як RC/LampUA movieVoiceFilter: одна картка фільму, переклади у фільтрі/кнопці плеєра; badge 1080p береться з RC life/events sourceQualityHint.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.163: зелений спінер завантаження перенесено з верхнього меню в центр екрана без blocking overlay; верхнє меню Пошук/Балансер/Фільтр лишається доступним, кнопка Джерело у верхньому меню прихована.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
