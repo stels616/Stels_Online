@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.164';
+    var STELS_ONLINE_VERSION = '1.1.167';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -277,7 +277,7 @@
       text = text.replace(/[✓✔]/g, ' ').trim();
       // Lampa/Android player може додавати службові частини: "1 /" і " / Source".
       text = text.replace(/^\s*\d+\s*\/\s*/i, '').trim();
-      text = text.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga)\s*$/i, '').trim();
+      text = text.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|Eneyida)\s*$/i, '').trim();
       // Деякі плеєри Lampa витягують із "1080p AlexFilm" лише службову мову "p" і показують "1 / p AlexFilm".
       // Для порівняння з нашою мапою перекладів цей уламок треба прибрати.
       text = text.replace(/^\s*p\s+(?=\S)/i, '').trim();
@@ -298,11 +298,10 @@
         var next = [];
         rawVoices.forEach(function (raw, index) {
           var display = displayVoices[index] || '';
-          var quality = stelsVoiceQualityPrefix(display || '');
-          if (!quality) return;
           var cleanRaw = stelsCleanVoiceDisplayText(raw || '');
           var cmp = stelsVoiceCompareText(cleanRaw);
           if (!cmp) return;
+          if (!stelsVoiceQualityPrefix(display) && !/\sE\d+\s*$/i.test(display) && stelsVoiceCompareText(stelsStripVoiceQuality(display)) === cmp) return;
           next.push({ raw: cleanRaw, compare: cmp, display: display, source: sourceName || '' });
         });
         if (!next.length) return;
@@ -396,7 +395,7 @@
             if (!item || !item.compare || !item.display) continue;
             if (cmp === item.compare) {
               result.rows++;
-              if (!stelsVoiceQualityPrefix(rowText) && stelsPatchTextNodeWithDisplay(row, item.display)) result.patched++;
+              if (stelsPatchTextNodeWithDisplay(row, item.display)) result.patched++;
               break;
             }
           }
@@ -450,7 +449,7 @@
       return true;
     }
 
-    function stelsIsOnlyVoiceQualityUpdate(prev, next) {
+    function stelsIsOnlyVoiceDisplayPatch(prev, next) {
       try {
         if (!stelsIsSelectBoxOpen()) return false;
         prev = prev || {};
@@ -460,10 +459,14 @@
         if (!stelsArraySameClean(prev.season || [], next.season || [])) return false;
         if (!stelsArraySameClean(prev.player || [], next.player || [])) return false;
         if (!stelsArraySameClean(prev.server || [], next.server || [])) return false;
-        // Якщо raw-структура така сама, але voice_quality змінилась — не перебудовуємо selectbox.
+        // Якщо raw-структура така сама, але voice_quality / voice_episodes змінились — не перебудовуємо selectbox.
         return true;
       } catch (e) {}
       return false;
+    }
+
+    function stelsIsOnlyVoiceQualityUpdate(prev, next) {
+      return stelsIsOnlyVoiceDisplayPatch(prev, next);
     }
 
     function stelsBuildDisplayFilterItems(filterItems, sourceName) {
@@ -490,6 +493,217 @@
       return out;
     }
 
+    function stelsVoiceEpisodeSelectedSeasonGlobal(filterItems, choiceArg) {
+      try {
+        filterItems = filterItems || {};
+        choiceArg = choiceArg || {};
+        if (filterItems.season_num && filterItems.season_num.length) return parseInt(filterItems.season_num[choiceArg.season || 0], 10) || 0;
+        var seasonTitle = filterItems.season && filterItems.season[choiceArg.season || 0] || '';
+        var m = String(seasonTitle || '').match(/\d+/);
+        if (m) return parseInt(m[0], 10) || 0;
+      } catch (e) {}
+      return 0;
+    }
+
+    function stelsVoiceNameFromItemGlobal(element) {
+      var voice = '';
+      try {
+        voice = element && (element.translate_voice || element.voice || element.voice_name || element.translation_name || element.translate && element.translate.name) || '';
+        if (!voice && element && (element.voiceStudio || element.voiceType)) voice = element.voiceStudio || element.voiceType;
+        if (!voice && element && element.translation) voice = element.translation.title || element.translation.name || '';
+        if (!voice && element && element.info) voice = String(element.info || '').replace(/^\s*\/\s*/, '');
+        if (!voice && element && element.media) voice = element.media.voiceStudio || element.media.voiceType || element.media.translation_name || element.media.translation || '';
+        if (!voice && element && element.team) voice = element.team.name || '';
+        if (!voice && element && element.type) voice = element.type.title || '';
+        if (!voice && element && element.author) voice = element.author.title || element.author.name || '';
+      } catch (e) {}
+      return stelsCleanVoiceDisplayText(voice || '');
+    }
+
+    function stelsNormalizeExtractItems(data, choiceArg, filterItems) {
+      var items = [];
+      choiceArg = choiceArg || {};
+      filterItems = filterItems || {};
+      if (!data) return items;
+
+      function pushItem(season, episode, voice) {
+        season = parseInt(season, 10) || 0;
+        episode = parseInt(episode, 10) || 0;
+        voice = stelsVoiceNameFromItemGlobal({ voice: voice, translate_voice: voice, translation_name: voice });
+        if (!voice && !episode) return;
+        items.push({ season: season, episode: episode, voice: voice, translate_voice: voice });
+      }
+
+      if (Array.isArray(data)) {
+        data.forEach(function (entry) {
+          if (!entry) return;
+          if (entry.serial_items && entry.serial_items.forEach) {
+            entry.serial_items.forEach(function (it) {
+              pushItem(it.season || it.s, it.episode || it.e, it.translate_voice || it.voice || it.voice_name);
+            });
+            return;
+          }
+          if (entry.episodes && entry.episodes.forEach && entry.episodes.length && !entry.season && entry.episode == null) {
+            entry.episodes.forEach(function (ep) {
+              var epNum = ep.episode || ep.number || ep.num || ep.id || 0;
+              var epSeason = ep.season || ep.season_number || entry.season || 0;
+              pushItem(epSeason, epNum, ep.voice || entry.voice);
+              (ep.players || []).forEach(function (p) {
+                pushItem(epSeason, epNum, p.team && p.team.name || p.voice || p.title);
+              });
+              (ep.audios || []).forEach(function (a) {
+                pushItem(epSeason, epNum, (a.type && a.type.title) || a.title || a.name || (a.author && a.author.title));
+              });
+              (ep.files || []).forEach(function (f) {
+                pushItem(ep.season || epSeason, ep.episode || epNum, f.voice || f.translate_voice);
+              });
+              (ep.media || []).forEach(function (m) {
+                pushItem(ep.season || epSeason, ep.episode || epNum, m.translation_name || m.name);
+              });
+            });
+            return;
+          }
+          pushItem(entry.season || entry.s, entry.episode || entry.e, entry.translate_voice || entry.voice || entry.voice_name || entry.translation_name || (entry.translation && entry.translation.title) || entry.info);
+        });
+        return items;
+      }
+
+      if (data.items && data.items.forEach && data.seasons && data.seasons.length) {
+        var seasonEntry = data.seasons[choiceArg.season || 0] || data.seasons[0];
+        var seasonId = seasonEntry && (seasonEntry.id != null ? seasonEntry.id : seasonEntry.number);
+        var hasTranslationItems = false;
+        try {
+          hasTranslationItems = data.items.some(function (c) { return c && c.translation; });
+        } catch (eHasTr) {}
+        if (!hasTranslationItems) {
+          data.items.forEach(function (c) {
+            if (!c) return;
+            if (seasonId != null && c.season != null && parseInt(c.season, 10) !== parseInt(seasonId, 10)) return;
+            pushItem(c.season || seasonId, c.episode || c.e, c.voiceStudio || c.voiceType || c.translate_voice || c.voice || c.voice_name);
+          });
+          return items;
+        }
+        data.items.forEach(function (c) {
+          if (!c || !c.translation) return;
+          var voice = c.translation.title || c.translation.name || '';
+          if (seasonId != null && c.seasons && c.seasons[seasonId]) {
+            var bucket = c.seasons[seasonId];
+            var eps = bucket.episodes || bucket;
+            if (eps && typeof eps === 'object') {
+              Object.keys(eps).forEach(function (epKey) {
+                if (/^\d+$/.test(String(epKey))) pushItem(seasonId, epKey, voice);
+              });
+            }
+            return;
+          }
+          pushItem(c.season, c.episode || c.e, voice || c.voice);
+        });
+        return items;
+      }
+
+      if (data.items && data.items.forEach) {
+        data.items.forEach(function (c) {
+          if (!c) return;
+          pushItem(c.season || c.s, c.episode || c.e, c.voiceStudio || c.voiceType || c.translate_voice || c.voice || c.voice_name || (c.translation && c.translation.title));
+        });
+      }
+
+      if (data.seasons && data.seasons.forEach) {
+        data.seasons.forEach(function (season, seasonIndex) {
+          if (!season) return;
+          var seasonNum = parseInt(season.season || season.number || season.num || season.id || (filterItems.season_num && filterItems.season_num[seasonIndex]) || 0, 10) || 0;
+          if (filterItems.season && filterItems.season.length > 1 && seasonIndex !== (choiceArg.season || 0)) return;
+          (season.voices || []).forEach(function (voice) {
+            var vname = voice.title || voice.name || voice.id || '';
+            (voice.items || []).forEach(function (it) {
+              pushItem(it.season || seasonNum, it.episode || it.e, vname || it.voice);
+            });
+            (voice.episodes || []).forEach(function (ep) {
+              pushItem(ep.season || seasonNum, ep.episode || ep.number || ep.num, vname || ep.voice);
+            });
+          });
+          (season.episodes || []).forEach(function (ep) {
+            var epNum = ep.episode || ep.number || ep.num || 0;
+            (ep.media || []).forEach(function (media) {
+              pushItem(ep.season || seasonNum, epNum, media.translation_name || media.name);
+            });
+            (ep.files || []).forEach(function (f) {
+              pushItem(ep.season || seasonNum, epNum, f.voice || f.translate_voice);
+            });
+          });
+        });
+      }
+
+      if (data.episodes && data.episodes.forEach) {
+        data.episodes.forEach(function (ep) {
+          var epNum = ep.episode || ep.number || ep.num || 0;
+          var epSeason = ep.season || ep.season_number || 0;
+          (ep.players || []).forEach(function (p) {
+            pushItem(epSeason, epNum, p.team && p.team.name || p.voice);
+          });
+          (ep.audios || []).forEach(function (a) {
+            pushItem(epSeason, epNum, (a.type && a.type.title) || a.title || (a.author && a.author.title));
+          });
+        });
+      }
+
+      if (data.movie && data.movie.forEach) {
+        data.movie.forEach(function (m) {
+          (m.files || []).forEach(function (f) {
+            pushItem(f.season, f.episode || 1, f.voice || f.translate_voice);
+          });
+        });
+      }
+
+      return items;
+    }
+
+    function stelsComputeVoiceEpisodesFromItems(filterItems, items, choiceArg) {
+      try {
+        filterItems = filterItems || {};
+        items = Array.isArray(items) ? items : (items ? [items] : []);
+        if (!(filterItems.voice && filterItems.voice.length) || !items.length) return filterItems;
+        var season = stelsVoiceEpisodeSelectedSeasonGlobal(filterItems, choiceArg);
+        var byVoice = {};
+        items.forEach(function (item) {
+          if (!item) return;
+          var itemSeason = parseInt(item.season || item.s || 0, 10) || 0;
+          if (season && itemSeason && itemSeason !== season) return;
+          var episode = parseInt(item.episode || item.e || 0, 10) || 0;
+          if (!episode) return;
+          var voice = stelsVoiceNameFromItemGlobal(item);
+          if (!voice) return;
+          var key = stelsVoiceCompareText(stelsStripVoiceQuality(voice).replace(/\s+E\d+\s*$/i, '').trim());
+          if (!key) return;
+          byVoice[key] = byVoice[key] || {};
+          byVoice[key][episode] = true;
+        });
+        if (season && !Object.keys(byVoice).length) {
+          items.forEach(function (item) {
+            if (!item) return;
+            var episode = parseInt(item.episode || item.e || 0, 10) || 0;
+            if (!episode) return;
+            var voice = stelsVoiceNameFromItemGlobal(item);
+            if (!voice) return;
+            var key = stelsVoiceCompareText(stelsStripVoiceQuality(voice).replace(/\s+E\d+\s*$/i, '').trim());
+            if (!key) return;
+            byVoice[key] = byVoice[key] || {};
+            byVoice[key][episode] = true;
+          });
+        }
+        var existing = filterItems.voice_episodes || [];
+        var out = filterItems.voice.map(function (voice, index) {
+          var current = parseInt(existing[index], 10) || 0;
+          var key = stelsVoiceCompareText(stelsStripVoiceQuality(String(voice || '')).replace(/\s+E\d+\s*$/i, '').trim());
+          var episodes = byVoice[key] || {};
+          var count = Object.keys(episodes).length;
+          return current || count || 0;
+        });
+        if (out.some(function (n) { return n > 0; })) filterItems.voice_episodes = out;
+      } catch (e) {}
+      return filterItems;
+    }
+
     function stelsInstallVoiceQualityColorStyle() {
       try {
         if (document.getElementById('stels-global-voice-quality-color-style')) return;
@@ -502,6 +716,31 @@
           '.selectbox-item .stels-online-voice-episode-suffix,.selectbox__item .stels-online-voice-episode-suffix,.selector__item .stels-online-voice-episode-suffix,.menu__item .stels-online-voice-episode-suffix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}';
         (document.head || document.documentElement).appendChild(st);
       } catch (e) {}
+    }
+
+    function stelsWrapVoiceEpisodeSuffixNode(node) {
+      try {
+        if (!node || node.nodeType !== 3 || !node.parentNode) return false;
+        var parent = node.parentNode;
+        if (parent.classList && (parent.classList.contains('stels-online-voice-episode-suffix') || parent.classList.contains('stels-online-voice-quality-prefix') || parent.classList.contains('stels-zetflixnet-voice-quality-prefix'))) return false;
+        var txt = node.nodeValue || '';
+        var m = txt.match(/^(\s*(?:(?:\d+\s*\/\s*)?))([\s\S]*?)(\s+E\d+)\s*$/i);
+        if (!m) return false;
+        var prefix = m[1] || '';
+        var rest = (m[2] || '');
+        var epSuffix = m[3] || '';
+        if (/^\s*\d+\s*\/\s*$/i.test(prefix)) prefix = '';
+        rest = rest.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|Eneyida)\s*$/i, '');
+        var frag = document.createDocumentFragment();
+        if (prefix) frag.appendChild(document.createTextNode(prefix));
+        if (rest) frag.appendChild(document.createTextNode(rest));
+        var espan = document.createElement('span');
+        espan.className = 'stels-online-voice-episode-suffix';
+        espan.textContent = epSuffix;
+        frag.appendChild(espan);
+        parent.replaceChild(frag, node);
+        return true;
+      } catch (e) { return false; }
     }
 
     function stelsWrapVoiceQualityTextNode(node) {
@@ -551,10 +790,45 @@
         var rows = document.querySelectorAll('.selectbox-item,.selectbox__item,.selector__item,.menu__item,.selector,.simple-button,.player-panel__line,.player-panel__item,.player-panel .selector,.player-menu__item,.player-settings__item,.player-menu .selector,.player-settings .selector,.modal .selector,.modal .simple-button,.modal .selectbox-item,.modal .selectbox__item');
         for (var i = 0; i < rows.length; i++) {
           var row = rows[i];
-          if (!row || row.querySelector && (row.querySelector('.stels-online-voice-quality-prefix') || row.querySelector('.stels-zetflixnet-voice-quality-prefix'))) continue;
+          if (!row) continue;
           try { stelsRemoveVoiceRowServiceNoise(row); } catch (enoise2) {}
           var rowText = String(row.textContent || '').trim();
-          if (!/^(?:(?:\d+\s*\/\s*)?)(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i.test(rowText)) continue;
+          var hasQualityWrap = row.querySelector && (row.querySelector('.stels-online-voice-quality-prefix') || row.querySelector('.stels-zetflixnet-voice-quality-prefix'));
+          var hasEpisodeWrap = row.querySelector && row.querySelector('.stels-online-voice-episode-suffix');
+          if (hasQualityWrap && hasEpisodeWrap) continue;
+          if (hasQualityWrap && !hasEpisodeWrap && /\sE\d+\s*$/i.test(rowText)) {
+            result.rows++;
+            var walkerEp2 = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
+              acceptNode: function (n) {
+                if (!n || !n.nodeValue) return NodeFilter.FILTER_REJECT;
+                if (n.parentNode && n.parentNode.classList && n.parentNode.classList.contains('stels-online-voice-episode-suffix')) return NodeFilter.FILTER_REJECT;
+                if (!/\sE\d+\s*$/i.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+              }
+            });
+            var epNodes2 = [];
+            var en2;
+            while ((en2 = walkerEp2.nextNode())) epNodes2.push(en2);
+            for (var k2 = 0; k2 < epNodes2.length; k2++) if (stelsWrapVoiceEpisodeSuffixNode(epNodes2[k2])) result.colored++;
+            continue;
+          }
+          if (hasQualityWrap) continue;
+          if (!/^(?:(?:\d+\s*\/\s*)?)(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i.test(rowText)) {
+            if (!/\sE\d+\s*$/i.test(rowText)) continue;
+            result.rows++;
+            var walkerEp = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
+              acceptNode: function (n) {
+                if (!n || !n.nodeValue) return NodeFilter.FILTER_REJECT;
+                if (!/\sE\d+\s*$/i.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+              }
+            });
+            var epNodes = [];
+            var en;
+            while ((en = walkerEp.nextNode())) epNodes.push(en);
+            for (var k = 0; k < epNodes.length; k++) if (stelsWrapVoiceEpisodeSuffixNode(epNodes[k])) result.colored++;
+            continue;
+          }
           result.rows++;
           var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
             acceptNode: function (n) {
@@ -2593,7 +2867,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -2808,6 +3082,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -3130,7 +3405,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -3224,6 +3499,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -3957,7 +4233,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Получить поток
@@ -4183,6 +4459,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -4943,12 +5220,7 @@
           var vi = filter_items.voice.indexOf(choice.voice_name);
           if (vi >= 0) choice.voice = vi;
         }
-        component.filter(filter_items, choice);
-      }
-      function currentItems() {
-        var season = filter_items.season_num && filter_items.season_num[choice.season] || 0;
-        var voice = filter_items.voice && filter_items.voice[choice.voice] || '';
-        return all_items.filter(function (it) { return (!season || it.season == season) && (!voice || !it.voice || it.voice == voice); }).sort(function (a, b) { return (a.season - b.season) || (a.episode - b.episode); });
+        component.filter(filter_items, choice, items);
       }
       function cleanStreamUrl(url) {
         url = String(url || '').replace(/\\\//g, '/').replace(/&amp;/g, '&').trim();
@@ -5011,6 +5283,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -5632,7 +5905,7 @@
           var vi = filter_items.voice.indexOf(choice.voice_name);
           if (vi !== -1) choice.voice = vi;
         }
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
 
       function currentItems() {
@@ -5684,6 +5957,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -6487,7 +6761,7 @@
         }
 
         if (!filter_items.voice[choice.voice]) choice.voice = 0;
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
 
       function filtred() {
@@ -6889,6 +7163,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -7148,6 +7423,7 @@
 
       function collaps_api_search(api, callback, error, options) {
         options = options || {};
+        var response_received = false;
         function fail_or_dataset(a, c, source) {
           stelsLog('collaps-embed-fail', { api: api, source: source || '', status: a && a.status, statusText: a && a.statusText });
           if (a && a.status == 422 && options.dataset !== false && collaps_is_dataset_candidate(api)) {
@@ -7158,20 +7434,23 @@
         }
         stelsLog('collaps-embed-request', { api: api, url: embed + api, dataset_allowed: options.dataset !== false });
         network.clear();
-        network.timeout(10000);
+        network.timeout(8000);
         network[net_method](component.proxyLink(embed + api, prox, prox_enc, 'enc2t'), function (str) {
+          response_received = true;
           if (callback) callback(str || '');
         }, function (a, c) {
+          if (response_received) return;
           if (collaps_is_not_found(a)) {
             if (callback) callback('');
           } else {
             stelsLog('collaps-embed2-request', { api: api, url: embed2 + api });
             network.clear();
-            network.timeout(10000);
+            network.timeout(8000);
             network[net_method](component.proxyLink(embed2 + api, prox, prox_enc, 'enc2t'), function (str) {
+              response_received = true;
               if (callback) callback(str || '');
             }, function (a2, c2) {
-              fail_or_dataset(a2, c2, 'embed2');
+              if (!response_received) fail_or_dataset(a2, c2, 'embed2');
             }, false, {
               dataType: 'text',
               headers: play_headers
@@ -7287,7 +7566,7 @@
         }
 
         if (!filter_items.season[choice.season]) choice.season = 0;
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
 
       function fixUrl(url, add) {
@@ -7407,6 +7686,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
           var view = Lampa.Timeline.view(hash);
@@ -7471,6 +7751,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               call({
                 file: element.file
@@ -7814,7 +8095,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
 
       function parseSubs(str) {
@@ -7916,6 +8197,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -8556,7 +8838,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -8606,6 +8888,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -8898,7 +9181,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -8981,6 +9264,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -9546,7 +9830,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -9602,6 +9886,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -10043,7 +10328,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -10099,6 +10384,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -10520,7 +10806,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -10571,6 +10857,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -10932,7 +11219,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Получить потоки
@@ -11115,6 +11402,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
           var view = Lampa.Timeline.view(hash);
@@ -11174,6 +11462,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               call(getFile(element));
             }
@@ -11562,7 +11851,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Получить потоки
@@ -11751,6 +12040,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
           var view = Lampa.Timeline.view(hash);
@@ -12660,7 +12950,7 @@
           return items.filter(function (it) { return (!currentSeason || it.season == currentSeason) && (it.voice || '') === v; }).length;
         });
         log('voice-filter-build', { voices: filter_items.voice || [], voice_quality: filter_items.voice_quality || [], season: currentSeason || 0 });
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
         allohaStartVoiceQualityPrefetch('filter-build');
       }
 
@@ -13272,6 +13562,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -13773,7 +14064,7 @@
           season: [],
           voice: []
         };
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -13816,6 +14107,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(object.movie.original_title + page_title + element.title);
           var view = Lampa.Timeline.view(hash);
@@ -15409,6 +15701,15 @@
           filter_items.voice_episodes = voices.map(function (v) {
             return (matrix[selSeason] && matrix[selSeason][v]) || 0;
           });
+          filter_items.voice_quality = voices.map(function (v) {
+            var maxQ = 0;
+            (extract || []).forEach(function (item) {
+              if (item.season !== selSeason || itemVoiceName(item) !== v) return;
+              maxQ = Math.max(maxQ, stelsExtractMaxQualityFromAny(item.stream || item.quality || item._stels_source_quality_hint || '', 0, 'quality'));
+            });
+            if (!maxQ) maxQ = stelsQualityToValue(eneyidaSourceQualityHint());
+            return maxQ ? stelsQualityLabel(maxQ) : '';
+          });
         }
         if (!filter_items.season[choice.season]) choice.season = 0;
         if (!filter_items.voice[choice.voice]) choice.voice = 0;
@@ -15421,10 +15722,12 @@
           seasons: seasonNums,
           selected_season: seasonNums[choice.season] || 0,
           voices: voices,
+          voice_quality: filter_items.voice_quality || [],
+          voice_episodes: filter_items.voice_episodes || [],
           selected_voice: voices[choice.voice] || '',
           matrix: matrix
         });
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
 
       function currentItems() {
@@ -15579,6 +15882,7 @@
         items = items || [];
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
 
         stelsLog('eneyida-render', {
           count: items.length,
@@ -16781,7 +17085,8 @@
           if (vi >= 0) choice.voice = vi;
         }
         choice.voice_name = filter_items.voice[choice.voice] || '';
-        component.filter(filter_items, choice);
+        var __player = extract[choice.player] || extract[0] || {};
+        component.filter(filter_items, choice, __player.serial_items || extract);
       }
       function currentItems() {
         var p = extract[choice.player] || extract[0];
@@ -16892,6 +17197,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -17343,7 +17649,7 @@
           if (!filter_items.voice[choice.voice]) choice.voice = 0;
           choice.voice_name = filter_items.voice[choice.voice] || '';
         }
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       function currentItems() {
         var items = [];
@@ -17365,6 +17671,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -17794,6 +18101,9 @@
           season: extract.seasons.map(function (s) {
             return s.title;
           }),
+          season_num: extract.seasons.map(function (s) {
+            return s.id;
+          }),
           voice: []
         };
         if (!filter_items.season[choice.season]) choice.season = 0;
@@ -17814,8 +18124,23 @@
           }
         }
         filter_items.voice_quality = (filter_items.voice || []).map(function (voice) { return cdnVoiceQualityLabel(voice); });
-        stelsLog('global-source-voice-filter-build', { source: cdnSourceTitle || 'CDNVideoHub', voices: filter_items.voice || [], voice_quality: filter_items.voice_quality || [], season: cdnCurrentSeasonForQuality(), is_movie: !(extract.seasons && extract.seasons.length) });
-        component.filter(filter_items, choice);
+        if (extract.items && extract.items.length && filter_items.voice && filter_items.voice.length) {
+          var seasonId = cdnCurrentSeasonForQuality();
+          var byVoice = {};
+          extract.items.forEach(function (data) {
+            if (seasonId && data.season != seasonId) return;
+            var voice = cdnVoiceNameOf(data);
+            var episode = parseInt(data.episode || 0, 10) || 0;
+            if (!voice || !episode) return;
+            byVoice[voice] = byVoice[voice] || {};
+            byVoice[voice][episode] = true;
+          });
+          filter_items.voice_episodes = filter_items.voice.map(function (voice) {
+            return Object.keys(byVoice[voice] || {}).length || 0;
+          });
+        }
+        stelsLog('global-source-voice-filter-build', { source: cdnSourceTitle || 'CDNVideoHub', voices: filter_items.voice || [], voice_quality: filter_items.voice_quality || [], voice_episodes: filter_items.voice_episodes || [], season: cdnCurrentSeasonForQuality(), is_movie: !(extract.seasons && extract.seasons.length) });
+        component.filter(filter_items, choice, extract);
         cdnStartVoiceQualityPrefetch('filter-build');
       }
       /**
@@ -17840,6 +18165,8 @@
                 data_id: data.vkId,
                 season: '' + season_id,
                 episode: data.episode,
+                voice: voice,
+                translate_voice: voice,
                 media: data
               });
             }
@@ -18163,6 +18490,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
           var view = Lampa.Timeline.view(hash);
@@ -18729,6 +19057,29 @@
         filter_items.voice = rawVoices.map(function (voice) { return zetflixnetVoiceDisplayName(voice, season); });
       }
 
+      function zetflixnetApplyVoiceEpisodes() {
+        try {
+          var rawVoices = filter_items.voice_raw || [];
+          if (!(rawVoices && rawVoices.length) || !(extract && extract.items && extract.items.length)) return;
+          var season = zetflixnetCurrentSeasonForQuality();
+          var byVoice = {};
+          extract.items.forEach(function (data) {
+            if (!data) return;
+            if (season && data.season != season) return;
+            var voice = zetflixnetVoiceNameOf(data);
+            var episode = parseInt(data.episode || data.e || 0, 10) || 0;
+            if (!voice || !episode) return;
+            byVoice[voice] = byVoice[voice] || {};
+            byVoice[voice][episode] = true;
+          });
+          var counts = rawVoices.map(function (voice) {
+            var episodes = byVoice[voice] || {};
+            return Object.keys(episodes).length || 0;
+          });
+          if (counts.some(function (count) { return count > 0; })) filter_items.voice_episodes = counts;
+        } catch (e) {}
+      }
+
       function zetflixnetVoiceRaw(index) {
         if (filter_items.voice_raw && filter_items.voice_raw[index] != null) return filter_items.voice_raw[index];
         return zetflixnetStripVoiceQuality(filter_items.voice && filter_items.voice[index] || '');
@@ -18921,10 +19272,11 @@
             if (vinx == -1) choice.voice = 0;else if (vinx !== choice.voice) choice.voice = vinx;
           }
         }
+        zetflixnetApplyVoiceEpisodes();
         choice.voice_name = zetflixnetVoiceRaw(choice.voice) || choice.voice_name || '';
         choice.voice_quality = filter_items.voice_quality && filter_items.voice_quality[choice.voice] || '';
-        stelsLog('zetflixnet-filter-build', { seasons: filter_items.season || [], voices: filter_items.voice || [], voice_raw: filter_items.voice_raw || [], voice_quality: filter_items.voice_quality || [], selected_season: choice.season, selected_voice: choice.voice_name || '', selected_voice_label: filter_items.voice && filter_items.voice[choice.voice] || '', is_movie: !(extract.seasons && extract.seasons.length), items_count: extract.items ? extract.items.length : 0 });
-        component.filter(filter_items, choice);
+        stelsLog('zetflixnet-filter-build', { seasons: filter_items.season || [], voices: filter_items.voice || [], voice_raw: filter_items.voice_raw || [], voice_quality: filter_items.voice_quality || [], voice_episodes: filter_items.voice_episodes || [], selected_season: choice.season, selected_voice: choice.voice_name || '', selected_voice_label: filter_items.voice && filter_items.voice[choice.voice] || '', is_movie: !(extract.seasons && extract.seasons.length), items_count: extract.items ? extract.items.length : 0 });
+        component.filter(filter_items, choice, extract);
         zetflixnetScheduleVoiceQualityColor('filter-build');
       }
 
@@ -20116,6 +20468,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'zetflixnet-append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = component.getLastEpisode(items);
@@ -20190,6 +20543,7 @@
             view: view,
             viewed: viewed,
             hash_file: hash_file,
+            element: element,
             file: function file(call) {
               getStream(element, function (element) {
                 stelsLog('zetflixnet-context-file', { data_id: element.data_id || '', file: zlogUrlInfo(element.stream), quality_keys: element.qualitys ? Object.keys(element.qualitys) : [] });
@@ -20401,7 +20755,7 @@
           season: [],
           voice: []
         };
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Получить потоки
@@ -20520,6 +20874,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title, element.orig_title].join('') : object.movie.original_title + element.orig_title);
           var view = Lampa.Timeline.view(hash);
@@ -20790,7 +21145,7 @@
           season: [],
           voice: []
         };
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Получить потоки
@@ -20901,6 +21256,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title, element.orig_title].join('') : object.movie.original_title + element.orig_title);
           var view = Lampa.Timeline.view(hash);
@@ -21246,7 +21602,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Получить потоки
@@ -21437,6 +21793,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -21895,7 +22252,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -22098,6 +22455,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -22706,7 +23064,7 @@
           }
         }
 
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
       /**
        * Отфильтровать файлы
@@ -22855,6 +23213,7 @@
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title, element.orig_title].join('') : object.movie.original_title + element.orig_title);
           var view = Lampa.Timeline.view(hash);
@@ -23859,7 +24218,7 @@
         var rawVoices = (filter_find.voice || []).map(function (b) { return b.title; });
         var qualities = (filter_find.voice || []).map(function (b, i) { return lampauaVoiceQualityLabel(b, i); });
         stelsLog('lampaua-voice-quality-filter-build', { source: sourceTitle, reason: reason || '', voices: rawVoices, voice_quality: qualities, season: current_videos && current_videos[0] && current_videos[0].season || 0 });
-        component.filter({ season: filter_find.season.map(function (s) { return s.title; }), voice: rawVoices, voice_quality: qualities }, choice);
+        component.filter({ season: filter_find.season.map(function (s) { return s.title; }), voice: rawVoices, voice_quality: qualities }, choice, current_videos);
       }
 
       function lampauaVoiceQualityCandidates() {
@@ -25718,7 +26077,7 @@
           counts_by_season: uaflixCountBySeason(extract),
           title_page_counts_by_season: uaflixCountBySeason(title_page_episodes)
         });
-        component.filter(filter_items, choice);
+        component.filter(filter_items, choice, extract);
       }
 
       function currentSeasonNumber(skip_log) {
@@ -25850,6 +26209,7 @@
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -26361,7 +26721,7 @@
                 return { title: p.title, quality: 'UAflix', info: '', iframe: p.iframe, referer: link, poster: absolute(poster, link) };
               });
               filter_items = { season: [], season_num: [], voice: [] };
-              component.filter(filter_items, choice);
+              component.filter(filter_items, choice, extract);
               render(extract);
               component.loading(false);
               return;
@@ -26495,6 +26855,7 @@
     var default_balanser = 'cdnvideohub';
 
     function component(object) {
+      var stels_component_self = this;
       var network = new Lampa.Reguest();
       var scroll = new Lampa.Scroll({
         mask: true,
@@ -26518,8 +26879,87 @@
       var contextmenu_all = [];
       var stels_last_filter_items = {};
       var stels_last_choice = {};
+      var stels_voice_episode_cache = {};
+      var stels_voice_episode_refresh_timer = null;
+      var stels_extract_items = [];
 
       var stels_tmdb_season_cache = {};
+
+      function stelsVoiceEpisodeMovieKey() {
+        try {
+          var movie = object && object.movie || {};
+          return selected_id || movie.id || movie.tmdb_id || movie.kinopoisk_id || movie.imdb_id || movie.original_title || movie.title || '';
+        } catch (e) {}
+        return '';
+      }
+
+      function stelsVoiceEpisodeKey(season) {
+        return [stelsNormalizeSourceKey(balanser), stelsVoiceEpisodeMovieKey(), parseInt(season, 10) || 0].join('|');
+      }
+
+      function stelsVoiceEpisodeName(value) {
+        var name = stelsCleanVoiceDisplayText(value == null ? '' : value);
+        name = name.replace(/^\s*\/\s*/, '').replace(/\s+E\d+\s*$/i, '').trim();
+        return stelsVoiceCompareText(name);
+      }
+
+      function stelsVoiceNameFromElement(element, fallbackVoice) {
+        var voice = '';
+        try {
+          voice = element && (element.translate_voice || element.voice || element.voice_name || element.translation_name || element.translate && element.translate.name) || '';
+          if (!voice && element && (element.voiceStudio || element.voiceType)) voice = element.voiceStudio || element.voiceType;
+          if (!voice && element && element.info) voice = String(element.info || '').replace(/^\s*\/\s*/, '');
+          if (!voice && element && element.media) voice = element.media.voiceStudio || element.media.voiceType || element.media.translation_name || element.media.translation || '';
+          if (!voice && fallbackVoice) voice = fallbackVoice;
+        } catch (e) {}
+        return stelsCleanVoiceDisplayText(voice || '');
+      }
+
+      function stelsVoiceEpisodeSelectedSeason(filterItems, choiceArg) {
+        try {
+          filterItems = filterItems || {};
+          choiceArg = choiceArg || {};
+          if (filterItems.season_num && filterItems.season_num.length) return parseInt(filterItems.season_num[choiceArg.season || 0], 10) || 0;
+          var seasonTitle = filterItems.season && filterItems.season[choiceArg.season || 0] || '';
+          var m = String(seasonTitle || '').match(/\d+/);
+          if (m) return parseInt(m[0], 10) || 0;
+        } catch (e) {}
+        return 0;
+      }
+
+      function stelsApplyVoiceEpisodeCache(filterItems, choiceArg) {
+        try {
+          filterItems = filterItems || {};
+          if (!(filterItems.voice && filterItems.voice.length)) return filterItems;
+          var season = stelsVoiceEpisodeSelectedSeason(filterItems, choiceArg);
+          var cache = stels_voice_episode_cache[stelsVoiceEpisodeKey(season)] || {};
+          var existing = filterItems.voice_episodes || [];
+          var out = filterItems.voice.map(function (voice, index) {
+            var current = parseInt(existing[index], 10) || 0;
+            var key = stelsVoiceEpisodeName(voice);
+            var rec = key && cache[key];
+            var cached = rec && rec.count || 0;
+            return current || cached || 0;
+          });
+          if (out.some(function (n) { return n > 0; })) filterItems.voice_episodes = out;
+        } catch (e) {}
+        return filterItems;
+      }
+
+      function stelsScheduleVoiceEpisodeFilterRefresh(reason) {
+        try {
+          if (stels_voice_episode_refresh_timer) clearTimeout(stels_voice_episode_refresh_timer);
+          stels_voice_episode_refresh_timer = setTimeout(function () {
+            try {
+              if (stels_last_filter_items && stels_last_filter_items.voice && stels_last_filter_items.voice.length) {
+                stelsApplyVoiceEpisodeCache(stels_last_filter_items, stels_last_choice || {});
+                stels_component_self.filter(stels_last_filter_items, stels_last_choice || {}, stels_extract_items.length ? stels_extract_items : undefined);
+                stelsLog('global-voice-episodes-filter-refresh', { source: balanser, reason: reason || '', voice_episodes: stels_last_filter_items.voice_episodes || [] });
+              }
+            } catch (e) {}
+          }, 120);
+        } catch (e) {}
+      }
 
       function stelsBuildTmdbImage(path, size) {
         path = (path == null ? '' : String(path)).trim();
@@ -27602,10 +28042,56 @@
       function stelsIsSourceSortMenuProtected() {
         try {
           if (!stelsIsSelectBoxOpen()) return false;
+          if (stelsIsSourceSortMenuOpen()) return true;
           if (Date.now() < stelsSourceSortMenuOpenUntil) return true;
-          return stelsIsSourceSortMenuOpen();
         } catch (e) {}
         return false;
+      }
+
+      function stelsIsVoiceFilterMenuOpen() {
+        try {
+          if (!stelsIsSelectBoxOpen()) return false;
+          var voices = (stels_last_filter_items && stels_last_filter_items.voice) || [];
+          if (!(voices && voices.length > 1)) return false;
+          var voiceMap = {};
+          voices.forEach(function (v) {
+            var cmp = stelsVoiceCompareText(v || '');
+            if (cmp) voiceMap[cmp] = true;
+          });
+          var found = 0;
+          $('.selectbox-item, .selectbox__item, .selector__item, .simple-button, .menu__item').each(function () {
+            if (found > 2) return;
+            var raw = ($(this).text() || '').replace(/\s+/g, ' ').trim();
+            if (!raw || raw.length > 120) return;
+            if (voiceMap[stelsVoiceCompareText(raw)]) found++;
+          });
+          return found > 1;
+        } catch (e) {}
+        return false;
+      }
+
+      function stelsPatchOpenFilterSubtitles(displayFilterItems, choiceArg) {
+        try {
+          displayFilterItems = displayFilterItems || {};
+          choiceArg = choiceArg || {};
+          var need = Lampa.Storage.get('stels_online_filter', '{}') || {};
+          var select = [];
+          for (var i in need) {
+            if (i !== 'source' && filter_translate[i] && displayFilterItems[i] && displayFilterItems[i].length > 1) {
+              select.push(filter_translate[i] + ': ' + displayFilterItems[i][need[i]]);
+            }
+          }
+          if (select.length) filter.chosen('filter', select);
+          var voiceIdx = parseInt(need.voice, 10);
+          if (!isNaN(voiceIdx) && displayFilterItems.voice && displayFilterItems.voice[voiceIdx]) {
+            $('.filter--filter .filter__text, .filter--filter .selector__text, .filter--filter .simple-button').each(function () {
+              var txt = ($(this).text() || '').trim();
+              if (/переклад|озвуч|voice|translation/i.test(txt) || txt.indexOf(':') > -1) {
+                $(this).text((Lampa.Lang.translate('torrent_parser_voice') || 'Переклад') + ': ' + displayFilterItems.voice[voiceIdx]);
+              }
+            });
+          }
+        } catch (e) {}
       }
 
       function stelsPatchOpenSourceSortMenu() {
@@ -27734,15 +28220,14 @@
           existing.source = selectedIndex;
           Lampa.Storage.set('stels_online_filter', existing);
 
-          // 1.1.144: коли користувач вже відкрив меню джерел, не викликаємо
-          // filter.set('sort') / filter.chosen('sort') під час precheck або async
-          // оновлення якості озвучок. У Lampa це перебудовує SelectBox і меню
-          // саме закривається. Патчимо тільки DOM вже відкритого списку.
+          // 1.1.167: поки відкритий selectbox джерел — не викликаємо filter.set('sort'),
+          // бо Lampa закриває меню. Патчимо DOM і chosen без перебудови.
           if (stelsIsSourceSortMenuProtected()) {
             stelsPatchOpenSourceSortMenu();
             stelsUpdateFloatingSourceButton();
             stelsEnsureSourceMenuObserver();
             setTimeout(stelsPatchOpenSourceSortMenu, 120);
+            try { filter.chosen('sort', [stelsSourceTitleWithStatus(obj_filter_sources[selectedIndex] || balanser)]); } catch (eChosen) {}
             stelsLog('source-sort-menu-refresh-skip', { reason: 'open-source-menu-protected', source: balanser });
             return;
           }
@@ -28184,6 +28669,7 @@
       this.changeBalanser = function (balanser_name) {
         stelsLog('change-balanser', { from: balanser, to: balanser_name });
         balanser = balanser_name;
+        stels_extract_items = [];
         Lampa.Storage.set('stels_online_balanser', balanser);
         stelsUpdateFloatingSourceButton();
         last_bls[object.movie.id] = balanser;
@@ -28857,6 +29343,49 @@
         data[selected_id || object.movie.id] = choice;
         Lampa.Storage.set('stels_online_choice_' + balanser, data);
       };
+
+      this.setExtractItems = function (data, choiceArg, filterItems) {
+        try {
+          stels_extract_items = stelsNormalizeExtractItems(data, choiceArg || stels_last_choice || {}, filterItems || stels_last_filter_items || {});
+        } catch (e) {
+          stels_extract_items = Array.isArray(data) ? data.slice(0) : [];
+        }
+      };
+
+      this.rememberVoiceEpisodes = function (items, filterItems, choiceArg, reason) {
+        var changed = false;
+        try {
+          items = items && items.forEach ? items : (items ? [items] : []);
+          filterItems = filterItems || stels_last_filter_items || {};
+          choiceArg = choiceArg || stels_last_choice || {};
+          var fallbackVoice = filterItems.voice && filterItems.voice[choiceArg.voice || 0] || choiceArg.voice_name || '';
+          items.forEach(function (element) {
+            try {
+              if (!element || element._stels_future_episode) return;
+              var episode = parseInt(element.episode || element.e || 0, 10) || 0;
+              if (!episode) return;
+              var season = parseInt(element.season || element.s || 0, 10) || stelsVoiceEpisodeSelectedSeason(filterItems, choiceArg);
+              var voice = stelsVoiceNameFromElement(element, fallbackVoice);
+              var voiceKey = stelsVoiceEpisodeName(voice);
+              if (!voiceKey) return;
+              var cacheKey = stelsVoiceEpisodeKey(season);
+              var cache = stels_voice_episode_cache[cacheKey] || (stels_voice_episode_cache[cacheKey] = {});
+              var rec = cache[voiceKey] || (cache[voiceKey] = { name: voice, episodes: {}, count: 0 });
+              if (!rec.episodes[episode]) {
+                rec.episodes[episode] = true;
+                rec.count = Object.keys(rec.episodes).length;
+                changed = true;
+              }
+              if (voice && (!rec.name || voice.length > rec.name.length)) rec.name = voice;
+            } catch (eItem) {}
+          });
+          if (changed) {
+            stelsApplyVoiceEpisodeCache(filterItems, choiceArg);
+            stelsScheduleVoiceEpisodeFilterRefresh(reason || 'remember');
+          }
+        } catch (e) {}
+        return changed;
+      };
       /**
        * Есть похожие карточки
        * @param {Object} json
@@ -29050,9 +29579,24 @@
        */
 
 
-      this.filter = function (filter_items, choice) {
+      this.filter = function (filter_items, choice, extractData) {
         var select = [];
         var prev_filter_items = stels_last_filter_items || {};
+        try {
+          var extractItems = [];
+          if (extractData !== undefined && extractData !== null) {
+            extractItems = stelsNormalizeExtractItems(extractData, choice || {}, filter_items || {});
+            stels_extract_items = extractItems;
+          } else if (filter_items && filter_items._stels_extract != null) {
+            extractItems = stelsNormalizeExtractItems(filter_items._stels_extract, choice || {}, filter_items || {});
+            delete filter_items._stels_extract;
+            stels_extract_items = extractItems;
+          } else if (stels_extract_items && stels_extract_items.length) {
+            extractItems = stels_extract_items;
+          }
+          stelsComputeVoiceEpisodesFromItems(filter_items || {}, extractItems, choice || {});
+        } catch (eExtractEp) {}
+        stelsApplyVoiceEpisodeCache(filter_items || {}, choice || {});
         var display_filter_items = stelsBuildDisplayFilterItems(filter_items || {}, balanser);
         try {
           // 1.1.151: Vokino є видимим alias для CDNVideoHub. Сам CDNVideoHub спочатку
@@ -29083,8 +29627,9 @@
             }
           }
         } catch (eVfq) {}
-        var patch_open_only = stelsIsOnlyVoiceQualityUpdate(prev_filter_items, filter_items || {});
+        var patch_open_only = stelsIsOnlyVoiceDisplayPatch(prev_filter_items, filter_items || {});
         var source_sort_menu_protected = stelsIsSourceSortMenuProtected();
+        var voice_filter_menu_open = stelsIsVoiceFilterMenuOpen();
         if (source_sort_menu_protected) patch_open_only = true;
         try {
           stelsRememberVoiceQualityDisplayMap((filter_items || {}).voice || [], display_filter_items.voice || [], balanser);
@@ -29132,19 +29677,20 @@
         select.push(qualityFilter);
         if (patch_open_only) {
           stelsPatchVisibleVoiceQualityFromMap('component-filter-open');
+          stelsPatchOpenFilterSubtitles(display_filter_items, choice || {});
           stelsScheduleVoiceQualityColor('component-filter-open');
-          if (source_sort_menu_protected) {
+          if (source_sort_menu_protected || stelsIsSourceSortMenuOpen()) {
             stelsPatchOpenSourceSortMenu();
             stelsEnsureSourceMenuObserver();
             setTimeout(stelsPatchOpenSourceSortMenu, 120);
           }
-          stelsLog('component-filter-open-quality-patch', { selected: balanser, voices: (filter_items.voice || []).length, voice_quality: filter_items.voice_quality || [], source_menu_protected: !!source_sort_menu_protected });
+          stelsLog('component-filter-open-quality-patch', { selected: balanser, voices: (filter_items.voice || []).length, voice_quality: filter_items.voice_quality || [], voice_episodes: filter_items.voice_episodes || [], source_menu_protected: !!source_sort_menu_protected, voice_menu_open: !!voice_filter_menu_open });
         } else {
           filter.set('filter', select);
           stelsScheduleVoiceQualityColor('component-filter');
         }
-        stelsLog('sort-menu-build', { count: obj_filter_sources.length, sources: obj_filter_sources.map(function(e){ return e.name + ':' + e.title; }), selected: balanser, source_menu_protected: !!source_sort_menu_protected, set_sort: !patch_open_only });
-        if (!patch_open_only) {
+        stelsLog('sort-menu-build', { count: obj_filter_sources.length, sources: obj_filter_sources.map(function(e){ return e.name + ':' + e.title; }), selected: balanser, source_menu_protected: !!source_sort_menu_protected, set_sort: !source_sort_menu_protected });
+        if (!source_sort_menu_protected) {
           filter.set('sort', obj_filter_sources.map(function (e) {
             return {
               source: e.name,
@@ -29231,6 +29777,7 @@
 
       this.contextmenu = function (params) {
         contextmenu_all.push(params);
+        try { if (params && params.element) this.rememberVoiceEpisodes([params.element], stels_last_filter_items, stels_last_choice, 'contextmenu'); } catch (eVoiceEpisodes) {}
         try {
           if (params && params.item && params.element) {
             var __s = parseInt(params.element.season || params.element.s || 0, 10) || 0;
