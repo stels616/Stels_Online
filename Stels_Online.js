@@ -7423,7 +7423,6 @@
 
       function collaps_api_search(api, callback, error, options) {
         options = options || {};
-        var response_received = false;
         function fail_or_dataset(a, c, source) {
           stelsLog('collaps-embed-fail', { api: api, source: source || '', status: a && a.status, statusText: a && a.statusText });
           if (a && a.status == 422 && options.dataset !== false && collaps_is_dataset_candidate(api)) {
@@ -7434,23 +7433,20 @@
         }
         stelsLog('collaps-embed-request', { api: api, url: embed + api, dataset_allowed: options.dataset !== false });
         network.clear();
-        network.timeout(8000);
+        network.timeout(10000);
         network[net_method](component.proxyLink(embed + api, prox, prox_enc, 'enc2t'), function (str) {
-          response_received = true;
           if (callback) callback(str || '');
         }, function (a, c) {
-          if (response_received) return;
           if (collaps_is_not_found(a)) {
             if (callback) callback('');
           } else {
             stelsLog('collaps-embed2-request', { api: api, url: embed2 + api });
             network.clear();
-            network.timeout(8000);
+            network.timeout(10000);
             network[net_method](component.proxyLink(embed2 + api, prox, prox_enc, 'enc2t'), function (str) {
-              response_received = true;
               if (callback) callback(str || '');
             }, function (a2, c2) {
-              if (!response_received) fail_or_dataset(a2, c2, 'embed2');
+              fail_or_dataset(a2, c2, 'embed2');
             }, false, {
               dataType: 'text',
               headers: play_headers
