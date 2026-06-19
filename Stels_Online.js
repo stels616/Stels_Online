@@ -17719,7 +17719,7 @@
             if (/tortuga\.tw\/usp\//i.test(String(embedUrl || ''))) {
               var siteData = [{
                 title: select_title || 'UASerials',
-                poster: pageItem && pageItem.poster || '',
+                poster: object && object.movie && object.movie.poster || '',
                 file: embedUrl,
                 files: [{ title: 'UASerials / Tortuga', url: embedUrl }],
                 subtitles: false,
