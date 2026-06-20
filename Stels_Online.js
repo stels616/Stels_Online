@@ -17691,7 +17691,7 @@
             if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
             var first = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title), poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: element.subtitles || false, quality: false, iframe: element.iframe || false, method: undefined }, 'uaserials');
             Lampa.Player.play(first);
-            var playlist = [method: undefined];
+            var playlist = [];
             if (element.season && Lampa.Platform.version) {
               items.forEach(function (el) { playlist.push(stelsSanitizeAndroidPlayable({ url: el.stream, title: el.title, poster: el.poster || '', timeline: el.timeline, headers: el.headers || false, subtitles: el.subtitles || false, quality: false, iframe: el.iframe || false, method: el.iframe ? 'iframe' : undefined }, 'uaserials')); });
             } else playlist.push(first);
