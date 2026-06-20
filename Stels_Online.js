@@ -17660,7 +17660,7 @@
           if (season) season.episodes.forEach(function (ep) {
             ep.files.forEach(function (f) {
               if (voice && f.voice !== voice) return;
-			  if (/\\/hls\\//i.test(f.url))
+			  if (f.url.indexOf('/hls/') !== -1)
     f.url = f.url.replace('/hls/', '/content/stream/');
               items.push({ title: component.formatEpisodeTitle(ep.season, ep.episode), quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', season: ep.season, episode: ep.episode, voice: f.voice || '', stream: component.fixLink(f.url), poster: absolute(ep.poster || '', tortugaHost + '/'), subtitles: ep.subtitles || false, headers: playHeaders, iframe: !!(f._stels_uaserials_site_iframe || ep._stels_uaserials_site_iframe) });
             });
