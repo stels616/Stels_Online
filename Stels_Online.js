@@ -17689,9 +17689,9 @@
           if (viewed.indexOf(hash_file) !== -1) row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
           row.on('hover:enter', function () {
             if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
-            var first = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title), poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: element.subtitles || false, quality: false, iframe: element.iframe || false, method: element.iframe ? 'iframe' : undefined }, 'uaserials');
+            var first = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title), poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: element.subtitles || false, quality: false, iframe: element.iframe || false, method: undefined }, 'uaserials');
             Lampa.Player.play(first);
-            var playlist = [];
+            var playlist = [method: undefined];
             if (element.season && Lampa.Platform.version) {
               items.forEach(function (el) { playlist.push(stelsSanitizeAndroidPlayable({ url: el.stream, title: el.title, poster: el.poster || '', timeline: el.timeline, headers: el.headers || false, subtitles: el.subtitles || false, quality: false, iframe: el.iframe || false, method: el.iframe ? 'iframe' : undefined }, 'uaserials')); });
             } else playlist.push(first);
@@ -17725,13 +17725,16 @@
             // саме URL з UASerials як iframe-плеєр сайту.
             if (/tortuga\.tw\/usp\//i.test(String(embedUrl || ''))) {
               var siteData = [{
-                title: select_title || 'UASerials',
-                poster: object && object.movie && object.movie.poster || '',
-                file: embedUrl,
-                files: [{ title: 'UASerials / Tortuga', url: embedUrl }],
-                subtitles: false,
-                _stels_uaserials_site_iframe: true
-              }];
+    title: select_title || 'UASerials',
+    poster: object && object.movie && object.movie.poster || '',
+    file: embedUrl,
+    files: [{
+        title: 'UASerials / Tortuga',
+        url: embedUrl
+    }],
+    subtitles: false,
+    _stels_uaserials_site_iframe: false
+}];
               stelsLog('uaserials-site-iframe-fallback', { url: embedUrl, reason: lastErr || 'native tortuga request blocked', note: 'original UASerials player URL, no external source replacement' });
               normalizeTortugaData(siteData);
               buildFilters();
