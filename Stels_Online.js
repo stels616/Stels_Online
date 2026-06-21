@@ -288,8 +288,12 @@
       return text.replace(/\s+/g, ' ').trim();
     }
 
+    function stelsStripVoiceEpisodeSuffix(value) {
+      return String(value == null ? '' : value).replace(/\s+E\d+\s*$/i, '').trim();
+    }
+
     function stelsVoiceCompareText(value) {
-      return stelsStripVoiceQuality(stelsCleanVoiceDisplayText(value)).replace(/\s+/g, ' ').toLowerCase();
+      return stelsStripVoiceEpisodeSuffix(stelsStripVoiceQuality(stelsCleanVoiceDisplayText(value))).replace(/\s+/g, ' ').toLowerCase();
     }
 
     function stelsRememberVoiceQualityDisplayMap(rawVoices, displayVoices, sourceName) {
@@ -15701,7 +15705,17 @@
             var maxQ = 0;
             (extract || []).forEach(function (item) {
               if (item.season !== selSeason || itemVoiceName(item) !== v) return;
-              maxQ = Math.max(maxQ, stelsExtractMaxQualityFromAny(item.stream || item.quality || item._stels_source_quality_hint || '', 0, 'quality'));
+              // 1.1.169: item.stream — справжній URL потоку (HLS) і майже завжди НЕ
+              // містить позначку якості, тож попередній `item.stream || item.quality
+              // || item._stels_source_quality_hint` ніколи не доходив до hint, бо
+              // непорожній URL вже "перемагав" в `||`. Перевіряємо кожне джерело
+              // якості окремо й беремо максимум.
+              maxQ = Math.max(
+                maxQ,
+                stelsExtractMaxQualityFromAny(item.stream || '', 0, 'quality'),
+                stelsExtractMaxQualityFromAny(item.quality || '', 0, 'quality'),
+                stelsExtractMaxQualityFromAny(item._stels_source_quality_hint || '', 0, 'quality')
+              );
             });
             if (!maxQ) maxQ = stelsQualityToValue(eneyidaSourceQualityHint());
             return maxQ ? stelsQualityLabel(maxQ) : '';
@@ -17338,15 +17352,10 @@
         'Referer': host + '/'
       };
       var playHeaders = {
-    'User-Agent': Utils.baseUserAgent(),
-    'Referer': 'https://tortuga.tw/',
-    'Origin': 'https://tortuga.tw',
-    'Accept': '*/*',
-    'Accept-Language': 'uk-UA,uk;q=0.9,ru;q=0.8,en;q=0.7',
-    'Sec-Fetch-Site': 'cross-site',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Dest': 'empty'
-};
+        'User-Agent': Utils.baseUserAgent(),
+        'Referer': tortugaHost + '/',
+        'Origin': tortugaHost
+      };
 
       function cleanText(value) {
         return component.decodeHtml(String(value == null ? '' : value)
@@ -17588,24 +17597,50 @@
         stelsLog('uaserials-tortuga-decoded', { embed: embedUrl, encoded_len: String(encoded || '').length, decoded_len: String(decoded || '').length, decoded_start: String(decoded || '').slice(0, 24), is_array: Array.isArray(json), count: Array.isArray(json) ? json.length : 0, sample: Array.isArray(json) ? json.slice(0, 2).map(function (x) { return { title: x.title, season: x.season, folder: x.folder && x.folder.length }; }) : [] });
         return { data: Array.isArray(json) ? json : [], next: '' };
       }
-      function parseFileEntries(str) {
-        var out = [];
-        str = String(str || '').trim();
-        if (!str) return out;
-        var re = /\{([^}]+)\}\s*([^;]+)/g;
-        var m;
-        while ((m = re.exec(str))) out.push({ voice: cleanText(m[1]), url: absolute(m[2], tortugaHost + '/') });
-        if (!out.length && /^https?:/i.test(str)) out.push({ voice: 'UASerials', url: absolute(str, tortugaHost + '/') });
-        return out;
-      }
-      function parseSubtitleEntries(str) {
+      function parseSubtitleBlock(str) {
+        // 1.1.169: субтитри Tortuga приходять НЕ окремим JSON-полем `subtitle`,
+        // а вбудовані прямо у той самий рядок `file`, у форматі
+        // "(subtitle:[Лейбл]url[Лейбл2]url2)" одразу після URL потоку.
         var out = [];
         str = String(str || '').trim();
         if (!str) return false;
-        var re = /\[([^\]]+)\]\s*([^;]+)/g;
+        var re = /\[([^\]]+)\]\s*([^\[\]]+)/g;
         var m;
-        while ((m = re.exec(str))) out.push({ label: cleanText(m[1]), url: component.processSubs(absolute(m[2], tortugaHost + '/')) });
+        while ((m = re.exec(str))) {
+          var url = String(m[2] || '').trim();
+          if (!url) continue;
+          out.push({ label: cleanText(m[1]), url: component.processSubs(absolute(url, tortugaHost + '/')) });
+        }
         return out.length ? out : false;
+      }
+      function parseFileEntries(str) {
+        // Сирий формат Tortuga: "{Voice}URL(subtitle:[Лейбл]suburl);{Voice2}URL2(subtitle:)".
+        // Блок "(subtitle:...)" може бути порожнім і завжди йде ОДРАЗУ після URL потоку
+        // того ж голосу, перед роздільником ";" наступного голосу. Раніше URL потоку
+        // захоплювався разом із цим хвостом (через ним підставлявся весь "[^;]+" аж до
+        // ";"), через що Lampa отримувала зіпсоване посилання на відео і не могла
+        // відкрити серію. Тепер URL та вбудовані субтитри розбираються окремо.
+        var out = [];
+        str = String(str || '').trim();
+        if (!str) return out;
+        var re = /\{([^}]*)\}\s*([\s\S]*?)(?:\(subtitle\s*:\s*([\s\S]*?)\))?(?=\s*;\s*\{|$)/g;
+        var m;
+        while ((m = re.exec(str))) {
+          var voice = cleanText(m[1]);
+          var url = String(m[2] || '').trim();
+          if (!url) continue;
+          out.push({ voice: voice, url: absolute(url, tortugaHost + '/'), subtitles: parseSubtitleBlock(m[3] || '') });
+        }
+        if (!out.length) {
+          // Резервний варіант: немає фігурних дужок {Voice}, але може бути прямий URL
+          // або URL з хвостом (subtitle:...), який все одно треба відрізати.
+          var fm = str.match(/^([\s\S]*?)(?:\(subtitle\s*:\s*([\s\S]*?)\))?$/);
+          var fallbackUrl = fm ? String(fm[1] || '').trim() : str;
+          if (/^https?:/i.test(fallbackUrl)) {
+            out.push({ voice: 'UASerials', url: absolute(fallbackUrl, tortugaHost + '/'), subtitles: parseSubtitleBlock(fm && fm[2] || '') });
+          }
+        }
+        return out;
       }
       function normalizeTortugaData(data) {
         var seasons = [];
@@ -17618,18 +17653,24 @@
             folder.forEach(function (ep, ei) {
               var episodeNum = parseInt(ep.number || ep.episode || ep.title, 10) || (ei + 1);
               var files = parseFileEntries(ep.file || ep.url || '');
-              season.episodes.push({ season: seasonNum, episode: episodeNum, title: ep.title || ('Серія ' + episodeNum), files: files, poster: ep.poster || node.poster || '', subtitles: parseSubtitleEntries(ep.subtitle || '') });
+              season.episodes.push({ season: seasonNum, episode: episodeNum, title: ep.title || ('Серія ' + episodeNum), files: files, poster: ep.poster || node.poster || '' });
             });
             seasons.push(season);
           } else if (node.file || node.url) {
             var mfiles = parseFileEntries(node.file || node.url || '');
             if (node._stels_uaserials_site_iframe) mfiles.forEach(function (f) { f._stels_uaserials_site_iframe = true; });
-            movie.push({ title: node.title || select_title, files: mfiles, poster: node.poster || '', subtitles: parseSubtitleEntries(node.subtitle || ''), _stels_uaserials_site_iframe: !!node._stels_uaserials_site_iframe });
+            movie.push({ title: node.title || select_title, files: mfiles, poster: node.poster || '', _stels_uaserials_site_iframe: !!node._stels_uaserials_site_iframe });
           }
         });
         seasons.sort(function (a, b) { return a.num - b.num; });
         extract = { seasons: seasons, movie: movie };
-        stelsLog('uaserials-normalized', { seasons: seasons.length, movie: movie.length, episodes: seasons.reduce(function (n, s) { return n + s.episodes.length; }, 0), sample: seasons.slice(0, 4).map(function (s) { return { season: s.num, episodes: s.episodes.length }; }) });
+        stelsLog('uaserials-normalized', {
+          seasons: seasons.length,
+          movie: movie.length,
+          episodes: seasons.reduce(function (n, s) { return n + s.episodes.length; }, 0),
+          sample: seasons.slice(0, 4).map(function (s) { return { season: s.num, episodes: s.episodes.length }; }),
+          file_sample: seasons.length && seasons[0].episodes.length ? seasons[0].episodes[0].files.map(function (f) { return { voice: f.voice, url: f.url, subtitles_count: f.subtitles ? f.subtitles.length : 0 }; }) : []
+        });
       }
       function buildFilters() {
         filter_items = { season: [], season_num: [], voice: [] };
@@ -17660,13 +17701,11 @@
           if (season) season.episodes.forEach(function (ep) {
             ep.files.forEach(function (f) {
               if (voice && f.voice !== voice) return;
-			  if (f.url.indexOf('/hls/') !== -1)
-    f.url = f.url.replace('/hls/', '/content/stream/');
-              items.push({ title: component.formatEpisodeTitle(ep.season, ep.episode), quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', season: ep.season, episode: ep.episode, voice: f.voice || '', stream: component.fixLink(f.url), poster: absolute(ep.poster || '', tortugaHost + '/'), subtitles: ep.subtitles || false, headers: playHeaders, iframe: !!(f._stels_uaserials_site_iframe || ep._stels_uaserials_site_iframe) });
+              items.push({ title: component.formatEpisodeTitle(ep.season, ep.episode), quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', season: ep.season, episode: ep.episode, voice: f.voice || '', stream: f.url, poster: absolute(ep.poster || '', tortugaHost + '/'), subtitles: f.subtitles || false, headers: playHeaders, iframe: !!(f._stels_uaserials_site_iframe || ep._stels_uaserials_site_iframe) });
             });
           });
         } else {
-          extract.movie.forEach(function (m) { m.files.forEach(function (f) { if (!voice || f.voice === voice) items.push({ title: m.title || f.voice || select_title, quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', voice: f.voice || '', stream: component.fixLink(f.url), poster: absolute(m.poster || '', tortugaHost + '/'), subtitles: m.subtitles || false, headers: playHeaders, iframe: !!(f._stels_uaserials_site_iframe || m._stels_uaserials_site_iframe) }); }); });
+          extract.movie.forEach(function (m) { m.files.forEach(function (f) { if (!voice || f.voice === voice) items.push({ title: m.title || f.voice || select_title, quality: '360p ~ 1080p', info: f.voice ? ' / ' + f.voice : '', voice: f.voice || '', stream: f.url, poster: absolute(m.poster || '', tortugaHost + '/'), subtitles: f.subtitles || false, headers: playHeaders, iframe: !!(f._stels_uaserials_site_iframe || m._stels_uaserials_site_iframe) }); }); });
         }
         return items;
       }
@@ -17689,7 +17728,7 @@
           if (viewed.indexOf(hash_file) !== -1) row.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
           row.on('hover:enter', function () {
             if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
-            var first = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title), poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: element.subtitles || false, quality: false, iframe: element.iframe || false, method: undefined }, 'uaserials');
+            var first = stelsSanitizeAndroidPlayable({ url: element.stream, title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title), poster: element.poster || '', timeline: element.timeline, headers: element.headers || false, subtitles: element.subtitles || false, quality: false, iframe: element.iframe || false, method: element.iframe ? 'iframe' : undefined }, 'uaserials');
             Lampa.Player.play(first);
             var playlist = [];
             if (element.season && Lampa.Platform.version) {
@@ -17725,16 +17764,13 @@
             // саме URL з UASerials як iframe-плеєр сайту.
             if (/tortuga\.tw\/usp\//i.test(String(embedUrl || ''))) {
               var siteData = [{
-    title: select_title || 'UASerials',
-    poster: object && object.movie && object.movie.poster || '',
-    file: embedUrl,
-    files: [{
-        title: 'UASerials / Tortuga',
-        url: embedUrl
-    }],
-    subtitles: false,
-    _stels_uaserials_site_iframe: false
-}];
+                title: select_title || 'UASerials',
+                poster: object && object.movie && object.movie.poster || '',
+                file: embedUrl,
+                files: [{ title: 'UASerials / Tortuga', url: embedUrl }],
+                subtitles: false,
+                _stels_uaserials_site_iframe: true
+              }];
               stelsLog('uaserials-site-iframe-fallback', { url: embedUrl, reason: lastErr || 'native tortuga request blocked', note: 'original UASerials player URL, no external source replacement' });
               normalizeTortugaData(siteData);
               buildFilters();
@@ -24223,8 +24259,25 @@
       function lampauaRenderFilter(reason) {
         var rawVoices = (filter_find.voice || []).map(function (b) { return b.title; });
         var qualities = (filter_find.voice || []).map(function (b, i) { return lampauaVoiceQualityLabel(b, i); });
-        stelsLog('lampaua-voice-quality-filter-build', { source: sourceTitle, reason: reason || '', voices: rawVoices, voice_quality: qualities, season: current_videos && current_videos[0] && current_videos[0].season || 0 });
-        component.filter({ season: filter_find.season.map(function (s) { return s.title; }), voice: rawVoices, voice_quality: qualities }, choice, current_videos);
+        // 1.1.169: рушій lampaua вантажить серії лише для ОДНОГО активного перекладу
+        // одночасно (інші переклади — окремі кнопки/вкладки на сайті-джерелі), тож
+        // глобальний підрахунок serii (stelsComputeVoiceEpisodesFromItems) бачить
+        // лише цей один голос у current_videos і залишає всі інші переклади без
+        // суфікса "E<n>". Кількість серій у межах одного сезону того самого джерела
+        // зазвичай однакова для всіх перекладів, тож рахуємо її з поточного списку
+        // і застосовуємо як орієнтовну оцінку до всіх голосів цього сезону.
+        var episodeCount = 0;
+        try {
+          var seasonSeen = {};
+          (current_videos || []).forEach(function (el) {
+            var ep = parseInt(el && (el.episode || el.e) || 0, 10) || 0;
+            if (ep) seasonSeen[ep] = true;
+          });
+          episodeCount = Object.keys(seasonSeen).length;
+        } catch (eEpCount) {}
+        var voiceEpisodes = episodeCount ? rawVoices.map(function () { return episodeCount; }) : [];
+        stelsLog('lampaua-voice-quality-filter-build', { source: sourceTitle, reason: reason || '', voices: rawVoices, voice_quality: qualities, voice_episodes: voiceEpisodes, season: current_videos && current_videos[0] && current_videos[0].season || 0 });
+        component.filter({ season: filter_find.season.map(function (s) { return s.title; }), voice: rawVoices, voice_quality: qualities, voice_episodes: voiceEpisodes }, choice, current_videos);
       }
 
       function lampauaVoiceQualityCandidates() {
@@ -32141,7 +32194,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.163: зелений спінер завантаження перенесено з верхнього меню в центр екрана без blocking overlay; верхнє меню Пошук/Балансер/Фільтр лишається доступним, кнопка Джерело у верхньому меню прихована.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`).' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
