@@ -303,6 +303,52 @@
       return stelsStripVoiceEpisodeSuffix(stelsStripVoiceQuality(stelsCleanVoiceDisplayText(value))).replace(/\s+/g, ' ').toLowerCase();
     }
 
+    function stelsEscapeRegExp(value) {
+      return String(value == null ? '' : value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function stelsCleanDecoratedVoiceRow(row) {
+      var result = { quality: 0, episode: 0 };
+      try {
+        if (!row || !document.createTreeWalker) return result;
+        var qEl = row.querySelector && (row.querySelector('.stels-online-voice-quality-prefix') || row.querySelector('.stels-zetflixnet-voice-quality-prefix'));
+        var eEl = row.querySelector && row.querySelector('.stels-online-voice-episode-suffix');
+        var q = qEl ? String(qEl.textContent || '').trim() : '';
+        var ep = eEl ? String(eEl.textContent || '').trim() : '';
+        if (!q && !ep) return result;
+        var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
+          acceptNode: function (n) {
+            if (!n || !n.nodeValue) return NodeFilter.FILTER_REJECT;
+            var p = n.parentNode;
+            if (p && p.classList && (p.classList.contains('stels-online-voice-quality-prefix') || p.classList.contains('stels-zetflixnet-voice-quality-prefix') || p.classList.contains('stels-online-voice-episode-suffix'))) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+        var nodes = [];
+        var n;
+        while ((n = walker.nextNode())) nodes.push(n);
+        nodes.forEach(function (node) {
+          var txt = String(node.nodeValue || '');
+          if (q) {
+            var reQ = new RegExp('^(\\s*)' + stelsEscapeRegExp(q) + '(?=\\s+)', 'i');
+            if (reQ.test(txt)) {
+              node.nodeValue = txt.replace(reQ, '$1').replace(/^\s+/, ' ');
+              result.quality++;
+              txt = String(node.nodeValue || '');
+            }
+          }
+          if (ep) {
+            var reEp = new RegExp('(?:\\s|\\u00a0)+' + stelsEscapeRegExp(ep) + '\\s*$', 'i');
+            if (reEp.test(txt)) {
+              node.nodeValue = txt.replace(reEp, '');
+              result.episode++;
+            }
+          }
+        });
+      } catch (e) {}
+      return result;
+    }
+
     function stelsRememberVoiceQualityDisplayMap(rawVoices, displayVoices, sourceName) {
       try {
         if (!(rawVoices && rawVoices.length) || !(displayVoices && displayVoices.length)) return;
@@ -742,6 +788,7 @@
         var epSuffix = m[3] || '';
         if (/^\s*\d+\s*\/\s*$/i.test(prefix)) prefix = '';
         rest = rest.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UASerials|Eneyida)\s*$/i, '');
+        rest = stelsStripVoiceEpisodeSuffix(rest);
         var frag = document.createDocumentFragment();
         if (prefix) frag.appendChild(document.createTextNode(prefix));
         if (rest) frag.appendChild(document.createTextNode(rest));
@@ -772,7 +819,8 @@
         // щоб підсвітити його тим самим жовтим кольором, що й якість.
         var epSuffix = '';
         var epMatch = rest.match(/^([\s\S]*?)([\s\u00a0]+[EeЕе]\d+)\s*$/i);
-        if (epMatch) { rest = epMatch[1]; epSuffix = epMatch[2]; }
+        if (epMatch) { rest = stelsStripVoiceEpisodeSuffix(epMatch[1]); epSuffix = epMatch[2]; }
+        rest = stelsStripVoiceQuality(rest);
         var frag = document.createDocumentFragment();
         if (prefix) frag.appendChild(document.createTextNode(prefix));
         var span = document.createElement('span');
@@ -806,6 +854,10 @@
           var rowText = String(row.textContent || '').trim();
           var hasQualityWrap = row.querySelector && (row.querySelector('.stels-online-voice-quality-prefix') || row.querySelector('.stels-zetflixnet-voice-quality-prefix'));
           var hasEpisodeWrap = row.querySelector && row.querySelector('.stels-online-voice-episode-suffix');
+          if (hasQualityWrap || hasEpisodeWrap) {
+            try { stelsCleanDecoratedVoiceRow(row); } catch (eclean) {}
+            rowText = String(row.textContent || '').trim();
+          }
           if (hasQualityWrap && hasEpisodeWrap) continue;
           if (hasQualityWrap && !hasEpisodeWrap && stelsHasVoiceEpisodeSuffix(rowText)) {
             result.rows++;
@@ -19105,7 +19157,7 @@
         var season = zetflixnetCurrentSeasonForQuality();
         filter_items.voice_raw = rawVoices.slice(0);
         filter_items.voice_quality = rawVoices.map(function (voice) { return zetflixnetVoiceQualityLabel(voice, season); });
-        filter_items.voice = rawVoices.map(function (voice) { return zetflixnetVoiceDisplayName(voice, season); });
+        filter_items.voice = rawVoices.map(function (voice) { return cleanText(voice || ''); });
       }
 
       function zetflixnetApplyVoiceEpisodes() {
