@@ -1,5 +1,6 @@
 // Stels_Online based on online_mod.js
-// FIXED VERSION 1.1.173 - Resolves Tortuga playback error and auto-hiding source list
+// COMPLETE FIXED VERSION 1.1.173
+// Fixes: 1) Auto-hiding source list, 2) Tortuga playback error
 
 (function () {
     'use strict';
@@ -17,6 +18,8 @@
     var stelsPrecheckSilentUntil = 0;
     var stelsOriginalNotyShow = null;
     var stelsPrecheckNotyGuardFn = null;
+    
+    // ========== FIX #1: SELECTBOX PROTECTION ==========
     var stelsSelectboxProtected = false;
 
     function stelsNotyMessageToText(msg) {
@@ -155,27 +158,7 @@
       getstv: 'getstv'
     };
 
-    // ========== FIX #1: SELECTBOX PROTECTION ==========
-    function stelsIsSelectBoxOpen() {
-      try { if (typeof $ != 'undefined' && $('body').hasClass('selectbox--open')) return true; } catch (e) {}
-      try { return !!(document.querySelector && document.querySelector('.selectbox--open,.selectbox.open,.selectbox.active,.selectbox--visible')); } catch (e2) {}
-      return false;
-    }
-
-    function stelsShouldProtectSelectbox() {
-      return stelsIsSelectBoxOpen() || stelsSelectboxProtected;
-    }
-
-    function stelsProtectSelectbox(callback) {
-      stelsSelectboxProtected = true;
-      try {
-        callback();
-      } finally {
-        setTimeout(function() { stelsSelectboxProtected = false; }, 100);
-      }
-    }
-
-    // ========== FIX #2: TORTUGA QUALITY CAP ==========
+    // 1.1.127: глобальні helpers якості
     function stelsQualityToValue(label) {
       try {
         if (label == null || label === false || label === true) return 0;
@@ -219,16 +202,22 @@
       return value + 'p';
     }
 
+    // 1.1.143: цей clamp потрібен не лише внутрішньому precheck
     function stelsSourceQualityCap(source) {
       source = stelsNormalizeSourceKey(source || '');
       if (source === 'filmix' || source === 'filmixtv' || source === 'fxapi') return 480;
       if (source === 'iremux') return 1080;
+      // 1.1.153: VeoVeo
       if (source === 'veoveo') return 1080;
+      // 1.1.156: UAKino
       if (source === 'uakino' || source === 'uakino-lampaua' || source === 'lampaua-uakino') return 1080;
+      // 1.1.156: UafilmMe
       if (source === 'uafilmme' || source === 'uafilmme-lampaua' || source === 'lampaua-uafilmme') return 1080;
+      // 1.1.149: Eneyida
       if (source === 'eneyida') return 1080;
+      // 1.1.150: Mirage
       if (source === 'mirage') return 2160;
-      // FIX: Added Tortuga support
+      // FIX #2: Added Tortuga support
       if (source === 'tartuga' || source === 'lampaua-tartuga' || source === 'lme_tartuga') return 1080;
       return 0;
     }
@@ -241,10 +230,10 @@
       return value;
     }
 
+    // FIX #2: Enhanced source key normalization for Tortuga
     function stelsNormalizeSourceKey(source) {
       if (!source) return '';
       source = String(source).toLowerCase().trim();
-      // FIX: Enhanced normalization for Tortuga
       if (source === 'lme_tartuga' || source === 'tartuga-lampaua') return 'tartuga';
       if (source === 'lme_uaflix') return 'uaflix';
       if (source === 'lme_klonfun') return 'klonfun';
@@ -254,7 +243,6 @@
       return source.replace(/[^a-z0-9]/g, '');
     }
 
-    // ========== VOICE QUALITY SYSTEM ==========
     var STELS_VOICE_QUALITY_RE = /^(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)$/i;
     var stelsVoiceQualityColorObserver = null;
     var stelsVoiceQualityColorTimer = 0;
@@ -279,24 +267,6 @@
       return q ? stelsQualityLabel(q) : '';
     }
 
-    function stelsCleanVoiceDisplayText(value) {
-      var text = String(value == null ? '' : value).replace(/&nbsp;/g, ' ').trim();
-      text = text.replace(/[✓✔]/g, ' ').trim();
-      text = text.replace(/^\s*\d+\s*\/\s*/i, '').trim();
-      text = text.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|UASerials)\s*$/i, '').trim();
-      text = text.replace(/^\s*p\s+(?=\S)/i, '').trim();
-      text = text.replace(/^\s*k\s+(?=\S)/i, '').trim();
-      return text.replace(/\s+/g, ' ').trim();
-    }
-
-    function stelsStripVoiceEpisodeSuffix(value) {
-      return String(value == null ? '' : value).replace(/[\s\u00a0]+[EeЕе]\d+\s*$/i, '').trim();
-    }
-
-    function stelsVoiceCompareText(value) {
-      return stelsStripVoiceEpisodeSuffix(stelsStripVoiceQuality(stelsCleanVoiceDisplayText(value))).replace(/\s+/g, ' ').toLowerCase();
-    }
-
     function stelsVoiceDisplayName(name, quality, episodeCount) {
       name = String(name == null ? '' : name).trim();
       quality = String(quality == null ? '' : quality).trim();
@@ -317,135 +287,63 @@
       return String(value == null ? '' : value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    // ========== FIX #1: PROTECTED VOICE QUALITY PATCHING ==========
-    function stelsPatchVisibleVoiceQualityFromMap(reason) {
-      var result = { reason: reason || '', rows: 0, patched: 0, map: (stelsVoiceQualityDisplayMap || []).length, errors: [], skipped: false };
-      try {
-        // FIX: Skip patching if selectbox is open or protected
-        if (stelsShouldProtectSelectbox()) {
-          result.skipped = true;
-          try { stelsLog('voice-quality-patch-skipped', { reason: 'selectbox-protected', mapSize: (stelsVoiceQualityDisplayMap || []).length }); } catch (e) {}
-          return result;
-        }
-
-        if (!document.querySelectorAll || !(stelsVoiceQualityDisplayMap && stelsVoiceQualityDisplayMap.length)) return result;
-
-        var rows = document.querySelectorAll('.selectbox-item,.selectbox__item,.selector__item,.menu__item,.selector,.simple-button,.player-panel__line,.player-panel__item,.player-panel .selector,.player-menu__item,.player-settings__item,.player-menu .selector,.player-settings .selector,.modal .selector,.modal .simple-button,.modal .selectbox-item,.modal .selectbox__item,.settings-param,.full-start__button');
-
-        for (var i = 0; i < rows.length; i++) {
-          var row = rows[i];
-          if (!row) continue;
-          var rowText = String(row.textContent || '').trim();
-          if (!rowText) continue;
-          var cmp = stelsVoiceCompareText(rowText);
-          if (!cmp) continue;
-          for (var j = 0; j < stelsVoiceQualityDisplayMap.length; j++) {
-            var item = stelsVoiceQualityDisplayMap[j];
-            if (!item || !item.compare || !item.display) continue;
-            if (cmp === item.compare) {
-              result.rows++;
-              if (stelsPatchTextNodeWithDisplay(row, item.display)) result.patched++;
-              break;
-            }
-          }
-        }
-      } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
-      if (result.patched || result.errors.length || result.skipped) try { stelsLog('global-voice-quality-visible-patch', result); } catch (elog) {}
-      return result;
+    function stelsCleanVoiceDisplayText(value) {
+      var text = String(value == null ? '' : value).replace(/&nbsp;/g, ' ').trim();
+      text = text.replace(/[✓✔]/g, ' ').trim();
+      text = text.replace(/^\s*\d+\s*\/\s*/i, '').trim();
+      text = text.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|UASerials|Eneyida)\s*$/i, '').trim();
+      text = text.replace(/^\s*p\s+(?=\S)/i, '').trim();
+      text = text.replace(/^\s*k\s+(?=\S)/i, '').trim();
+      return text.replace(/\s+/g, ' ').trim();
     }
 
-    function stelsPatchBroken4KVoiceRows(reason) {
-      var result = { reason: reason || '', rows: 0, patched: 0, map: (stelsVoiceQualityDisplayMap || []).length, errors: [] };
-      try {
-        // FIX: Skip if selectbox is protected
-        if (stelsShouldProtectSelectbox()) return result;
-
-        if (!document.querySelectorAll || !(stelsVoiceQualityDisplayMap && stelsVoiceQualityDisplayMap.length)) return result;
-
-        var rows = document.querySelectorAll('.selectbox-item,.selectbox__item,.selector__item,.menu__item,.selector,.simple-button,.player-panel__line,.player-panel__item,.player-panel .selector,.player-menu__item,.player-settings__item,.player-menu .selector,.player-settings .selector,.modal .selector,.modal .simple-button,.modal .selectbox-item,.modal .selectbox__item,.settings-param,.full-start__button');
-
-        for (var i = 0; i < rows.length; i++) {
-          var row = rows[i];
-          if (!row) continue;
-          var rowText = String(row.textContent || '').trim();
-          if (!/^\s*\d+\s*\/\s*K\s+\S/i.test(rowText) && !/^\s*K\s+\S/i.test(rowText)) continue;
-          var clean = stelsCleanVoiceDisplayText(rowText);
-          var cmp = stelsVoiceCompareText(clean);
-          if (!cmp) continue;
-          for (var j = 0; j < stelsVoiceQualityDisplayMap.length; j++) {
-            var item = stelsVoiceQualityDisplayMap[j];
-            if (!item || !item.compare || !item.display || !/^\s*4K/i.test(String(item.display || ''))) continue;
-            if (cmp === item.compare) {
-              result.rows++;
-              if (stelsPatchTextNodeWithDisplay(row, item.display)) result.patched++;
-              break;
-            }
-          }
-        }
-      } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
-      if (result.patched || result.errors.length) try { stelsLog('global-voice-quality-broken-4k-patch', result); } catch (elog) {}
-      return result;
+    function stelsStripVoiceEpisodeSuffix(value) {
+      return String(value == null ? '' : value).replace(/[\s\u00a0]+[EeЕе]\d+\s*$/i, '').trim();
     }
 
-    function stelsPatchTextNodeWithDisplay(row, display) {
+    function stelsVoiceCompareText(value) {
+      return stelsStripVoiceEpisodeSuffix(stelsStripVoiceQuality(stelsCleanVoiceDisplayText(value))).replace(/\s+/g, ' ').toLowerCase();
+    }
+
+    function stelsCleanDecoratedVoiceRow(row) {
+      var result = { quality: 0, episode: 0 };
       try {
-        if (!row || !display || !document.createTreeWalker) return false;
-        try { stelsRemoveVoiceRowServiceNoise(row); } catch (enoise) {}
+        if (!row || !document.createTreeWalker) return result;
+        var qEl = row.querySelector && (row.querySelector('.stels-online-voice-quality-prefix') || row.querySelector('.stels-zetflixnet-voice-quality-prefix'));
+        var eEl = row.querySelector && row.querySelector('.stels-online-voice-episode-suffix');
+        var q = qEl ? String(qEl.textContent || '').trim() : '';
+        var ep = eEl ? String(eEl.textContent || '').trim() : '';
+        if (!q && !ep) return result;
         var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
           acceptNode: function (n) {
-            if (!n || !n.nodeValue || !String(n.nodeValue).trim()) return NodeFilter.FILTER_REJECT;
+            if (!n || !n.nodeValue) return NodeFilter.FILTER_REJECT;
             var p = n.parentNode;
             if (p && p.classList && (p.classList.contains('stels-online-voice-quality-prefix') || p.classList.contains('stels-zetflixnet-voice-quality-prefix') || p.classList.contains('stels-online-voice-episode-suffix'))) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
           }
         });
-        var best = null;
-        var n;
-        while ((n = walker.nextNode())) {
-          var nv = String(n.nodeValue || '').trim();
-          if (/^[pk]\s+/i.test(nv)) { best = n; break; }
-          if (!best || String(n.nodeValue || '').length > String(best.nodeValue || '').length) best = n;
-        }
-        if (!best) return false;
-        best.nodeValue = display;
-        return true;
-      } catch (e) { return false; }
-    }
-
-    function stelsRemoveVoiceRowServiceNoise(row) {
-      var result = { removed: 0, errors: [] };
-      try {
-        if (!row || !document.createTreeWalker) return result;
-        var sourceSuffix = /\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|UASerials)\s*$/i;
-        var rowBefore = String(row.textContent || '');
-        var hasBrokenPQuality = /^\s*\d+\s*\/\s*p\s+\S/i.test(rowBefore) || /^\s*p\s+\S/i.test(rowBefore);
-        var hasBrokenKQuality = /^\s*\d+\s*\/\s*k\s+\S/i.test(rowBefore) || /^\s*k\s+\S/i.test(rowBefore);
-        var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, null);
         var nodes = [];
         var n;
         while ((n = walker.nextNode())) nodes.push(n);
         nodes.forEach(function (node) {
-          try {
-            var value = String(node.nodeValue || '');
-            if (/^\s*\d+\s*\/\s*$/.test(value)) {
-              node.nodeValue = '';
-              result.removed++;
-            } else if (hasBrokenPQuality && /^\s*p\s*$/.test(value)) {
-              node.nodeValue = '';
-              result.removed++;
-            } else if (hasBrokenKQuality && /^\s*k\s*$/.test(value)) {
-              node.nodeValue = '';
-              result.removed++;
-            } else if (sourceSuffix.test(value) && value.replace(sourceSuffix, '').trim() === '') {
-              node.nodeValue = '';
-              result.removed++;
-            } else if (/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|UASerials)\s*$/i.test(value)) {
-              node.nodeValue = '';
-              result.removed++;
+          var txt = String(node.nodeValue || '');
+          if (q) {
+            var reQ = new RegExp('^(\\s*)' + stelsEscapeRegExp(q) + '(?=\\s+)', 'i');
+            if (reQ.test(txt)) {
+              node.nodeValue = txt.replace(reQ, '$1').replace(/^\s+/, ' ');
+              result.quality++;
+              txt = String(node.nodeValue || '');
             }
-          } catch (e) { result.errors.push(e && (e.message || e.toString()) || ''); }
+          }
+          if (ep) {
+            var reEp = new RegExp('(?:\\s|\\u00a0)+' + stelsEscapeRegExp(ep) + '\\s*$', 'i');
+            if (reEp.test(txt)) {
+              node.nodeValue = txt.replace(reEp, '');
+              result.episode++;
+            }
+          }
         });
-      } catch (e2) { result.errors.push(e2 && (e2.message || e2.toString()) || ''); }
+      } catch (e) {}
       return result;
     }
 
@@ -473,231 +371,31 @@
       } catch (e) {}
     }
 
-    function stelsArraySameClean(a, b) {
-      a = Array.isArray(a) ? a : [];
-      b = Array.isArray(b) ? b : [];
-      if (a.length !== b.length) return false;
-      for (var i = 0; i < a.length; i++) {
-        if (stelsVoiceCompareText(a[i]) !== stelsVoiceCompareText(b[i])) return false;
-      }
-      return true;
-    }
-
-    function stelsIsOnlyVoiceDisplayPatch(prev, next) {
+    function stelsRemoveVoiceRowServiceNoise(row) {
+      var result = { removed: 0, errors: [] };
       try {
-        if (!stelsIsSelectBoxOpen()) return false;
-        prev = prev || {};
-        next = next || {};
-        if (!(prev.voice && next.voice && prev.voice.length && next.voice.length)) return false;
-        if (!stelsArraySameClean(prev.voice, next.voice)) return false;
-        if (!stelsArraySameClean(prev.season || [], next.season || [])) return false;
-        if (!stelsArraySameClean(prev.player || [], next.player || [])) return false;
-        if (!stelsArraySameClean(prev.server || [], next.server || [])) return false;
-        return true;
-      } catch (e) {}
-      return false;
-    }
-
-    function stelsIsOnlyVoiceQualityUpdate(prev, next) {
-      return stelsIsOnlyVoiceDisplayPatch(prev, next);
-    }
-
-    function stelsBuildDisplayFilterItems(filterItems, sourceName) {
-      var out = {};
-      filterItems = filterItems || {};
-      Object.keys(filterItems).forEach(function (k) {
-        var v = filterItems[k];
-        out[k] = Array.isArray(v) ? v.slice(0) : v;
-      });
-      try {
-        if (filterItems.voice && filterItems.voice.length) {
-          var qarr = filterItems.voice_quality || [];
-          var info = filterItems.voice_info || [];
-          var earr = filterItems.voice_episodes || [];
-          out.voice = filterItems.voice.map(function (voice, index) {
-            var q = qarr[index] || '';
-            if (!q && info[index]) q = stelsVoiceQualityLabelFromAny(info[index]);
-            if (!q) q = stelsVoiceQualityPrefix(voice || '');
-            var ep = parseInt(earr[index], 10) || 0;
-            return stelsVoiceDisplayName(voice, q, ep);
-          });
-        }
-      } catch (e) {}
-      return out;
-    }
-
-    function stelsVoiceEpisodeSelectedSeasonGlobal(filterItems, choiceArg) {
-      try {
-        filterItems = filterItems || {};
-        choiceArg = choiceArg || {};
-        if (filterItems.season_num && filterItems.season_num.length) return parseInt(filterItems.season_num[choiceArg.season || 0], 10) || 0;
-        var seasonTitle = filterItems.season && filterItems.season[choiceArg.season || 0] || '';
-        var m = String(seasonTitle || '').match(/\d+/);
-        if (m) return parseInt(m[0], 10) || 0;
-      } catch (e) {}
-      return 0;
-    }
-
-    function stelsVoiceNameFromItemGlobal(element) {
-      var voice = '';
-      try {
-        voice = element && (element.translate_voice || element.voice || element.voice_name || element.translation_name || element.translate && element.translate.name) || '';
-        if (!voice && element && (element.voiceStudio || element.voiceType)) voice = element.voiceStudio || element.voiceType;
-        if (!voice && element && element.translation) voice = element.translation.title || element.translation.name || '';
-        if (!voice && element && element.info) voice = String(element.info || '').replace(/^\s*\/\s*/, '');
-        if (!voice && element && element.media) voice = element.media.voiceStudio || element.media.voiceType || element.media.translation_name || element.media.translation || '';
-        if (!voice && element && element.team) voice = element.team.name || '';
-        if (!voice && element && element.type) voice = element.type.title || '';
-        if (!voice && element && element.author) voice = element.author.title || element.author.name || '';
-      } catch (e) {}
-      return stelsCleanVoiceDisplayText(voice || '');
-    }
-
-    function stelsExtractMaxQualityFromAny(value, defaultValue, fieldName) {
-      try {
-        if (value == null) return defaultValue || 0;
-        if (typeof value === 'number') return value;
-        if (typeof value === 'string') {
-          var q = stelsQualityToValue(value);
-          return q || (defaultValue || 0);
-        }
-        if (typeof value === 'object') {
-          var max = 0;
-          var fields = ['quality', 'max_quality', 'height', 'resolution', 'res', fieldName || 'quality'];
-          for (var i = 0; i < fields.length; i++) {
-            var f = fields[i];
-            if (value[f] != null) {
-              var v = stelsExtractMaxQualityFromAny(value[f], 0, fieldName);
-              if (v && v > max) max = v;
-            }
-          }
-          if (value.translations || value.translation) {
-            var tr = value.translations || (value.translation ? [value.translation] : []);
-            if (Array.isArray(tr)) {
-              tr.forEach(function (t) {
-                if (t) {
-                  var v = stelsExtractMaxQualityFromAny(t, 0, fieldName);
-                  if (v && v > max) max = v;
-                }
-              });
-            }
-          }
-          if (value.items || value.episodes || value.files) {
-            var items = value.items || value.episodes || value.files || [];
-            if (Array.isArray(items)) {
-              items.forEach(function (item) {
-                if (item) {
-                  var v = stelsExtractMaxQualityFromAny(item, 0, fieldName);
-                  if (v && v > max) max = v;
-                }
-              });
-            }
-          }
-          return max || (defaultValue || 0);
-        }
-        return defaultValue || 0;
-      } catch (e) {
-        return defaultValue || 0;
-      }
-    }
-
-    function stelsInstallVoiceQualityColorStyle() {
-      try {
-        if (document.getElementById('stels-global-voice-quality-color-style')) return;
-        var st = document.createElement('style');
-        st.id = 'stels-global-voice-quality-color-style';
-        st.textContent = '' +
-          '.stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;font-weight:700!important;text-shadow:0 0 2px rgba(0,0,0,.45)!important;}' +
-          '.selectbox-item .stels-online-voice-quality-prefix,.selectbox__item .stels-online-voice-quality-prefix,.selector__item .stels-online-voice-quality-prefix,.menu__item .stels-online-voice-quality-prefix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}' +
-          '.stels-online-voice-episode-suffix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;font-weight:700!important;text-shadow:0 0 2px rgba(0,0,0,.45)!important;}' +
-          '.selectbox-item .stels-online-voice-episode-suffix,.selectbox__item .stels-online-voice-episode-suffix,.selector__item .stels-online-voice-episode-suffix,.menu__item .stels-online-voice-episode-suffix{color:#ffc400!important;-webkit-text-fill-color:#ffc400!important;}';
-        (document.head || document.documentElement).appendChild(st);
-      } catch (e) {}
-    }
-
-    function stelsSetupVoiceQualityColorObserver() {
-      try {
-        if (stelsVoiceQualityColorObserver) {
-          try { stelsVoiceQualityColorObserver.disconnect(); } catch (e) {}
-          stelsVoiceQualityColorObserver = null;
-        }
-
-        if (!document || !document.body || !MutationObserver) return;
-
-        var target = document.body;
-        var config = {
-          childList: true,
-          subtree: true,
-          characterData: false,
-          attributes: false
-        };
-
-        stelsVoiceQualityColorObserver = new MutationObserver(function (mutations) {
+        if (!row || !document.createTreeWalker) return result;
+        var sourceSuffix = /\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|UASerials|Eneyida)\s*$/i;
+        var rowBefore = String(row.textContent || '');
+        var hasBrokenPQuality = /^\s*\d+\s*\/\s*p\s+\S/i.test(rowBefore) || /^\s*p\s+\S/i.test(rowBefore);
+        var hasBrokenKQuality = /^\s*\d+\s*\/\s*k\s+\S/i.test(rowBefore) || /^\s*k\s+\S/i.test(rowBefore);
+        var walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, null);
+        var nodes = [];
+        var n;
+        while ((n = walker.nextNode())) nodes.push(n);
+        nodes.forEach(function (node) {
           try {
-            if (stelsShouldProtectSelectbox()) return;
-
-            clearTimeout(stelsVoiceQualityColorTimer);
-            stelsVoiceQualityColorTimer = setTimeout(function () {
-              try {
-                if (stelsShouldProtectSelectbox()) return;
-                stelsPatchVisibleVoiceQualityFromMap('mutation-observer');
-                stelsPatchBroken4KVoiceRows('mutation-observer');
-              } catch (e) {}
-            }, 50);
-          } catch (e) {}
-        });
-
-        stelsVoiceQualityColorObserver.observe(target, config);
-        try { stelsLog('global-voice-quality-color-observer-installed', { ok: true }); } catch (e) {}
-      } catch (e) {
-        try { stelsLog('global-voice-quality-color-observer-error', { error: e && (e.message || e.toString()) || '' }); } catch (e2) {}
-      }
-    }
-
-    function stelsLog(event, data) {
-      try {
-        if (!window || !window.localStorage) return;
-        var logData = window.localStorage.getItem(STELS_LOG_KEY);
-        var entries = [];
-        if (logData) {
-          try { entries = JSON.parse(logData); } catch (e) { entries = []; }
-        }
-        if (!Array.isArray(entries)) entries = [];
-        if (entries.length >= STELS_LOG_MAX) entries.shift();
-        entries.push({
-          time: new Date().toISOString(),
-          event: event,
-          data: data
-        });
-        try {
-          window.localStorage.setItem(STELS_LOG_KEY, JSON.stringify(entries));
-        } catch (e) {}
-      } catch (e) {}
-    }
-
-    function stelsInit() {
-      try {
-        stelsInstallVoiceQualityColorStyle();
-        stelsInstallPrecheckNotyGuard(true);
-
-        if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', stelsSetupVoiceQualityColorObserver);
-        } else {
-          stelsSetupVoiceQualityColorObserver();
-        }
-
-        stelsLog('stels-online-initialized', {
-          version: STELS_ONLINE_VERSION,
-          date: new Date().toISOString()
-        });
-      } catch (e) {
-        try { stelsLog('stels-online-init-error', { error: e && (e.message || e.toString()) || '' }); } catch (e2) {}
-      }
-    }
-
-    window.stelsProtectSelectbox = stelsProtectSelectbox;
-    window.stelsShouldProtectSelectbox = stelsShouldProtectSelectbox;
-
-    stelsInit();
-
-})();
+            var value = String(node.nodeValue || '');
+            if (/^\s*\d+\s*\/\s*$/.test(value)) {
+              node.nodeValue = '';
+              result.removed++;
+            } else if (hasBrokenPQuality && /^\s*p\s*$/.test(value)) {
+              node.nodeValue = '';
+              result.removed++;
+            } else if (hasBrokenKQuality && /^\s*k\s*$/.test(value)) {
+              node.nodeValue = '';
+              result.removed++;
+            } else if (sourceSuffix.test(value) && value.replace(sourceSuffix, '').trim() === '') {
+              node.nodeValue = '';
+              result.removed++;
+            } else if (/\[\s\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTV
