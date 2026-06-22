@@ -250,6 +250,10 @@
       return String(value == null ? '' : value).replace(/^\s*(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i, '').trim();
     }
 
+    function stelsHasVoiceEpisodeSuffix(value) {
+      return /[\s\u00a0]+[EeЕе]\d+\s*$/i.test(String(value == null ? '' : value));
+    }
+
     function stelsVoiceQualityLabelFromAny(value) {
       var q = 0;
       try { q = stelsExtractMaxQualityFromAny(value, 0, 'quality'); } catch (e) {}
@@ -263,10 +267,13 @@
       var ep = parseInt(episodeCount, 10) || 0;
       var epSuffix = ep > 0 ? (' E' + ep) : '';
       // Якщо назва вже містить " E<число>" в кінці (повторний виклик display-функції) — не дублюємо.
-      var alreadyHasEp = /\sE\d+\s*$/.test(name);
-      if (stelsVoiceQualityPrefix(name)) return alreadyHasEp || !epSuffix ? name : (name + epSuffix);
-      if (!quality && STELS_VOICE_QUALITY_RE.test(name)) return alreadyHasEp || !epSuffix ? name : (name + epSuffix);
-      var withEp = alreadyHasEp ? name : (name + epSuffix);
+      var nameQuality = stelsVoiceQualityPrefix(name);
+      if (!quality && nameQuality) quality = nameQuality;
+      if (!quality && STELS_VOICE_QUALITY_RE.test(name)) return epSuffix && !stelsHasVoiceEpisodeSuffix(name) ? (name + epSuffix) : name;
+      var baseName = quality ? stelsStripVoiceQuality(name) : name;
+      if (!baseName) baseName = name;
+      if (epSuffix) baseName = stelsStripVoiceEpisodeSuffix(baseName);
+      var withEp = epSuffix ? (baseName + epSuffix) : baseName;
       return quality ? (quality + '  ' + withEp) : withEp;
     }
 
@@ -277,7 +284,7 @@
       text = text.replace(/[✓✔]/g, ' ').trim();
       // Lampa/Android player може додавати службові частини: "1 /" і " / Source".
       text = text.replace(/^\s*\d+\s*\/\s*/i, '').trim();
-      text = text.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|Eneyida)\s*$/i, '').trim();
+      text = text.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|UASerials|Eneyida)\s*$/i, '').trim();
       // Деякі плеєри Lampa витягують із "1080p AlexFilm" лише службову мову "p" і показують "1 / p AlexFilm".
       // Для порівняння з нашою мапою перекладів цей уламок треба прибрати.
       text = text.replace(/^\s*p\s+(?=\S)/i, '').trim();
@@ -289,7 +296,7 @@
     }
 
     function stelsStripVoiceEpisodeSuffix(value) {
-      return String(value == null ? '' : value).replace(/\s+E\d+\s*$/i, '').trim();
+      return String(value == null ? '' : value).replace(/[\s\u00a0]+[EeЕе]\d+\s*$/i, '').trim();
     }
 
     function stelsVoiceCompareText(value) {
@@ -305,7 +312,7 @@
           var cleanRaw = stelsCleanVoiceDisplayText(raw || '');
           var cmp = stelsVoiceCompareText(cleanRaw);
           if (!cmp) return;
-          if (!stelsVoiceQualityPrefix(display) && !/\sE\d+\s*$/i.test(display) && stelsVoiceCompareText(stelsStripVoiceQuality(display)) === cmp) return;
+          if (!stelsVoiceQualityPrefix(display) && !stelsHasVoiceEpisodeSuffix(display) && stelsVoiceCompareText(stelsStripVoiceQuality(display)) === cmp) return;
           next.push({ raw: cleanRaw, compare: cmp, display: display, source: sourceName || '' });
         });
         if (!next.length) return;
@@ -324,7 +331,7 @@
       var result = { removed: 0, errors: [] };
       try {
         if (!row || !document.createTreeWalker) return result;
-        var sourceSuffix = /\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga)\s*$/i;
+        var sourceSuffix = /\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|UASerials)\s*$/i;
         var rowBefore = String(row.textContent || '');
         var hasBrokenPQuality = /^\s*\d+\s*\/\s*p\s+\S/i.test(rowBefore) || /^\s*p\s+\S/i.test(rowBefore);
         var hasBrokenKQuality = /^\s*\d+\s*\/\s*k\s+\S/i.test(rowBefore) || /^\s*k\s+\S/i.test(rowBefore);
@@ -347,7 +354,7 @@
             } else if (sourceSuffix.test(value) && value.replace(sourceSuffix, '').trim() === '') {
               node.nodeValue = '';
               result.removed++;
-            } else if (/^\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga)\s*$/i.test(value)) {
+            } else if (/^\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UAflix|UaFlix|UAFilm|iRemux|VeoVeo|Tartuga|UASerials)\s*$/i.test(value)) {
               node.nodeValue = '';
               result.removed++;
             }
@@ -677,7 +684,7 @@
           if (!episode) return;
           var voice = stelsVoiceNameFromItemGlobal(item);
           if (!voice) return;
-          var key = stelsVoiceCompareText(stelsStripVoiceQuality(voice).replace(/\s+E\d+\s*$/i, '').trim());
+          var key = stelsVoiceCompareText(stelsStripVoiceEpisodeSuffix(stelsStripVoiceQuality(voice)));
           if (!key) return;
           byVoice[key] = byVoice[key] || {};
           byVoice[key][episode] = true;
@@ -689,7 +696,7 @@
             if (!episode) return;
             var voice = stelsVoiceNameFromItemGlobal(item);
             if (!voice) return;
-            var key = stelsVoiceCompareText(stelsStripVoiceQuality(voice).replace(/\s+E\d+\s*$/i, '').trim());
+            var key = stelsVoiceCompareText(stelsStripVoiceEpisodeSuffix(stelsStripVoiceQuality(voice)));
             if (!key) return;
             byVoice[key] = byVoice[key] || {};
             byVoice[key][episode] = true;
@@ -698,7 +705,7 @@
         var existing = filterItems.voice_episodes || [];
         var out = filterItems.voice.map(function (voice, index) {
           var current = parseInt(existing[index], 10) || 0;
-          var key = stelsVoiceCompareText(stelsStripVoiceQuality(String(voice || '')).replace(/\s+E\d+\s*$/i, '').trim());
+          var key = stelsVoiceCompareText(stelsStripVoiceEpisodeSuffix(stelsStripVoiceQuality(String(voice || ''))));
           var episodes = byVoice[key] || {};
           var count = Object.keys(episodes).length;
           return current || count || 0;
@@ -728,13 +735,13 @@
         var parent = node.parentNode;
         if (parent.classList && (parent.classList.contains('stels-online-voice-episode-suffix') || parent.classList.contains('stels-online-voice-quality-prefix') || parent.classList.contains('stels-zetflixnet-voice-quality-prefix'))) return false;
         var txt = node.nodeValue || '';
-        var m = txt.match(/^(\s*(?:(?:\d+\s*\/\s*)?))([\s\S]*?)(\s+E\d+)\s*$/i);
+        var m = txt.match(/^(\s*(?:(?:\d+\s*\/\s*)?))([\s\S]*?)([\s\u00a0]+[EeЕе]\d+)\s*$/i);
         if (!m) return false;
         var prefix = m[1] || '';
         var rest = (m[2] || '');
         var epSuffix = m[3] || '';
         if (/^\s*\d+\s*\/\s*$/i.test(prefix)) prefix = '';
-        rest = rest.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|Eneyida)\s*$/i, '');
+        rest = rest.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UASerials|Eneyida)\s*$/i, '');
         var frag = document.createDocumentFragment();
         if (prefix) frag.appendChild(document.createTextNode(prefix));
         if (rest) frag.appendChild(document.createTextNode(rest));
@@ -760,11 +767,11 @@
         // 1.1.133: у player audio list Lampa інколи додає "1 /" перед назвою
         // і " / Джерело" після неї. Для наших synthetic voiceovers це службовий шум.
         if (/^\s*\d+\s*\/\s*$/i.test(prefix)) prefix = '';
-        rest = rest.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno)\s*$/i, '');
+        rest = rest.replace(/\s*\/\s*(?:Alloha|ZetflixNet|Rezka\s*~\s*720|CDNVideoHub|Makhno|Midnight|HDVB|GetsTV|VKMovie|IPTVOnline|Vokino|UAKino|UafilmMe|KlonFun|BatkoMakhno|UASerials)\s*$/i, '');
         // Витягуємо суфікс " E<число>" (кількість серій для цього перекладу),
         // щоб підсвітити його тим самим жовтим кольором, що й якість.
         var epSuffix = '';
-        var epMatch = rest.match(/^([\s\S]*?)(\s+E\d+)\s*$/i);
+        var epMatch = rest.match(/^([\s\S]*?)([\s\u00a0]+[EeЕе]\d+)\s*$/i);
         if (epMatch) { rest = epMatch[1]; epSuffix = epMatch[2]; }
         var frag = document.createDocumentFragment();
         if (prefix) frag.appendChild(document.createTextNode(prefix));
@@ -800,13 +807,13 @@
           var hasQualityWrap = row.querySelector && (row.querySelector('.stels-online-voice-quality-prefix') || row.querySelector('.stels-zetflixnet-voice-quality-prefix'));
           var hasEpisodeWrap = row.querySelector && row.querySelector('.stels-online-voice-episode-suffix');
           if (hasQualityWrap && hasEpisodeWrap) continue;
-          if (hasQualityWrap && !hasEpisodeWrap && /\sE\d+\s*$/i.test(rowText)) {
+          if (hasQualityWrap && !hasEpisodeWrap && stelsHasVoiceEpisodeSuffix(rowText)) {
             result.rows++;
             var walkerEp2 = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
               acceptNode: function (n) {
                 if (!n || !n.nodeValue) return NodeFilter.FILTER_REJECT;
                 if (n.parentNode && n.parentNode.classList && n.parentNode.classList.contains('stels-online-voice-episode-suffix')) return NodeFilter.FILTER_REJECT;
-                if (!/\sE\d+\s*$/i.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+                if (!stelsHasVoiceEpisodeSuffix(n.nodeValue)) return NodeFilter.FILTER_REJECT;
                 return NodeFilter.FILTER_ACCEPT;
               }
             });
@@ -818,12 +825,12 @@
           }
           if (hasQualityWrap) continue;
           if (!/^(?:(?:\d+\s*\/\s*)?)(?:8K|4K|2K|4320p|2160p|1440p|1080p|720p|576p|480p|360p|240p|144p|HLS)\s+/i.test(rowText)) {
-            if (!/\sE\d+\s*$/i.test(rowText)) continue;
+            if (!stelsHasVoiceEpisodeSuffix(rowText)) continue;
             result.rows++;
             var walkerEp = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, {
               acceptNode: function (n) {
                 if (!n || !n.nodeValue) return NodeFilter.FILTER_REJECT;
-                if (!/\sE\d+\s*$/i.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+                if (!stelsHasVoiceEpisodeSuffix(n.nodeValue)) return NodeFilter.FILTER_REJECT;
                 return NodeFilter.FILTER_ACCEPT;
               }
             });
@@ -17681,6 +17688,7 @@
           var season = extract.seasons[choice.season];
           if (season) season.episodes.forEach(function (ep) { ep.files.forEach(function (f) { if (f.voice && voices.indexOf(f.voice) === -1) voices.push(f.voice); }); });
           filter_items.voice = voices;
+          filter_items.voice_quality = voices.map(function () { return '1080p'; });
           if (choice.voice_name && voices.indexOf(choice.voice_name) !== -1) choice.voice = voices.indexOf(choice.voice_name);
           if (!filter_items.voice[choice.voice]) choice.voice = 0;
           choice.voice_name = filter_items.voice[choice.voice] || '';
@@ -17688,6 +17696,7 @@
           var v = [];
           extract.movie.forEach(function (m) { m.files.forEach(function (f) { if (f.voice && v.indexOf(f.voice) === -1) v.push(f.voice); }); });
           filter_items.voice = v;
+          filter_items.voice_quality = v.map(function () { return '1080p'; });
           if (!filter_items.voice[choice.voice]) choice.voice = 0;
           choice.voice_name = filter_items.voice[choice.voice] || '';
         }
@@ -26958,7 +26967,7 @@
 
       function stelsVoiceEpisodeName(value) {
         var name = stelsCleanVoiceDisplayText(value == null ? '' : value);
-        name = name.replace(/^\s*\/\s*/, '').replace(/\s+E\d+\s*$/i, '').trim();
+        name = stelsStripVoiceEpisodeSuffix(name.replace(/^\s*\/\s*/, '')).trim();
         return stelsVoiceCompareText(name);
       }
 
@@ -29689,7 +29698,7 @@
         var patch_open_only = stelsIsOnlyVoiceDisplayPatch(prev_filter_items, filter_items || {});
         var source_sort_menu_protected = stelsIsSourceSortMenuProtected();
         var voice_filter_menu_open = stelsIsVoiceFilterMenuOpen();
-        if (source_sort_menu_protected) patch_open_only = true;
+        if (source_sort_menu_protected || voice_filter_menu_open) patch_open_only = true;
         try {
           stelsRememberVoiceQualityDisplayMap((filter_items || {}).voice || [], display_filter_items.voice || [], balanser);
           stels_last_filter_items = filter_items || {};
