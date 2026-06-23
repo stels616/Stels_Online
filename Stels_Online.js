@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.172';
+    var STELS_ONLINE_VERSION = '1.1.173';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -16915,7 +16915,15 @@
       }
       function loadTurboSerial(player, success, fail) {
         var id = (String(player && player.url || '').match(/[?&]movie_id=(\d+)/i) || [])[1] || '';
-        if (!id) { fail && fail('no turbo movie_id'); return; }
+        if (!id) {
+          // obrut.show/embed/... (та аналогічні) не містять movie_id — це не temptcdn catalog-api,
+          // а самостійний embed-плеєр зі своєю внутрішньою логікою перемикання серій/перекладів.
+          // Список серій через catalog-api тут недоступний: одразу йдемо у iframe/embed-фолбек,
+          // щоб refreshSelectedPlayer показав цей плеєр як non-serial (без помилки користувачу).
+          log('turbo-no-catalog-id', { player: player && player.title || '', url: preview(player && player.url || '', 200) });
+          fail && fail('turbo embed without catalog id');
+          return;
+        }
         var apiHost = 'https://global.temptcdn.com';
         var base = apiHost + '/balancer-api/proxy/playlists/catalog-api';
         var h = turboTemptcdnApiHeaders(player);
@@ -28412,9 +28420,13 @@
 
       function stelsIsSourceSortMenuProtected() {
         try {
+          // TTL-охорона перевіряється першою і незалежно від stelsIsSelectBoxOpen():
+          // короткий флікер класу .selectbox--open під час паралельних DOM-оновлень
+          // (наприклад thumb-set/voice-quality рендер) інакше одразу скидав захист
+          // ще до того, як TTL встигав спрацювати, і меню "Балансер" самозакривалось.
+          if (Date.now() < stelsSourceSortMenuOpenUntil) return true;
           if (!stelsIsSelectBoxOpen()) return false;
           if (stelsIsSourceSortMenuOpen()) return true;
-          if (Date.now() < stelsSourceSortMenuOpenUntil) return true;
         } catch (e) {}
         return false;
       }
@@ -32506,7 +32518,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.171: Tartuga Turbo — відокремлено від VeoVeo; catalog-api + obrut.show/ortified embed → прямий HLS (superdupercdn) з перекладами та якістю.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.173: Turbo/Tortuga obrut.show без movie_id — фолбек на embed-iframe замість помилки; меню Балансер — TTL-охорона перевіряється незалежно від selectbox--open, щоб флікер класу не закривав меню під час async badge-оновлень.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
