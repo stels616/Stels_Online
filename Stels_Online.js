@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.172';
+    var STELS_ONLINE_VERSION = '1.1.171';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -6430,7 +6430,6 @@ var q = qualityMapFromAlloha(json);
           network.clear(); network.timeout(1000 * 12);
           network.native(pp.url, function (txt) {
             var info = {}; try { info = typeof txt == 'string' ? JSON.parse(txt) : txt; } catch (e) {}
-			log('stream-json', json);
             var alloha = pickAlloha(info);
             log('information', { players: info && info['simple-api'] ? info['simple-api'].map(function (x) { return x.name + '|' + x.iframe; }) : [], selected: alloha && alloha.iframe || '' });
             if (!alloha || !alloha.iframe) { component.empty('Kinobaza: Alloha не знайдено'); return; }
