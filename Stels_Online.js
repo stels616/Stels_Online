@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.171';
+    var STELS_ONLINE_VERSION = '1.1.172';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -6379,60 +6379,51 @@
         return { url: first, quality: quality };
       }
       function loadStream(el, ok, fail) {
-        var playerOrigin = originOf(el.iframe) || 'https://mars.stravers.live';
-        var url = playerOrigin + '/bnsi/movies/' + el.data_id;
-        var post = 'token=' + encodeURIComponent(el.token || '') + '&av1=false&autoplay=0&audio=&subtitle=';
-        network.clear(); network.timeout(1000 * 12);
-        log('stream-request', { url: url, data_id: el.data_id, voice: el.voice, season: el.season, episode: el.episode, token: !!el.token, referer: el.iframe || ref });
-        network.native(url, function (txt) {
-          var json = {};
-        try {
-    json = typeof txt == 'string' ? JSON.parse(txt) : txt;
-} catch (e) {
-    log('stream-json-parse-error', {
-        error: String(e),
-        text: String(txt).slice(0, 1000)
-    });
-	if (String(el.kp || '').match(/^\d+$/) && !el.season) {
+    var playerOrigin = originOf(el.iframe) || 'https://mars.stravers.live';
+    var url = playerOrigin + '/bnsi/movies/' + el.data_id;
+    var post = 'token=' + encodeURIComponent(el.token || '') + '&av1=false&autoplay=0&audio=&subtitle=';
 
-    var legacyUrl = 'https://lomont.site/gt/' +
-        el.kp + '?alloff=true';
+    if (String(el.kp || '').match(/^\d+$/) && !el.season) {
 
-    stelsLog('alloha-legacy-stream-start', {
-        url: legacyUrl,
-        kp: el.kp,
-        movie: true,
-        video_id: el.data_id
-    });
+        var legacyUrl = 'https://lomont.site/gt/' +
+            el.kp + '?alloff=true';
 
-    network.silent(legacyUrl, function (html) {
-
-        var parsed = parseLegacyPlayerConfig(html);
-
-        stelsLog('alloha-legacy-stream-response', {
+        log('alloha-legacy-stream-start', {
             url: legacyUrl,
-            has_file: !!parsed.file,
-            file: parsed.file || ''
+            kp: el.kp,
+            movie: true,
+            video_id: el.data_id
         });
 
-        if (parsed.file) {
-            ok({
-                url: parsed.file,
-                subtitles: parsed.subtitles || {},
-                quality: component.renameQualityMap(parsed.quality || {})
+        network.silent(legacyUrl, function (html) {
+
+            var parsed = parseLegacyPlayerConfig(html);
+
+            log('alloha-legacy-stream-response', {
+                url: legacyUrl,
+                has_file: !!parsed.file,
+                file: parsed.file || ''
             });
-            return;
-        }
 
-        if (fail) fail('legacy movie stream not found');
+            if (parsed.file) {
+                ok({
+                    url: parsed.file,
+                    subtitles: parsed.subtitles || {},
+                    quality: component.renameQualityMap(parsed.quality || {})
+                });
+                return;
+            }
 
-    }, function () {
-        if (fail) fail('legacy request failed');
-    });
+            if (fail) fail('legacy movie stream not found');
 
-    return;
-}
-}
+        }, function () {
+            if (fail) fail('legacy request failed');
+        });
+
+        return;
+    }
+
+    network.clear(); network.timeout(1000 * 12);
 
 log('stream-json', {
     data_id: el.data_id,
