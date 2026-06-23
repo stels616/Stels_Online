@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.172';
+    var STELS_ONLINE_VERSION = '1.1.171';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -4673,17 +4673,7 @@
         return component.fixLink(url, base || ref);
       }
       function clean(str) { return component.decodeHtml(String(str || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()); }
-      function isSerial() {
-    var movie = object && object.movie || {};
-
-    return !!(
-        movie.number_of_seasons ||
-        (
-            movie.first_air_date &&
-            !movie.release_date
-        )
-    );
-}
+      function isSerial() { return !!(object && object.movie && (object.movie.number_of_seasons || object.movie.name || object.movie.first_air_date)); }
       function yearOf() {
         var d = object && object.search_date || object && object.movie && (object.movie.release_date || object.movie.first_air_date || object.movie.last_air_date) || '';
         var y = parseInt(String(d).slice(0, 4), 10);
@@ -6379,85 +6369,15 @@
         return { url: first, quality: quality };
       }
       function loadStream(el, ok, fail) {
-    var playerOrigin = originOf(el.iframe) || 'https://mars.stravers.live';
-    var url = playerOrigin + '/bnsi/movies/' + el.data_id;
-    var post = 'token=' + encodeURIComponent(el.token || '') +
-               '&av1=false&autoplay=0&audio=&subtitle=';
-
-    network.clear();
-    network.timeout(1000 * 12);
-
-    log('stream-request', {
-        url: url,
-        data_id: el.data_id,
-        voice: el.voice,
-        season: el.season,
-        episode: el.episode,
-        token: !!el.token,
-        referer: el.iframe || ref
-    });
-
-    network.native(url, function (txt) {
-
-        var json = {};
-
-        try {
-            json = typeof txt == 'string' ? JSON.parse(txt) : txt;
-        } catch (e) {
-            log('stream-json-parse-error', {
-                error: String(e),
-                text: String(txt).slice(0, 1000)
-            });
-        }
-
-        log('stream-json', {
-            data_id: el.data_id,
-            json: json,
-            raw: String(txt).slice(0, 2000)
-        });
-
-        var q = qualityMapFromAlloha(json);
-
-        log('stream-response', {
-            data_id: el.data_id,
-            ok: !!q.url,
-            quality_keys: q.quality ? Object.keys(q.quality) : []
-        });
-
-        if (!q.url) {
-            if (fail) fail('no stream');
-            return;
-        }
-
-        ok({
-            url: q.url,
-            quality: component.renameQualityMap(q.quality),
-            raw_quality: q.quality
-        });
-
-    }, function (a, c) {
-
-        log('stream-error', {
-            data_id: el.data_id,
-            status: a && a.status || 0,
-            message: network.errorDecode(a, c) || ''
-        });
-
-        if (fail) fail(network.errorDecode(a, c));
-
-    }, post, {
-        dataType: 'text',
-        headers: {
-            'User-Agent': Utils.baseUserAgent(),
-            'Origin': playerOrigin,
-            'Referer': el.iframe || ref,
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Accept': 'application/json, text/javascript, */*; q=0.01'
-        }
-    });
-}
-var q = qualityMapFromAlloha(json);
+        var playerOrigin = originOf(el.iframe) || 'https://mars.stravers.live';
+        var url = playerOrigin + '/bnsi/movies/' + el.data_id;
+        var post = 'token=' + enc(el.token || '') + '&av1=true&autoplay=0&audio=&subtitle=';
+        network.clear(); network.timeout(1000 * 12);
+        log('stream-request', { url: url, data_id: el.data_id, voice: el.voice, season: el.season, episode: el.episode, token: !!el.token, referer: el.iframe || ref });
+        network.native(url, function (txt) {
+          var json = {};
+          try { json = typeof txt == 'string' ? JSON.parse(txt) : txt; } catch (e) {}
+          var q = qualityMapFromAlloha(json);
           log('stream-response', { data_id: el.data_id, ok: !!q.url, quality_keys: q.quality ? Object.keys(q.quality) : [] });
           if (!q.url) { if (fail) fail('no stream'); return; }
           ok({ url: q.url, quality: component.renameQualityMap(q.quality), raw_quality: q.quality });
@@ -12751,7 +12671,7 @@ var q = qualityMapFromAlloha(json);
             if (origins.indexOf(o) === -1) origins.push(o);
           });
           origins.forEach(function (origin, idx) {
-            var base = origin + '/embed/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
+            var base = origin + '/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
             add(base, idx === 0 ? 'same-origin-token' : ('alt-origin-' + origin.replace(/^https?:\/\//, '')));
             add(base + '&domain=' + encodeURIComponent(host + '/'), 'domain-' + origin.replace(/^https?:\/\//, ''));
             add(base + '&domain=' + encodeURIComponent(host), 'domain-noslash-' + origin.replace(/^https?:\/\//, ''));
