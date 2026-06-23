@@ -12672,7 +12672,7 @@
             if (origins.indexOf(o) === -1) origins.push(o);
           });
           origins.forEach(function (origin, idx) {
-            var base = origin + '/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
+            var base = origin + '/embed/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
             add(base, idx === 0 ? 'same-origin-token' : ('alt-origin-' + origin.replace(/^https?:\/\//, '')));
             add(base + '&domain=' + encodeURIComponent(host + '/'), 'domain-' + origin.replace(/^https?:\/\//, ''));
             add(base + '&domain=' + encodeURIComponent(host), 'domain-noslash-' + origin.replace(/^https?:\/\//, ''));
