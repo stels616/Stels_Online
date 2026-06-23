@@ -6424,6 +6424,71 @@
     }
 
     network.clear(); network.timeout(1000 * 12);
+network.clear();
+network.timeout(1000 * 12);
+
+log('stream-request', {
+    url: url,
+    data_id: el.data_id,
+    voice: el.voice,
+    season: el.season,
+    episode: el.episode,
+    token: !!el.token,
+    referer: el.iframe || ref
+});
+
+network.native(url, function (txt) {
+
+    var json = {};
+
+    try {
+        json = typeof txt == 'string' ? JSON.parse(txt) : txt;
+    } catch (e) {
+        log('stream-json-parse-error', {
+            error: String(e),
+            text: String(txt).slice(0, 1000)
+        });
+    }
+
+    var q = qualityMapFromAlloha(json);
+
+    log('stream-response', {
+        data_id: el.data_id,
+        ok: !!q.url,
+        quality_keys: q.quality ? Object.keys(q.quality) : []
+    });
+
+    if (!q.url) {
+        if (fail) fail('no stream');
+        return;
+    }
+
+    ok({
+        url: q.url,
+        quality: component.renameQualityMap(q.quality),
+        raw_quality: q.quality
+    });
+
+}, function (a, c) {
+
+    log('stream-error', {
+        data_id: el.data_id,
+        status: a && a.status || 0,
+        message: network.errorDecode(a, c) || ''
+    });
+
+    if (fail) fail(network.errorDecode(a, c));
+
+}, post, {
+    dataType: 'text',
+    headers: {
+        'User-Agent': Utils.baseUserAgent(),
+        'Origin': playerOrigin,
+        'Referer': el.iframe || ref,
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Accept': 'application/json, text/javascript, */*; q=0.01'
+    }
 });
 
 var q = qualityMapFromAlloha(json);
