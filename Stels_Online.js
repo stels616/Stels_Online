@@ -6381,116 +6381,82 @@
       function loadStream(el, ok, fail) {
     var playerOrigin = originOf(el.iframe) || 'https://mars.stravers.live';
     var url = playerOrigin + '/bnsi/movies/' + el.data_id;
-    var post = 'token=' + encodeURIComponent(el.token || '') + '&av1=false&autoplay=0&audio=&subtitle=';
+    var post = 'token=' + encodeURIComponent(el.token || '') +
+               '&av1=false&autoplay=0&audio=&subtitle=';
 
-    if (String(el.kp || '').match(/^\d+$/) && !el.season) {
+    network.clear();
+    network.timeout(1000 * 12);
 
-        var legacyUrl = 'https://lomont.site/gt/' +
-            el.kp + '?alloff=true';
+    log('stream-request', {
+        url: url,
+        data_id: el.data_id,
+        voice: el.voice,
+        season: el.season,
+        episode: el.episode,
+        token: !!el.token,
+        referer: el.iframe || ref
+    });
 
-        log('alloha-legacy-stream-start', {
-            url: legacyUrl,
-            kp: el.kp,
-            movie: true,
-            video_id: el.data_id
-        });
+    network.native(url, function (txt) {
 
-        network.silent(legacyUrl, function (html) {
+        var json = {};
 
-            var parsed = parseLegacyPlayerConfig(html);
-
-            log('alloha-legacy-stream-response', {
-                url: legacyUrl,
-                has_file: !!parsed.file,
-                file: parsed.file || ''
+        try {
+            json = typeof txt == 'string' ? JSON.parse(txt) : txt;
+        } catch (e) {
+            log('stream-json-parse-error', {
+                error: String(e),
+                text: String(txt).slice(0, 1000)
             });
+        }
 
-            if (parsed.file) {
-                ok({
-                    url: parsed.file,
-                    subtitles: parsed.subtitles || {},
-                    quality: component.renameQualityMap(parsed.quality || {})
-                });
-                return;
-            }
-
-            if (fail) fail('legacy movie stream not found');
-
-        }, function () {
-            if (fail) fail('legacy request failed');
+        log('stream-json', {
+            data_id: el.data_id,
+            json: json,
+            raw: String(txt).slice(0, 2000)
         });
 
-        return;
-    }
+        var q = qualityMapFromAlloha(json);
 
-    network.clear(); network.timeout(1000 * 12);
-network.clear();
-network.timeout(1000 * 12);
-
-log('stream-request', {
-    url: url,
-    data_id: el.data_id,
-    voice: el.voice,
-    season: el.season,
-    episode: el.episode,
-    token: !!el.token,
-    referer: el.iframe || ref
-});
-
-network.native(url, function (txt) {
-
-    var json = {};
-
-    try {
-        json = typeof txt == 'string' ? JSON.parse(txt) : txt;
-    } catch (e) {
-        log('stream-json-parse-error', {
-            error: String(e),
-            text: String(txt).slice(0, 1000)
+        log('stream-response', {
+            data_id: el.data_id,
+            ok: !!q.url,
+            quality_keys: q.quality ? Object.keys(q.quality) : []
         });
-    }
 
-    var q = qualityMapFromAlloha(json);
+        if (!q.url) {
+            if (fail) fail('no stream');
+            return;
+        }
 
-    log('stream-response', {
-        data_id: el.data_id,
-        ok: !!q.url,
-        quality_keys: q.quality ? Object.keys(q.quality) : []
+        ok({
+            url: q.url,
+            quality: component.renameQualityMap(q.quality),
+            raw_quality: q.quality
+        });
+
+    }, function (a, c) {
+
+        log('stream-error', {
+            data_id: el.data_id,
+            status: a && a.status || 0,
+            message: network.errorDecode(a, c) || ''
+        });
+
+        if (fail) fail(network.errorDecode(a, c));
+
+    }, post, {
+        dataType: 'text',
+        headers: {
+            'User-Agent': Utils.baseUserAgent(),
+            'Origin': playerOrigin,
+            'Referer': el.iframe || ref,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Accept': 'application/json, text/javascript, */*; q=0.01'
+        }
     });
-
-    if (!q.url) {
-        if (fail) fail('no stream');
-        return;
-    }
-
-    ok({
-        url: q.url,
-        quality: component.renameQualityMap(q.quality),
-        raw_quality: q.quality
-    });
-
-}, function (a, c) {
-
-    log('stream-error', {
-        data_id: el.data_id,
-        status: a && a.status || 0,
-        message: network.errorDecode(a, c) || ''
-    });
-
-    if (fail) fail(network.errorDecode(a, c));
-
-}, post, {
-    dataType: 'text',
-    headers: {
-        'User-Agent': Utils.baseUserAgent(),
-        'Origin': playerOrigin,
-        'Referer': el.iframe || ref,
-        'X-Requested-With': 'XMLHttpRequest',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'Accept': 'application/json, text/javascript, */*; q=0.01'
-    }
-});
-
+}
 var q = qualityMapFromAlloha(json);
           log('stream-response', { data_id: el.data_id, ok: !!q.url, quality_keys: q.quality ? Object.keys(q.quality) : [] });
           if (!q.url) { if (fail) fail('no stream'); return; }
