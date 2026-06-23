@@ -6506,7 +6506,8 @@
           v = kinobaseCleanSearchTitle(v);
           if (v && arr.indexOf(v) === -1) arr.push(v);
         }
-add(preferred);
+        var movie = object && object.movie || {};
+       add(preferred);
 add(select_title);
 add(movie.title);
 add(movie.name);
