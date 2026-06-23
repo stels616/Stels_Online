@@ -6424,11 +6424,6 @@
     }
 
     network.clear(); network.timeout(1000 * 12);
-
-log('stream-json', {
-    data_id: el.data_id,
-    json: json,
-    raw: String(txt).slice(0, 2000)
 });
 
 var q = qualityMapFromAlloha(json);
