@@ -6371,7 +6371,7 @@
       function loadStream(el, ok, fail) {
         var playerOrigin = originOf(el.iframe) || 'https://mars.stravers.live';
         var url = playerOrigin + '/bnsi/movies/' + el.data_id;
-        var post = 'token=' + enc(el.token || '') + '&av1=true&autoplay=0&audio=&subtitle=';
+        var post = 'token=' + encodeURIComponent(el.token || '') + '&av1=false&autoplay=0&audio=&subtitle=';
         network.clear(); network.timeout(1000 * 12);
         log('stream-request', { url: url, data_id: el.data_id, voice: el.voice, season: el.season, episode: el.episode, token: !!el.token, referer: el.iframe || ref });
         network.native(url, function (txt) {
@@ -6416,6 +6416,7 @@
           network.clear(); network.timeout(1000 * 12);
           network.native(pp.url, function (txt) {
             var info = {}; try { info = typeof txt == 'string' ? JSON.parse(txt) : txt; } catch (e) {}
+			log('stream-json', json);
             var alloha = pickAlloha(info);
             log('information', { players: info && info['simple-api'] ? info['simple-api'].map(function (x) { return x.name + '|' + x.iframe; }) : [], selected: alloha && alloha.iframe || '' });
             if (!alloha || !alloha.iframe) { component.empty('Kinobaza: Alloha не знайдено'); return; }
