@@ -16916,12 +16916,49 @@
       function loadTurboSerial(player, success, fail) {
         var id = (String(player && player.url || '').match(/[?&]movie_id=(\d+)/i) || [])[1] || '';
         if (!id) {
-          // obrut.show/embed/... (та аналогічні) не містять movie_id — це не temptcdn catalog-api,
-          // а самостійний embed-плеєр зі своєю внутрішньою логікою перемикання серій/перекладів.
-          // Список серій через catalog-api тут недоступний: одразу йдемо у iframe/embed-фолбек,
-          // щоб refreshSelectedPlayer показав цей плеєр як non-serial (без помилки користувачу).
-          log('turbo-no-catalog-id', { player: player && player.title || '', url: preview(player && player.url || '', 200) });
-          fail && fail('turbo embed without catalog id');
+          // obrut.show/embed/... не містять movie_id — завантажуємо embed-сторінку напряму
+          // і парсимо переклади з конфігу плеєра (фолбек замість миттєвого fail).
+          var embedUrl = absolute(String(player && player.url || ''), ref);
+          if (!embedUrl) {
+            log('turbo-no-catalog-id', { player: player && player.title || '', url: '' });
+            fail && fail('turbo embed without catalog id');
+            return;
+          }
+          log('turbo-no-catalog-id', { player: player && player.title || '', url: preview(embedUrl, 200) });
+          var embedHeaders = turboTemptcdnApiHeaders(player);
+          requestText(embedUrl, function (html) {
+            var cfg = tartugaParseObrutPlayerConfig(html);
+            if (!cfg || !cfg.file) {
+              log('turbo-embed-no-config', { url: preview(embedUrl, 200), len: String(html || '').length });
+              fail && fail('turbo embed: no file config');
+              return;
+            }
+            var files = Array.isArray(cfg.file) ? cfg.file : [cfg.file];
+            var items = [];
+            files.forEach(function (entry) {
+              if (!entry || typeof entry !== 'object') return;
+              var voice = clean(entry.title || '') || (player && player.title) || 'Turbo';
+              var parsed = entry.file ? turboParseQualityFileStr(entry.file) : null;
+              var item = {
+                title: select_title || (player && player.title) || 'Turbo',
+                voice: voice,
+                season: 0,
+                episode: 0,
+                quality: (parsed && parsed.qualitys ? Object.keys(parsed.qualitys)[0] : '') || 'Turbo',
+                stream: (parsed && parsed.stream) || '',
+                qualitys: (parsed && parsed.qualitys) || false,
+                player: player,
+                headers: { 'User-Agent': headers['User-Agent'], 'Referer': embedUrl, 'Origin': (originFromUrl(embedUrl) || '') }
+              };
+              if (!item.stream) item.turbo_embed_url = embedUrl;
+              items.push(item);
+            });
+            log('turbo-embed-loaded', { url: preview(embedUrl, 200), items: items.length, voices: items.map(function (it) { return it.voice; }) });
+            if (items.length) success(items); else fail && fail('turbo embed: empty items');
+          }, function () {
+            log('turbo-embed-fetch-fail', { url: preview(embedUrl, 200) });
+            fail && fail('turbo embed fetch failed');
+          }, { headers: embedHeaders, dataType: 'text', timeout: 16000 });
           return;
         }
         var apiHost = 'https://global.temptcdn.com';
