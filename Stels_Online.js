@@ -6506,37 +6506,6 @@
           v = kinobaseCleanSearchTitle(v);
           if (v && arr.indexOf(v) === -1) arr.push(v);
         }
-        Так, тепер я бачу конкретний код і можу сказати точно.
-
-У твоєму файлі немає проблеми у функції loadStream(). Проблема з тим, що фільм не знаходиться, виникає значно раніше — на етапі формування пошукових назв для Kinobaza. У файлі є функція:
-
-function kinobaseSearchTitleVariants(preferred)
-
-Саме вона формує список назв для пошуку.
-
-Для фільму "Военная машина" у логах видно, що пошук виконується за:
-
-Военная машина
-War Machine
-Военная машина 2026
-War Machine 2026
-
-Але Kinobaza часто знаходить такі фільми лише за оригінальною назвою без року або за альтернативними назвами.
-
-Знайди у файлі функцію:
-function kinobaseSearchTitleVariants(preferred)
-
-У ній знайди блок:
-
-add(preferred);
-add(select_title);
-add(movie.title);
-add(movie.name);
-add(movie.original_title);
-add(movie.original_name);
-
-і заміни його повністю на:
-
 add(preferred);
 add(select_title);
 add(movie.title);
