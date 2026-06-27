@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.171';
+    var STELS_ONLINE_VERSION = '1.1.172';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -6371,13 +6371,27 @@
       function loadStream(el, ok, fail) {
         var playerOrigin = originOf(el.iframe) || 'https://mars.stravers.live';
         var url = playerOrigin + '/bnsi/movies/' + el.data_id;
-        var post = 'token=' + enc(el.token || '') + '&av1=true&autoplay=0&audio=&subtitle=';
+        var post = 'token=' + encodeURIComponent(el.token || '') + '&av1=false&autoplay=0&audio=&subtitle=';
         network.clear(); network.timeout(1000 * 12);
         log('stream-request', { url: url, data_id: el.data_id, voice: el.voice, season: el.season, episode: el.episode, token: !!el.token, referer: el.iframe || ref });
         network.native(url, function (txt) {
           var json = {};
-          try { json = typeof txt == 'string' ? JSON.parse(txt) : txt; } catch (e) {}
-          var q = qualityMapFromAlloha(json);
+        try {
+    json = typeof txt == 'string' ? JSON.parse(txt) : txt;
+} catch (e) {
+    log('stream-json-parse-error', {
+        error: String(e),
+        text: String(txt).slice(0, 1000)
+    });
+}
+
+log('stream-json', {
+    data_id: el.data_id,
+    json: json,
+    raw: String(txt).slice(0, 2000)
+});
+
+var q = qualityMapFromAlloha(json);
           log('stream-response', { data_id: el.data_id, ok: !!q.url, quality_keys: q.quality ? Object.keys(q.quality) : [] });
           if (!q.url) { if (fail) fail('no stream'); return; }
           ok({ url: q.url, quality: component.renameQualityMap(q.quality), raw_quality: q.quality });
@@ -12177,8 +12191,10 @@
       var av1_support = Lampa.Storage.field('stels_online_av1_support') === true;
       var prox = component.proxy('alloha');
       var prox2 = component.proxy('allohacdn') || component.proxy('iframe') || component.proxy('cookie2') || component.proxy('cookie3') || '';
-      var user_agent = Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
-      var mars_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+      var user_agent = Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+      // Гравець mars.stravers.live (Angie) фільтрує запити за fingerprint браузера.
+      // У HAR робочий iframe-запит ішов саме з Chrome/149 — тримаємо точно цей UA.
+      var mars_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
       var player_origin = '';
       var player_referer = '';
       var player_token = '';
@@ -12671,7 +12687,7 @@
             if (origins.indexOf(o) === -1) origins.push(o);
           });
           origins.forEach(function (origin, idx) {
-            var base = origin + '/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
+            var base = origin + '/embed/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
             add(base, idx === 0 ? 'same-origin-token' : ('alt-origin-' + origin.replace(/^https?:\/\//, '')));
             add(base + '&domain=' + encodeURIComponent(host + '/'), 'domain-' + origin.replace(/^https?:\/\//, ''));
             add(base + '&domain=' + encodeURIComponent(host), 'domain-noslash-' + origin.replace(/^https?:\/\//, ''));
@@ -12690,18 +12706,27 @@
           player_origin = originFromUrl(currentIframe) || '';
           player_referer = currentIframe;
           player_token = tokenFromUrl(currentIframe);
+          // Заголовки 1:1 з робочим iframe-запитом браузера у HAR (Chrome 149).
+          // mars.stravers.live (Angie) фільтрує "неброузерні" запити та віддає 404,
+          // тому відтворюємо повний набір: client-hints Chrome 149, повний Accept зі
+          // signed-exchange, cache-control/pragma. Sec-Fetch-User браузер при
+          // iframe-навігації не надсилав — прибрано, щоб не відрізнятись від нього.
+          var mars_accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7';
+          var mars_accept_language = 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7';
+          var mars_sec_ch_ua = '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"';
           player_headers = {
             'User-Agent': mars_user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept': mars_accept,
+            'Accept-Language': mars_accept_language,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
             'Referer': ref,
             'Upgrade-Insecure-Requests': '1',
             'Sec-Fetch-Dest': 'iframe',
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'cross-site',
-            'Sec-Fetch-User': '?1',
             'Sec-Fetch-Storage-Access': 'active',
-            'Sec-CH-UA': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+            'Sec-CH-UA': mars_sec_ch_ua,
             'Sec-CH-UA-Mobile': '?0',
             'Sec-CH-UA-Platform': '"Windows"'
           };
@@ -12709,15 +12734,19 @@
           stream_prox_enc = '';
           if (prox2) {
             player_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
-            player_prox_enc += 'param/Accept=' + encodeURIComponent('text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8') + '/';
-            player_prox_enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
+            player_prox_enc += 'param/Accept=' + encodeURIComponent(mars_accept) + '/';
+            player_prox_enc += 'param/Accept-Language=' + encodeURIComponent(mars_accept_language) + '/';
+            player_prox_enc += 'param/Cache-Control=' + encodeURIComponent('no-cache') + '/';
+            player_prox_enc += 'param/Pragma=' + encodeURIComponent('no-cache') + '/';
             player_prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
             player_prox_enc += 'param/Upgrade-Insecure-Requests=' + encodeURIComponent('1') + '/';
             player_prox_enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('iframe') + '/';
             player_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('navigate') + '/';
             player_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('cross-site') + '/';
-            player_prox_enc += 'param/Sec-Fetch-User=' + encodeURIComponent('?1') + '/';
             player_prox_enc += 'param/Sec-Fetch-Storage-Access=' + encodeURIComponent('active') + '/';
+            player_prox_enc += 'param/Sec-CH-UA=' + encodeURIComponent(mars_sec_ch_ua) + '/';
+            player_prox_enc += 'param/Sec-CH-UA-Mobile=' + encodeURIComponent('?0') + '/';
+            player_prox_enc += 'param/Sec-CH-UA-Platform=' + encodeURIComponent('"Windows"') + '/';
           }
           stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
           stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin ? player_origin + '/' : currentIframe)) + '/';
