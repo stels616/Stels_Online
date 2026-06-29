@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.174';
+    var STELS_ONLINE_VERSION = '1.1.172';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -128,7 +128,7 @@
       mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
-      videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
+      videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', mirkinoz: 'Мир кино Z', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
       leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
@@ -6371,13 +6371,27 @@
       function loadStream(el, ok, fail) {
         var playerOrigin = originOf(el.iframe) || 'https://mars.stravers.live';
         var url = playerOrigin + '/bnsi/movies/' + el.data_id;
-        var post = 'token=' + enc(el.token || '') + '&av1=true&autoplay=0&audio=&subtitle=';
+        var post = 'token=' + encodeURIComponent(el.token || '') + '&av1=false&autoplay=0&audio=&subtitle=';
         network.clear(); network.timeout(1000 * 12);
         log('stream-request', { url: url, data_id: el.data_id, voice: el.voice, season: el.season, episode: el.episode, token: !!el.token, referer: el.iframe || ref });
         network.native(url, function (txt) {
           var json = {};
-          try { json = typeof txt == 'string' ? JSON.parse(txt) : txt; } catch (e) {}
-          var q = qualityMapFromAlloha(json);
+        try {
+    json = typeof txt == 'string' ? JSON.parse(txt) : txt;
+} catch (e) {
+    log('stream-json-parse-error', {
+        error: String(e),
+        text: String(txt).slice(0, 1000)
+    });
+}
+
+log('stream-json', {
+    data_id: el.data_id,
+    json: json,
+    raw: String(txt).slice(0, 2000)
+});
+
+var q = qualityMapFromAlloha(json);
           log('stream-response', { data_id: el.data_id, ok: !!q.url, quality_keys: q.quality ? Object.keys(q.quality) : [] });
           if (!q.url) { if (fail) fail('no stream'); return; }
           ok({ url: q.url, quality: component.renameQualityMap(q.quality), raw_quality: q.quality });
@@ -12177,8 +12191,10 @@
       var av1_support = Lampa.Storage.field('stels_online_av1_support') === true;
       var prox = component.proxy('alloha');
       var prox2 = component.proxy('allohacdn') || component.proxy('iframe') || component.proxy('cookie2') || component.proxy('cookie3') || '';
-      var user_agent = Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
-      var mars_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+      var user_agent = Utils.baseUserAgent ? Utils.baseUserAgent() : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+      // Гравець mars.stravers.live (Angie) фільтрує запити за fingerprint браузера.
+      // У HAR робочий iframe-запит ішов саме з Chrome/149 — тримаємо точно цей UA.
+      var mars_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
       var player_origin = '';
       var player_referer = '';
       var player_token = '';
@@ -12671,7 +12687,7 @@
             if (origins.indexOf(o) === -1) origins.push(o);
           });
           origins.forEach(function (origin, idx) {
-            var base = origin + '/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
+            var base = origin + '/embed/?token_movie=' + encodeURIComponent(tm) + '&token=' + encodeURIComponent(tk);
             add(base, idx === 0 ? 'same-origin-token' : ('alt-origin-' + origin.replace(/^https?:\/\//, '')));
             add(base + '&domain=' + encodeURIComponent(host + '/'), 'domain-' + origin.replace(/^https?:\/\//, ''));
             add(base + '&domain=' + encodeURIComponent(host), 'domain-noslash-' + origin.replace(/^https?:\/\//, ''));
@@ -12690,18 +12706,27 @@
           player_origin = originFromUrl(currentIframe) || '';
           player_referer = currentIframe;
           player_token = tokenFromUrl(currentIframe);
+          // Заголовки 1:1 з робочим iframe-запитом браузера у HAR (Chrome 149).
+          // mars.stravers.live (Angie) фільтрує "неброузерні" запити та віддає 404,
+          // тому відтворюємо повний набір: client-hints Chrome 149, повний Accept зі
+          // signed-exchange, cache-control/pragma. Sec-Fetch-User браузер при
+          // iframe-навігації не надсилав — прибрано, щоб не відрізнятись від нього.
+          var mars_accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7';
+          var mars_accept_language = 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7';
+          var mars_sec_ch_ua = '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"';
           player_headers = {
             'User-Agent': mars_user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept': mars_accept,
+            'Accept-Language': mars_accept_language,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
             'Referer': ref,
             'Upgrade-Insecure-Requests': '1',
             'Sec-Fetch-Dest': 'iframe',
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'cross-site',
-            'Sec-Fetch-User': '?1',
             'Sec-Fetch-Storage-Access': 'active',
-            'Sec-CH-UA': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+            'Sec-CH-UA': mars_sec_ch_ua,
             'Sec-CH-UA-Mobile': '?0',
             'Sec-CH-UA-Platform': '"Windows"'
           };
@@ -12709,15 +12734,19 @@
           stream_prox_enc = '';
           if (prox2) {
             player_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
-            player_prox_enc += 'param/Accept=' + encodeURIComponent('text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8') + '/';
-            player_prox_enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
+            player_prox_enc += 'param/Accept=' + encodeURIComponent(mars_accept) + '/';
+            player_prox_enc += 'param/Accept-Language=' + encodeURIComponent(mars_accept_language) + '/';
+            player_prox_enc += 'param/Cache-Control=' + encodeURIComponent('no-cache') + '/';
+            player_prox_enc += 'param/Pragma=' + encodeURIComponent('no-cache') + '/';
             player_prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
             player_prox_enc += 'param/Upgrade-Insecure-Requests=' + encodeURIComponent('1') + '/';
             player_prox_enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('iframe') + '/';
             player_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('navigate') + '/';
             player_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('cross-site') + '/';
-            player_prox_enc += 'param/Sec-Fetch-User=' + encodeURIComponent('?1') + '/';
             player_prox_enc += 'param/Sec-Fetch-Storage-Access=' + encodeURIComponent('active') + '/';
+            player_prox_enc += 'param/Sec-CH-UA=' + encodeURIComponent(mars_sec_ch_ua) + '/';
+            player_prox_enc += 'param/Sec-CH-UA-Mobile=' + encodeURIComponent('?0') + '/';
+            player_prox_enc += 'param/Sec-CH-UA-Platform=' + encodeURIComponent('"Windows"') + '/';
           }
           stream_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
           stream_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin ? player_origin + '/' : currentIframe)) + '/';
@@ -16742,328 +16771,6 @@
         log('veoveo-normalized', { input_episodes: (episodes || []).length, output_items: items.length, skipped_default: skippedDefault, voices: items.map(function (it) { return it.voice; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 20), sample: items.slice(0, 10).map(function (it) { return 'S' + it.season + 'E' + it.episode + '|' + it.voice + '|' + preview(it.stream, 120); }) });
         return items;
       }
-      function isTurboPlayer(player) {
-        return /turbo/i.test(String(player && player.title || ''));
-      }
-      function isVeoVeoPlayer(player) {
-        if (isTurboPlayer(player)) return false;
-        return /veoveo/i.test(String(player && player.title || '')) || /temptcdn/i.test(String(player && player.url || ''));
-      }
-      function turboBalancerIframeUrl(player) {
-        var url = absolute(player && player.url || '', ref);
-        url = url.replace(/^https?:\/\/player\.temptcdn\.com/i, 'https://global.temptcdn.com');
-        var pageRef = player && (player.referer || player.page_info && player.page_info.page) || ref;
-        if (pageRef && pageRef !== ref && url.indexOf('_ref=') === -1) {
-          url += (url.indexOf('?') >= 0 ? '&' : '?') + '_ref=' + encodeURIComponent(pageRef);
-        }
-        return url;
-      }
-      function turboTemptcdnApiHeaders(player) {
-        var apiHost = 'https://global.temptcdn.com';
-        return {
-          'User-Agent': headers['User-Agent'],
-          'Accept': 'application/json,text/plain,*/*',
-          'Accept-Language': headers['Accept-Language'],
-          'Referer': turboBalancerIframeUrl(player),
-          'Origin': apiHost,
-          'dle-api-token': tokenFromUrl(player && player.url || '') || '',
-          'iframe-request-id': 'stels-tartuga-' + Date.now()
-        };
-      }
-      function turboVariantSource(v, ep) {
-        v = v || {};
-        ep = ep || {};
-        return String(v.filepath || v.filePath || v.playerUrl || v.embedUrl || v.url || ep.m3u8MasterFilePath || '').replace(/\\\//g, '/').trim();
-      }
-      function turboVariantPlayable(v, ep) {
-        var raw = turboVariantSource(v, ep);
-        if (!raw) return { embed: '', stream: '' };
-        if (/\.m3u8|\.mp4|content-router|mvapspdmpg|superdupercdn/i.test(raw)) {
-          return { embed: '', stream: normalizeVeoVeoPlayableUrl(raw) };
-        }
-        if (/obrut\.show|ortified\.ws/i.test(raw) || /\/embed\//i.test(raw)) {
-          return { embed: absolute(raw, ref), stream: '' };
-        }
-        if (/^https?:\/\//i.test(raw)) return { embed: absolute(raw, ref), stream: '' };
-        return { embed: '', stream: '' };
-      }
-      function turboParseQualityFileStr(str) {
-        str = String(str || '').replace(/\\\//g, '/').replace(/&amp;/g, '&');
-        var quality = {};
-        var first = '';
-        var re = /\[([^\]]+)\](https?:\/\/[^\s,\[]+)/ig;
-        var m;
-        while ((m = re.exec(str))) {
-          var label = clean(m[1] || '');
-          var url = m[2] || '';
-          if (!url) continue;
-          quality[label || ('Q' + (Object.keys(quality).length + 1))] = url;
-          if (!first) first = url;
-        }
-        if (!first) {
-          (str.match(/https?:\/\/[^\s"'<>\\,]+/ig) || []).forEach(function (u) {
-            if (!/\.(?:m3u8|mp4)(?:$|\?)|obrut\.show\/stream|superdupercdn/i.test(u)) return;
-            var label = 'Q' + (Object.keys(quality).length + 1);
-            quality[label] = u;
-            if (!first) first = u;
-          });
-        }
-        return { stream: first, qualitys: Object.keys(quality).length > 1 ? quality : false };
-      }
-      function tartugaParseObrutPlayerConfig(html) {
-        html = String(html || '');
-        var m = html.match(/new\s+Player\s*\(\s*"([^"]+)"/i);
-        if (!m) return null;
-        var raw = m[1] || '';
-        // Спочатку пробуємо класичний JSON.parse(atob()):
-        var candidates = [raw];
-        var eyj = raw.indexOf('eyJ');
-        if (eyj >= 0) candidates.push(raw.slice(eyj));
-        var i;
-        for (i = 0; i < candidates.length; i++) {
-          try {
-            var parsed = JSON.parse(atob(candidates[i]));
-            if (parsed && parsed.file) return parsed;
-          } catch (e) {}
-        }
-        var reEyj = /eyJ[A-Za-z0-9+/=]{16,}/g;
-        var mm;
-        while ((mm = reEyj.exec(raw))) {
-          try {
-            var p = JSON.parse(atob(mm[0]));
-            if (p && p.file) return p;
-          } catch (e2) {}
-        }
-        // Fallback: конфіг містить бінарні байти у полях poster (XOR-обфускація),
-        // через що JSON.parse падає. Але поле "file" (stream URL) — чиста ASCII.
-        // Витягуємо title→file пари напряму regex-ом по binary string від atob.
-        var b64candidate = (eyj >= 0) ? raw.slice(eyj) : raw;
-        try {
-          var bin = atob(b64candidate);
-          var titleMatches = [];
-          var fileMatches = [];
-          var trRe = /"title":"([^"]*)"/g;
-          // file значення: [label]url,[label]url,... — лише ASCII/backslash, без " і без байтів >=0x80
-          var frRe = /"file":"((?:[^\x80-\xff"]){10,})/g;
-          var tr2, fr2;
-          while ((tr2 = trRe.exec(bin)) !== null) {
-            // unescape \uXXXX sequences (JSON unicode escapes залишились як є)
-            var title = tr2[1].replace(/\\u([0-9a-fA-F]{4})/g, function (_, hex) { return String.fromCharCode(parseInt(hex, 16)); });
-            titleMatches.push({ pos: tr2.index, title: title });
-          }
-          while ((fr2 = frRe.exec(bin)) !== null) {
-            fileMatches.push({ pos: fr2.index, file: fr2[1].replace(/\\\/g, '/') });
-          }
-          var files = [];
-          titleMatches.forEach(function (t) {
-            var nextFile = null;
-            for (var fi = 0; fi < fileMatches.length; fi++) {
-              if (fileMatches[fi].pos > t.pos) { nextFile = fileMatches[fi]; break; }
-            }
-            if (nextFile) files.push({ title: t.title, file: nextFile.file });
-          });
-          if (files.length) return { file: files };
-        } catch (e3) {}
-        return null;
-      }
-      function tartugaPickObrutFileEntry(files, voice) {
-        files = files || [];
-        voice = norm(voice || '');
-        if (!files.length) return null;
-        if (voice) {
-          var exact = files.filter(function (f) { return norm(f && f.title || '') === voice; });
-          if (exact.length) return exact[0];
-          var partial = files.filter(function (f) {
-            var t = norm(f && f.title || '');
-            return t && (t.indexOf(voice) !== -1 || voice.indexOf(t) !== -1);
-          });
-          if (partial.length) return partial[0];
-        }
-        return files[0];
-      }
-      function tartugaParseOrtifiedEmbedHtml(html) {
-        html = String(html || '');
-        var m = html.match(/source:\s*\{[\s\S]*?\bhls:\s*"([^"\\]+)/i) || html.match(/\bhls:\s*"([^"\\]+)/i);
-        if (!m) return null;
-        var stream = jsStringToText(m[1] || '').replace(/\\\//g, '/').replace(/&amp;/g, '&').trim();
-        return stream ? { stream: stream, referer: 'https://api.ortified.ws/', origin: 'https://api.ortified.ws' } : null;
-      }
-      function normalizeTurboItems(player, content, seasons, episodes) {
-        var seasonById = {};
-        (seasons || []).forEach(function (s) { if (s && s.id != null) seasonById[s.id] = parseInt(s.order, 10) || 0; });
-        var seasonHasRealVoice = {};
-        (episodes || []).forEach(function (ep) {
-          ep = ep || {};
-          var season = ep.season && (seasonById[ep.season.id] || parseInt(ep.season.order, 10)) || 0;
-          (ep.episodeVariants || []).forEach(function (v) {
-            var voice = clean(v && v.title || '');
-            if (voice && !/^default$/i.test(voice)) seasonHasRealVoice[season] = true;
-          });
-        });
-        var items = [];
-        var seen = {};
-        var skippedDefault = 0;
-        var embedCount = 0;
-        (episodes || []).forEach(function (ep) {
-          ep = ep || {};
-          var season = ep.season && (seasonById[ep.season.id] || parseInt(ep.season.order, 10)) || 0;
-          var episode = parseInt(ep.order, 10) || parseInt(ep.episode, 10) || 0;
-          (ep.episodeVariants || []).forEach(function (v) {
-            v = v || {};
-            var rawVoice = clean(v.title || '');
-            if (/^default$/i.test(rawVoice || '') && seasonHasRealVoice[season]) { skippedDefault++; return; }
-            var playable = turboVariantPlayable(v, ep);
-            if (!playable.stream && !playable.embed) return;
-            var voice = rawVoice || 'Turbo';
-            var key = [season, episode, voice, playable.stream || playable.embed].join('|');
-            if (seen[key]) return;
-            seen[key] = true;
-            var item = {
-              title: (season || episode) ? component.formatEpisodeTitle(season, episode, ep.title || '') : tartugaMovieDisplayTitle(voice || player && player.title || ''),
-              quality: v.streamQuality || 'Turbo',
-              info: ' / ' + Lampa.Utils.shortText(voice, 50),
-              season: season,
-              episode: episode,
-              voice: voice,
-              media: v,
-              poster: v.previewImageFilepath || content && content.posterUrl || player && player.poster || '',
-              headers: false,
-              player: player,
-              skip_quality_probe: !!playable.stream
-            };
-            if (playable.stream) {
-              item.stream = playable.stream;
-            } else {
-              item.turbo_embed_url = playable.embed;
-              embedCount++;
-            }
-            items.push(item);
-          });
-        });
-        items.sort(function (a, b) { return (a.season - b.season) || (a.episode - b.episode) || String(a.voice || '').localeCompare(String(b.voice || '')); });
-        log('turbo-normalized', { input_episodes: (episodes || []).length, output_items: items.length, embed_items: embedCount, skipped_default: skippedDefault, voices: items.map(function (it) { return it.voice; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 20), sample: items.slice(0, 10).map(function (it) { return 'S' + it.season + 'E' + it.episode + '|' + it.voice + '|' + preview(it.stream || it.turbo_embed_url, 120); }) });
-        return items;
-      }
-      function loadTurboSerial(player, success, fail) {
-        var id = (String(player && player.url || '').match(/[?&]movie_id=(\d+)/i) || [])[1] || '';
-        if (!id) {
-          // obrut.show/embed/... не містять movie_id — завантажуємо embed-сторінку напряму
-          // і парсимо переклади з конфігу плеєра (фолбек замість миттєвого fail).
-          var embedUrl = absolute(String(player && player.url || ''), ref);
-          if (!embedUrl) {
-            log('turbo-no-catalog-id', { player: player && player.title || '', url: '' });
-            fail && fail('turbo embed without catalog id');
-            return;
-          }
-          log('turbo-no-catalog-id', { player: player && player.title || '', url: preview(embedUrl, 200) });
-          var embedHeaders = turboTemptcdnApiHeaders(player);
-          requestText(embedUrl, function (html) {
-            var cfg = tartugaParseObrutPlayerConfig(html);
-            if (!cfg || !cfg.file) {
-              log('turbo-embed-no-config', { url: preview(embedUrl, 200), len: String(html || '').length });
-              fail && fail('turbo embed: no file config');
-              return;
-            }
-            var files = Array.isArray(cfg.file) ? cfg.file : [cfg.file];
-            var items = [];
-            files.forEach(function (entry) {
-              if (!entry || typeof entry !== 'object') return;
-              var voice = clean(entry.title || '') || (player && player.title) || 'Turbo';
-              var parsed = entry.file ? turboParseQualityFileStr(entry.file) : null;
-              var item = {
-                title: select_title || (player && player.title) || 'Turbo',
-                voice: voice,
-                season: 0,
-                episode: 0,
-                quality: (parsed && parsed.qualitys ? Object.keys(parsed.qualitys)[0] : '') || 'Turbo',
-                stream: (parsed && parsed.stream) || '',
-                qualitys: (parsed && parsed.qualitys) || false,
-                player: player,
-                headers: { 'User-Agent': headers['User-Agent'], 'Referer': embedUrl, 'Origin': (originFromUrl(embedUrl) || '') }
-              };
-              if (!item.stream) item.turbo_embed_url = embedUrl;
-              items.push(item);
-            });
-            log('turbo-embed-loaded', { url: preview(embedUrl, 200), items: items.length, voices: items.map(function (it) { return it.voice; }) });
-            if (items.length) success(items); else fail && fail('turbo embed: empty items');
-          }, function () {
-            log('turbo-embed-fetch-fail', { url: preview(embedUrl, 200) });
-            fail && fail('turbo embed fetch failed');
-          }, { headers: embedHeaders, dataType: 'text', timeout: 16000 });
-          return;
-        }
-        var apiHost = 'https://global.temptcdn.com';
-        var base = apiHost + '/balancer-api/proxy/playlists/catalog-api';
-        var h = turboTemptcdnApiHeaders(player);
-        log('turbo-load-start', { player: player.title, id: id, referer: h.Referer || '' });
-        requestText(base + '/contents/' + encodeURIComponent(id), function (contentText) {
-          var content = safeJsonParse(contentText) || {};
-          requestText(base + '/contents/' + encodeURIComponent(id) + '/seasons', function (seasonsText) {
-            var seasons = safeJsonParse(seasonsText) || [];
-            requestText(base + '/episodes?content-id=' + encodeURIComponent(id), function (episodesText) {
-              var episodes = safeJsonParse(episodesText) || [];
-              var items = normalizeTurboItems(player, content, seasons, episodes);
-              log('turbo-loaded', { id: id, seasons: seasons.length || 0, episodes: episodes.length || 0, items: items.length, sample: items.slice(0, 8).map(function (it) { return it.title + '|' + it.voice; }) });
-              if (items.length) success(items); else fail && fail('turbo empty');
-            }, fail, { headers: h, dataType: 'text', timeout: 16000 });
-          }, fail, { headers: h, dataType: 'text', timeout: 16000 });
-        }, fail, { headers: h, dataType: 'text', timeout: 16000 });
-      }
-      function loadTurboStream(element, call, error) {
-        var embedUrl = absolute(element.turbo_embed_url || '', ref);
-        if (!embedUrl) { error && error(); return; }
-        var pageRef = element.player && (element.player.referer || element.player.page_info && element.player.page_info.page) || ref;
-        var embedOrigin = originFromUrl(embedUrl) || '';
-        log('turbo-embed-request', { voice: element.voice || '', url: preview(embedUrl, 220), referer: preview(pageRef, 160) });
-        requestText(embedUrl, function (html) {
-          var cfg = tartugaParseObrutPlayerConfig(html);
-          var ort = tartugaParseOrtifiedEmbedHtml(html);
-          var voice = element.voice || '';
-          var parsed = null;
-          if (cfg && cfg.file) {
-            var files = Array.isArray(cfg.file) ? cfg.file : [cfg.file];
-            var entry = tartugaPickObrutFileEntry(files, voice);
-            if (entry && entry.file) parsed = turboParseQualityFileStr(entry.file);
-            log('turbo-obrut-parsed', { voice: voice, entries: files.length, picked: entry && entry.title || '', stream: preview(parsed && parsed.stream || '', 180) });
-          }
-          if (!parsed || !parsed.stream) {
-            if (ort && ort.stream) {
-              parsed = { stream: ort.stream, qualitys: false };
-              embedOrigin = ort.origin || embedOrigin;
-              log('turbo-ortified-parsed', { stream: preview(ort.stream, 180) });
-            }
-          }
-          if (!parsed || !parsed.stream) {
-            log('turbo-embed-parse-fail', { url: preview(embedUrl, 220), len: String(html || '').length, sample: preview(html, 420) });
-            error && error();
-            return;
-          }
-          element.stream = parsed.stream;
-          element.qualitys = parsed.qualitys || false;
-          element.turbo_embed_url = embedUrl;
-          element.headers = {
-            'User-Agent': headers['User-Agent'],
-            'Referer': (embedOrigin || ort && ort.referer || ref) + (/\/$/.test(embedOrigin || '') ? '' : '/'),
-            'Origin': embedOrigin || ort && ort.origin || host
-          };
-          if (/ortified\.ws/i.test(embedUrl) || /interkh\.com/i.test(parsed.stream || '')) {
-            element.headers.Referer = 'https://api.ortified.ws/';
-            element.headers.Origin = 'https://api.ortified.ws';
-          }
-          element.skip_quality_probe = !element.qualitys && /\.m3u8|superdupercdn|obrut\.show\/stream/i.test(element.stream || '');
-          log('turbo-stream-ready', { voice: voice, stream: preview(element.stream, 220), qualities: element.qualitys ? Object.keys(element.qualitys).length : 0 });
-          call(element);
-        }, error, {
-          headers: {
-            'User-Agent': headers['User-Agent'],
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': headers['Accept-Language'],
-            'Referer': pageRef || ref
-          },
-          dataType: 'text',
-          timeout: 18000
-        });
-      }
       function loadVeoVeoSerial(player, success, fail) {
         var id = (String(player && player.url || '').match(/[?&]movie_id=(\d+)/i) || [])[1] || '';
         if (!id) { fail && fail('no veoveo movie_id'); return; }
@@ -17438,8 +17145,7 @@
           log('serial-load-fail', { player: player.title || '', url: preview(player.url), message: preview(message || '', 260) });
           fail && fail(message);
         }
-        if (isVeoVeoPlayer(player)) loadVeoVeoSerial(player, done, bad);
-        else if (isTurboPlayer(player)) loadTurboSerial(player, done, bad);
+        if (/temptcdn|veoveo/i.test(String(player.title || '') + ' ' + String(player.url || ''))) loadVeoVeoSerial(player, done, bad);
         else if (isHdvbPlayer(player)) loadHdvbSerial(player, done, bad);
         else loadFileListSerial(player, done, bad);
       }
@@ -17530,10 +17236,6 @@
         return Object.keys(quality).length ? quality : false;
       }
       function getStream(element, call, error) {
-        if (element.turbo_embed_url && !element.stream) {
-          loadTurboStream(element, call, error);
-          return;
-        }
         if (element.stream) {
           if (element.skip_quality_probe) {
             element.qualitys = false;
@@ -28488,13 +28190,9 @@
 
       function stelsIsSourceSortMenuProtected() {
         try {
-          // TTL-охорона перевіряється першою і незалежно від stelsIsSelectBoxOpen():
-          // короткий флікер класу .selectbox--open під час паралельних DOM-оновлень
-          // (наприклад thumb-set/voice-quality рендер) інакше одразу скидав захист
-          // ще до того, як TTL встигав спрацювати, і меню "Балансер" самозакривалось.
-          if (Date.now() < stelsSourceSortMenuOpenUntil) return true;
           if (!stelsIsSelectBoxOpen()) return false;
           if (stelsIsSourceSortMenuOpen()) return true;
+          if (Date.now() < stelsSourceSortMenuOpenUntil) return true;
         } catch (e) {}
         return false;
       }
@@ -32586,7 +32284,7 @@
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.174: Turbo/Tortuga obrut.show без movie_id — regex-fallback у tartugaParseObrutPlayerConfig витягує title/file пари напряму з binary atob-рядка (JSON.parse падав через XOR-обфускацію в poster-полях); переклади і відео тепер працюють.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`).' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
