@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.177';
+    var STELS_ONLINE_VERSION = '1.1.178';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -17280,12 +17280,18 @@ var q = qualityMapFromAlloha(json);
           var curOrigin = bnsiOrigins[pos];
           var url = curOrigin + '/bnsi/movies/' + encodeURIComponent(id);
           var post = 'token=' + encodeURIComponent(token) + '&av1=true&autoplay=0&audio=&subtitle=';
+          // 1.1.178: якщо curOrigin відрізняється від origin, з якого реально завантажився
+          // fileList (наприклад fallback з astrid-as.stravers.live на mars.stravers.live),
+          // Referer має теж вказувати на curOrigin — інакше сервер бачить
+          // Origin != Referer-host і відхиляє запит як CSRF/hotlink (саме це й давало
+          // миттєву "Невідома помилка" на обох origins замість реального fallback).
+          var curReferer = curOrigin === origin ? referer : curOrigin + '/?token_movie=' + encodeURIComponent(tokenMovieFromUrl(player.url) || tokenMovieFromUrl(referer) || '') + '&token=' + encodeURIComponent(token);
           var h = {
             'User-Agent': headers['User-Agent'],
             'Accept': '*/*',
             'Accept-Language': headers['Accept-Language'],
             'Origin': curOrigin,
-            'Referer': referer,
+            'Referer': curReferer,
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
             'X-Requested-With': 'XMLHttpRequest'
           };
@@ -17297,9 +17303,9 @@ var q = qualityMapFromAlloha(json);
             var arr = [];
             Object.keys(qmap).forEach(function (q) {
               var link = String(qmap[q] || '').split(/\s+or\s+/i).filter(Boolean)[0] || '';
-              if (link) arr.push({ label: q + 'p', quality: parseInt(q, 10) || 0, file: absolute(link, referer) });
+              if (link) arr.push({ label: q + 'p', quality: parseInt(q, 10) || 0, file: absolute(link, curReferer) });
             });
-            if (!arr.length && source.file) arr.push({ label: source.label || 'HLS', quality: 0, file: absolute(String(source.file).split(/\s+or\s+/i)[0], referer) });
+            if (!arr.length && source.file) arr.push({ label: source.label || 'HLS', quality: 0, file: absolute(String(source.file).split(/\s+or\s+/i)[0], curReferer) });
             arr.sort(function (a, b) { return b.quality - a.quality; });
             if (!arr.length) { tryBnsi(pos + 1); return; }
             var quality = false;
