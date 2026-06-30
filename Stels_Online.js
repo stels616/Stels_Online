@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.174';
+    var STELS_ONLINE_VERSION = '1.1.175';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1253,7 +1253,13 @@
             if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
           }
         }
-        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
+        // 1.1.175: цей guard зʼявився через ZetflixNet (signed HLS okcdn часто "пошкоджений"
+        // на Android-вбудованому плеєрі) — там один m3u8 з варіацією бітрейту в самому потоці.
+        // Для prem.z01.online джерел (Мир кино Z, KinoPub) кожен ключ quality-мапи — це окремий
+        // підписаний URL свого CDN (cdntogo.net, mir-kino.pp.ru), а не один проблемний master.
+        // Без цього виключення на Android завжди показувалась лише 1 якість без вибору.
+        var stelsIsPremZ01QualitySafe = typeof (out.url || out.file) == 'string' && /(?:^https?:\/\/[^\/]*\.cdntogo\.net\/|mir-kino\.pp\.ru\/)/i.test(out.url || out.file);
+        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file) && !stelsIsPremZ01QualitySafe) {
           out._stels_original_quality = out.quality;
           out.quality = false;
         }
