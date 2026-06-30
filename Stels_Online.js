@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.176';
+    var STELS_ONLINE_VERSION = '1.1.177';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -17265,37 +17265,52 @@ var q = qualityMapFromAlloha(json);
         var token = player.player_token || tokenFromUrl(player.url) || '';
         var referer = player.player_referer || player.url || ref;
         if (!id || !origin || !token) { error && error(); return; }
-        var url = origin + '/bnsi/movies/' + encodeURIComponent(id);
-        var post = 'token=' + encodeURIComponent(token) + '&av1=true&autoplay=0&audio=&subtitle=';
-        var h = {
-          'User-Agent': headers['User-Agent'],
-          'Accept': '*/*',
-          'Accept-Language': headers['Accept-Language'],
-          'Origin': origin,
-          'Referer': referer,
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'X-Requested-With': 'XMLHttpRequest'
-        };
-        requestText(url, function (jsonText) {
-          var json = safeJsonParse(jsonText) || {};
-          var list = json.hlsSource || [];
-          var source = list.filter(function (s) { return s && s['default']; })[0] || list[0] || {};
-          var qmap = source.quality || {};
-          var arr = [];
-          Object.keys(qmap).forEach(function (q) {
-            var link = String(qmap[q] || '').split(/\s+or\s+/i).filter(Boolean)[0] || '';
-            if (link) arr.push({ label: q + 'p', quality: parseInt(q, 10) || 0, file: absolute(link, referer) });
-          });
-          if (!arr.length && source.file) arr.push({ label: source.label || 'HLS', quality: 0, file: absolute(String(source.file).split(/\s+or\s+/i)[0], referer) });
-          arr.sort(function (a, b) { return b.quality - a.quality; });
-          if (!arr.length) { error && error(); return; }
-          var quality = false;
-          if (arr.length > 1) { quality = {}; arr.forEach(function (it) { quality[it.label] = it.file; }); }
-          element.stream = arr[0].file;
-          element.qualitys = quality;
-          element.subtitles = false;
-          call(element);
-        }, error, { post: post, headers: h, dataType: 'text', timeout: 18000 });
+        // 1.1.177: astrid-as.stravers.live не має робочого серверного /bnsi/movies/{id} —
+        // його потоки на vkvideo.cloud підписані Bearer-токеном, що обчислюється client-side JS
+        // самої сторінки (підтверджено HAR: жодного запиту /bnsi/ не було, лише прямі GET на
+        // vkvideo.cloud з Authorizations: Bearer ...). Тому для цього origin пробуємо bnsi
+        // спершу на mars.stravers.live (відомо робочий) з тим самим token_movie/token,
+        // і лише за невдачі — на оригінальний astrid-as origin як останній шанс.
+        var bnsiOrigins = [origin];
+        if (/astrid-as\.stravers\.live/i.test(origin)) {
+          bnsiOrigins = ['https://mars.stravers.live', origin];
+        }
+        function tryBnsi(pos) {
+          if (pos >= bnsiOrigins.length) { error && error(); return; }
+          var curOrigin = bnsiOrigins[pos];
+          var url = curOrigin + '/bnsi/movies/' + encodeURIComponent(id);
+          var post = 'token=' + encodeURIComponent(token) + '&av1=true&autoplay=0&audio=&subtitle=';
+          var h = {
+            'User-Agent': headers['User-Agent'],
+            'Accept': '*/*',
+            'Accept-Language': headers['Accept-Language'],
+            'Origin': curOrigin,
+            'Referer': referer,
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest'
+          };
+          requestText(url, function (jsonText) {
+            var json = safeJsonParse(jsonText) || {};
+            var list = json.hlsSource || [];
+            var source = list.filter(function (s) { return s && s['default']; })[0] || list[0] || {};
+            var qmap = source.quality || {};
+            var arr = [];
+            Object.keys(qmap).forEach(function (q) {
+              var link = String(qmap[q] || '').split(/\s+or\s+/i).filter(Boolean)[0] || '';
+              if (link) arr.push({ label: q + 'p', quality: parseInt(q, 10) || 0, file: absolute(link, referer) });
+            });
+            if (!arr.length && source.file) arr.push({ label: source.label || 'HLS', quality: 0, file: absolute(String(source.file).split(/\s+or\s+/i)[0], referer) });
+            arr.sort(function (a, b) { return b.quality - a.quality; });
+            if (!arr.length) { tryBnsi(pos + 1); return; }
+            var quality = false;
+            if (arr.length > 1) { quality = {}; arr.forEach(function (it) { quality[it.label] = it.file; }); }
+            element.stream = arr[0].file;
+            element.qualitys = quality;
+            element.subtitles = false;
+            call(element);
+          }, function () { tryBnsi(pos + 1); }, { post: post, headers: h, dataType: 'text', timeout: 18000 });
+        }
+        tryBnsi(0);
       }
       function append(items) {
         component.reset();
