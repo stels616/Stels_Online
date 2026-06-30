@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.173';
+    var STELS_ONLINE_VERSION = '1.1.174';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -112,7 +112,7 @@
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
       'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
       'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
-      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie', 'mirkino',
+      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie', 'mirkino', 'kinopub-z01',
       'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
       'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
       'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
@@ -129,7 +129,7 @@
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
       videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
-      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe', mirkino: 'Мир кино Z',
+      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe', mirkino: 'Мир кино Z', 'kinopub-z01': 'KinoPub 4k',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
@@ -151,7 +151,7 @@
       mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
       pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', kinoflix: 'videoseed', leproduction: 'videoseed',
-      vkmovie: 'cdnvideohub', mirkino: 'prem-mirkino', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
+      vkmovie: 'cdnvideohub', mirkino: 'prem-mirkino', 'kinopub-z01': 'prem-kinopub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
     };
 
     // 1.1.127: глобальні helpers якості. Частина джерел і ZetflixNet знаходяться
@@ -24230,7 +24230,12 @@ var q = qualityMapFromAlloha(json);
       function preparePlayable(item, json, json_call) {
         json = normalizeRemotePlayableJson(safeDecodeJson(json) || {}) || {};
         json_call = normalizeRemotePlayableJson(safeDecodeJson(json_call) || {}) || {};
-        var q = json_call.quality || json.quality || item.qualitys || item.quality || false;
+        // 1.1.174: display() конвертує element.quality (об'єкт {2160p:url,1080p:url})
+        // у element.qualitys + element.quality = перший ключ (рядок, напр. "2160p").
+        // Якщо тут пріоритет лишити на json.quality, то замість мапи якостей у плеєр
+        // піде рядок-мітка і селектор якості (наприклад у Мир кино Z) не відобразиться.
+        // item.qualitys — це завжди справжня мапа, тому перевіряємо її першою.
+        var q = item.qualitys || (json_call.quality && typeof json_call.quality === 'object' ? json_call.quality : false) || (json.quality && typeof json.quality === 'object' ? json.quality : false) || json_call.quality || json.quality || item.quality || false;
         q = normalizeQualityMap(q);
         var url = json.url || json.stream || json.file || '';
         if (url && typeof url == 'object') {
@@ -27537,6 +27542,23 @@ var q = qualityMapFromAlloha(json);
         kp: true,
         imdb: true
       }, {
+        // 1.1.174: KinoPub 4K через prem.z01.online (окремий від рідного OnlineMod kinopub).
+        name: 'prem-kinopub',
+        title: 'KinoPub 4k',
+        source: new lampauaRemoteSource(this, object, ['kinopub 4k', 'kinopub', 'kinopub z01', 'lme_kinopub'], 'KinoPub 4k', {
+          host: 'http://prem.z01.online/',
+          directPath: 'kinopub',
+          preferDirect: false,
+          token: false,
+          headerKey: 'kit_aesgcmkey',
+          zpremHeaderKey: 'zpremkey',
+          movieVoiceFilter: true,
+          sourceQualityHint: true
+        }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
         name: 'uaserials',
         title: 'UASerials',
         source: new uaserials(this, object),
@@ -28582,6 +28604,7 @@ var q = qualityMapFromAlloha(json);
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true, sourceQualityHint: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'mirkino' || engine === 'prem-mirkino') return new lampauaRemoteSource(fake, object, ['мир кино z', 'мир кино z - 4k hdr', 'mirkino', 'mir kino z', 'lme_mirkino'], 'Мир кино Z', { host: 'http://prem.z01.online/', directPath: 'mirkino', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
+          if (name === 'kinopub-z01' || engine === 'prem-kinopub') return new lampauaRemoteSource(fake, object, ['kinopub 4k', 'kinopub', 'kinopub z01', 'lme_kinopub'], 'KinoPub 4k', { host: 'http://prem.z01.online/', directPath: 'kinopub', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
