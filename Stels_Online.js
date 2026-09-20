@@ -10562,20 +10562,59 @@ var q = qualityMapFromAlloha(json);
       var prefer_http = Lampa.Storage.field('stels_online_prefer_http') === true;
       var prox = component.proxy('fanserials');
       var prox_cdn = component.proxy('fanserials_cdn');
-      var host = Utils.decodeSecret([95, 57, 28, 42, 55, 125, 28, 124, 25, 93, 66, 41, 7, 46, 48, 49, 92, 33, 25, 76, 26, 33, 7, 40, 32, 33, 90, 63, 23, 27, 69, 56], atob('RnVja0Zhbg=='));
-      var ref = host + '/';
+      // Актуальний сайт FanSerials. Старий домен лишено як запасний referer для embed-плеєра
+      var host_list = ['https://fanserial.me'];
+      var legacy_host = Utils.decodeSecret([95, 57, 28, 42, 55, 125, 28, 124, 25, 93, 66, 41, 7, 46, 48, 49, 92, 33, 25, 76, 26, 33, 7, 40, 32, 33, 90, 63, 23, 27, 69, 56], atob('RnVja0Zhbg=='));
+      if (legacy_host && host_list.indexOf(legacy_host) === -1) host_list.push(legacy_host);
+      var host_index = 0;
+      var host = '';
+      var ref = '';
       var user_agent = Utils.baseUserAgent();
-      var headers = Lampa.Platform.is('android') ? {
-        'Origin': host,
-        'Referer': ref,
-        'User-Agent': user_agent
-      } : {};
+      var headers = {};
       var prox_enc = '';
 
-      if (prox) {
-        prox_enc += 'param/Origin=' + encodeURIComponent(host) + '/';
-        prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
-        prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+      function setHost(index) {
+        host_index = index;
+        host = host_list[index];
+        ref = host + '/';
+        headers = Lampa.Platform.is('android') ? {
+          'Origin': host,
+          'Referer': ref,
+          'User-Agent': user_agent
+        } : {};
+        prox_enc = '';
+
+        if (prox) {
+          prox_enc += 'param/Origin=' + encodeURIComponent(host) + '/';
+          prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
+          prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+        }
+      }
+
+      setHost(0);
+
+      /**
+       * Запит до embed з перебором referer/origin (fanserial.me -> старий домен)
+       * validate(str) - перевірка, що у відповіді є потрібні дані
+       */
+      function request(url, validate, success, error) {
+        network.clear();
+        network.timeout(10000);
+        network["native"](component.proxyLink(url, prox, prox_enc, 'enc2t'), function (str) {
+          if (validate(str) || host_index >= host_list.length - 1) success(str);else {
+            setHost(host_index + 1);
+            request(url, validate, success, error);
+          }
+        }, function (a, c) {
+          var not_found = a && a.status == 404 && (!a.responseText || a.responseText.indexOf('Сериал не найден :(') !== -1);
+          if (!not_found && host_index < host_list.length - 1) {
+            setHost(host_index + 1);
+            request(url, validate, success, error);
+          } else error(a, c);
+        }, false, {
+          dataType: 'text',
+          headers: headers
+        });
       }
 
       var embed = (prefer_http ? 'http:' : 'https:') + atob('Ly9sb21vbnQuc2l0ZS9ndC8=');
@@ -10605,17 +10644,14 @@ var q = qualityMapFromAlloha(json);
         url = Lampa.Utils.addUrlComponent(url, 'season=1');
         url = Lampa.Utils.addUrlComponent(url, 'episode=1');
         url = Lampa.Utils.addUrlComponent(url, 'alloff=true');
-        network.clear();
-        network.timeout(10000);
-        network["native"](component.proxyLink(url, prox, prox_enc, 'enc2t'), function (str) {
+        request(url, function (str) {
+          return (str || '').indexOf('id="inputData"') !== -1;
+        }, function (str) {
           parse(str);
         }, function (a, c) {
           if (a.status == 404 && (!a.responseText || a.responseText.indexOf('Сериал не найден :(') !== -1) || a.status == 0 && a.statusText !== 'timeout') {
             component.emptyForQuery(select_title);
           } else component.empty(network.errorDecode(a, c));
-        }, false, {
-          dataType: 'text',
-          headers: headers
         });
       };
 
@@ -10726,15 +10762,12 @@ var q = qualityMapFromAlloha(json);
         url = Lampa.Utils.addUrlComponent(url, 'episode=' + element.media.episode);
         url = Lampa.Utils.addUrlComponent(url, 'voice=' + element.media.voice_id);
         url = Lampa.Utils.addUrlComponent(url, 'alloff=true');
-        network.clear();
-        network.timeout(10000);
-        network["native"](component.proxyLink(url, prox, prox_enc, 'enc2t'), function (str) {
+        request(url, function (str) {
+          return (str || '').indexOf('id="videoplayer') !== -1;
+        }, function (str) {
           parseStream(element, call, error, url, str);
         }, function (a, c) {
           error();
-        }, false, {
-          dataType: 'text',
-          headers: headers
         });
       }
       /**
