@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.174';
+    var STELS_ONLINE_VERSION = '1.1.177';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -112,7 +112,7 @@
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
       'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
       'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
-      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie', 'mirkino', 'kinopub-z01',
+      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie', 'mirkino', 'kinopub-z01', 'alloha-z01',
       'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
       'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
       'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
@@ -129,7 +129,7 @@
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
       videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
-      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe', mirkino: 'Мир кино Z', 'kinopub-z01': 'KinoPub 4k',
+      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe', mirkino: 'Мир кино Z', 'kinopub-z01': 'KinoPub 4k', 'alloha-z01': 'Alloha 4k',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
@@ -151,7 +151,7 @@
       mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
       pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', kinoflix: 'videoseed', leproduction: 'videoseed',
-      vkmovie: 'cdnvideohub', mirkino: 'prem-mirkino', 'kinopub-z01': 'prem-kinopub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
+      vkmovie: 'cdnvideohub', mirkino: 'prem-mirkino', 'kinopub-z01': 'prem-kinopub', 'alloha-z01': 'prem-alloha', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
     };
 
     // 1.1.127: глобальні helpers якості. Частина джерел і ZetflixNet знаходяться
@@ -1253,7 +1253,13 @@
             if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
           }
         }
-        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
+        // 1.1.175: цей guard зʼявився через ZetflixNet (signed HLS okcdn часто "пошкоджений"
+        // на Android-вбудованому плеєрі) — там один m3u8 з варіацією бітрейту в самому потоці.
+        // Для prem.z01.online джерел (Мир кино Z, KinoPub) кожен ключ quality-мапи — це окремий
+        // підписаний URL свого CDN (cdntogo.net, mir-kino.pp.ru), а не один проблемний master.
+        // Без цього виключення на Android завжди показувалась лише 1 якість без вибору.
+        var stelsIsPremZ01QualitySafe = typeof (out.url || out.file) == 'string' && /(?:^https?:\/\/[^\/]*\.cdntogo\.net\/|mir-kino\.pp\.ru\/)/i.test(out.url || out.file);
+        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file) && !stelsIsPremZ01QualitySafe) {
           out._stels_original_quality = out.quality;
           out.quality = false;
         }
@@ -10562,20 +10568,59 @@ var q = qualityMapFromAlloha(json);
       var prefer_http = Lampa.Storage.field('stels_online_prefer_http') === true;
       var prox = component.proxy('fanserials');
       var prox_cdn = component.proxy('fanserials_cdn');
-      var host = Utils.decodeSecret([95, 57, 28, 42, 55, 125, 28, 124, 25, 93, 66, 41, 7, 46, 48, 49, 92, 33, 25, 76, 26, 33, 7, 40, 32, 33, 90, 63, 23, 27, 69, 56], atob('RnVja0Zhbg=='));
-      var ref = host + '/';
+      // Актуальний сайт FanSerials. Старий домен лишено як запасний referer для embed-плеєра
+      var host_list = ['https://fanserial.me'];
+      var legacy_host = Utils.decodeSecret([95, 57, 28, 42, 55, 125, 28, 124, 25, 93, 66, 41, 7, 46, 48, 49, 92, 33, 25, 76, 26, 33, 7, 40, 32, 33, 90, 63, 23, 27, 69, 56], atob('RnVja0Zhbg=='));
+      if (legacy_host && host_list.indexOf(legacy_host) === -1) host_list.push(legacy_host);
+      var host_index = 0;
+      var host = '';
+      var ref = '';
       var user_agent = Utils.baseUserAgent();
-      var headers = Lampa.Platform.is('android') ? {
-        'Origin': host,
-        'Referer': ref,
-        'User-Agent': user_agent
-      } : {};
+      var headers = {};
       var prox_enc = '';
 
-      if (prox) {
-        prox_enc += 'param/Origin=' + encodeURIComponent(host) + '/';
-        prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
-        prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+      function setHost(index) {
+        host_index = index;
+        host = host_list[index];
+        ref = host + '/';
+        headers = Lampa.Platform.is('android') ? {
+          'Origin': host,
+          'Referer': ref,
+          'User-Agent': user_agent
+        } : {};
+        prox_enc = '';
+
+        if (prox) {
+          prox_enc += 'param/Origin=' + encodeURIComponent(host) + '/';
+          prox_enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
+          prox_enc += 'param/User-Agent=' + encodeURIComponent(user_agent) + '/';
+        }
+      }
+
+      setHost(0);
+
+      /**
+       * Запит до embed з перебором referer/origin (fanserial.me -> старий домен)
+       * validate(str) - перевірка, що у відповіді є потрібні дані
+       */
+      function request(url, validate, success, error) {
+        network.clear();
+        network.timeout(10000);
+        network["native"](component.proxyLink(url, prox, prox_enc, 'enc2t'), function (str) {
+          if (validate(str) || host_index >= host_list.length - 1) success(str);else {
+            setHost(host_index + 1);
+            request(url, validate, success, error);
+          }
+        }, function (a, c) {
+          var not_found = a && a.status == 404 && (!a.responseText || a.responseText.indexOf('Сериал не найден :(') !== -1);
+          if (!not_found && host_index < host_list.length - 1) {
+            setHost(host_index + 1);
+            request(url, validate, success, error);
+          } else error(a, c);
+        }, false, {
+          dataType: 'text',
+          headers: headers
+        });
       }
 
       var embed = (prefer_http ? 'http:' : 'https:') + atob('Ly9sb21vbnQuc2l0ZS9ndC8=');
@@ -10605,17 +10650,14 @@ var q = qualityMapFromAlloha(json);
         url = Lampa.Utils.addUrlComponent(url, 'season=1');
         url = Lampa.Utils.addUrlComponent(url, 'episode=1');
         url = Lampa.Utils.addUrlComponent(url, 'alloff=true');
-        network.clear();
-        network.timeout(10000);
-        network["native"](component.proxyLink(url, prox, prox_enc, 'enc2t'), function (str) {
+        request(url, function (str) {
+          return (str || '').indexOf('id="inputData"') !== -1;
+        }, function (str) {
           parse(str);
         }, function (a, c) {
           if (a.status == 404 && (!a.responseText || a.responseText.indexOf('Сериал не найден :(') !== -1) || a.status == 0 && a.statusText !== 'timeout') {
             component.emptyForQuery(select_title);
           } else component.empty(network.errorDecode(a, c));
-        }, false, {
-          dataType: 'text',
-          headers: headers
         });
       };
 
@@ -10726,15 +10768,12 @@ var q = qualityMapFromAlloha(json);
         url = Lampa.Utils.addUrlComponent(url, 'episode=' + element.media.episode);
         url = Lampa.Utils.addUrlComponent(url, 'voice=' + element.media.voice_id);
         url = Lampa.Utils.addUrlComponent(url, 'alloff=true');
-        network.clear();
-        network.timeout(10000);
-        network["native"](component.proxyLink(url, prox, prox_enc, 'enc2t'), function (str) {
+        request(url, function (str) {
+          return (str || '').indexOf('id="videoplayer') !== -1;
+        }, function (str) {
           parseStream(element, call, error, url, str);
         }, function (a, c) {
           error();
-        }, false, {
-          dataType: 'text',
-          headers: headers
         });
       }
       /**
@@ -27559,6 +27598,25 @@ var q = qualityMapFromAlloha(json);
         kp: true,
         imdb: true
       }, {
+        // 1.1.176: Alloha 4K через prem.z01.online (окремий від рідного Alloha-парсера на iframe).
+        // Тут lite/alloha повертає список озвучок з method=call; getFileUrl сама викликає
+        // call-endpoint і отримує реальний quality-map (vkvideo.cloud) — додаткового коду не треба.
+        name: 'prem-alloha',
+        title: 'Alloha 4k',
+        source: new lampauaRemoteSource(this, object, ['alloha 4k', 'alloha z01', 'lme_alloha_z01'], 'Alloha 4k', {
+          host: 'http://prem.z01.online/',
+          directPath: 'alloha',
+          preferDirect: false,
+          token: false,
+          headerKey: 'kit_aesgcmkey',
+          zpremHeaderKey: 'zpremkey',
+          movieVoiceFilter: true,
+          sourceQualityHint: true
+        }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
         name: 'uaserials',
         title: 'UASerials',
         source: new uaserials(this, object),
@@ -28605,6 +28663,7 @@ var q = qualityMapFromAlloha(json);
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'mirkino' || engine === 'prem-mirkino') return new lampauaRemoteSource(fake, object, ['мир кино z', 'мир кино z - 4k hdr', 'mirkino', 'mir kino z', 'lme_mirkino'], 'Мир кино Z', { host: 'http://prem.z01.online/', directPath: 'mirkino', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'kinopub-z01' || engine === 'prem-kinopub') return new lampauaRemoteSource(fake, object, ['kinopub 4k', 'kinopub', 'kinopub z01', 'lme_kinopub'], 'KinoPub 4k', { host: 'http://prem.z01.online/', directPath: 'kinopub', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
+          if (name === 'alloha-z01' || engine === 'prem-alloha') return new lampauaRemoteSource(fake, object, ['alloha 4k', 'alloha z01', 'lme_alloha_z01'], 'Alloha 4k', { host: 'http://prem.z01.online/', directPath: 'alloha', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
