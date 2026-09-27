@@ -1603,6 +1603,21 @@
           '.stels-online-quality-right{margin-left:auto;text-align:right;font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:45%;}' +
           '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
           '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-progress__percent{font-size:.68em;margin-top:-.4em}.stels-online-episode-badge{font-size:.7em}.stels-online-episode-number{font-size:1.9em}.stels-online-thumb-meta>span{font-size:.66em;padding:.06em .3em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
+          // 1.1.175: картки серій (season+episode) — примусово 2 в ряд (grid), а не 3+,
+          // щоб картка була більша і назва серії/дата не обрізались по ширині.
+          // Мініатюра тепер займає всю ширину картки зверху (16:9), підпис — знизу.
+          '.stels-online-episodes-2col{display:grid!important;grid-template-columns:repeat(2,1fr)!important;gap:.7em!important;align-items:start!important;}' +
+          '.stels-online-episodes-2col>.online.stels-online-with-thumb.stels-online-episode-card{display:block!important;position:relative!important;min-height:0!important;margin:0!important;padding:0!important;box-sizing:border-box!important;overflow:hidden!important;}' +
+          '.stels-online-episodes-2col>.online.stels-online-with-thumb.stels-online-episode-card .online__body{position:static!important;width:100%!important;min-height:0!important;padding:.6em .75em .7em!important;display:block!important;}' +
+          '.stels-online-episodes-2col>.online.stels-online-with-thumb.stels-online-episode-card .online__body>div[style*="position: absolute"]{display:none!important;}' +
+          '.stels-online-episodes-2col .stels-online-thumb{position:relative!important;left:0!important;top:0!important;width:100%!important;height:0!important;padding-top:56.25%!important;border-radius:0!important;}' +
+          '.stels-online-episodes-2col .stels-online-thumb img{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;}' +
+          '.stels-online-episodes-2col .online__title{padding-left:0!important;white-space:normal!important;line-height:1.2!important;font-size:1.08em!important;font-weight:600!important;margin:0 0 .4em 0!important;color:#fff!important;}' +
+          '.stels-online-episodes-2col .online__quality{padding-left:0!important;opacity:1!important;display:flex!important;align-items:center!important;gap:.5em!important;margin-top:auto!important;font-size:.76em!important;white-space:nowrap!important;}' +
+          '.stels-online-episodes-2col .stels-online-progress{margin:.4em 0 .5em 0!important;}' +
+          '.stels-online-episodes-2col .stels-online-progress__percent{margin:-.42em 0 .5em 0!important;}' +
+          '.stels-online-episodes-2col .torrent-item__viewed{left:auto!important;right:.4em!important;top:.4em!important;}' +
+          '@media screen and (max-width:700px){.stels-online-episodes-2col{gap:.5em!important;}.stels-online-episodes-2col .online__title{font-size:.98em!important;}.stels-online-episodes-2col .online__quality{font-size:.7em!important;}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*="subtitle"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"]:after{content:none!important;display:none!important;}' +
@@ -27375,6 +27390,14 @@ var q = qualityMapFromAlloha(json);
             item.addClass('stels-online-episode-card');
             item.attr('data-stels-season', meta.season);
             item.attr('data-stels-episode', meta.episode);
+            // 1.1.175: примушуємо батьківський список стати grid у 2 колонки,
+            // щоб картки серій були більшими (замість 3+ в ряд за замовчуванням).
+            try {
+              var epParent = item.parent();
+              if (epParent && epParent.length && !epParent.hasClass('stels-online-episodes-2col')) {
+                epParent.addClass('stels-online-episodes-2col');
+              }
+            } catch (eGridParent) {}
           }
           if (meta.clean_title && item.find('.online__title').length) item.find('.online__title').text(meta.clean_title);
           var thumb = $('<div class="stels-online-thumb"><img alt=""><div class="stels-online-thumb__loader"></div></div>');
