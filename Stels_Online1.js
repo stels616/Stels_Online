@@ -143,7 +143,7 @@
       redheadsound: 'redheadsound', 'redheadsound-dash': 'redheadsound-dash', cdnvideohub: 'cdnvideohub',
       anilibria: 'anilibria', anilibria2: 'anilibria2', animelib: 'animelib', kodik: 'kodik', alloha: 'alloha',
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
-      rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'hdvb',
+      rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'rc-zetflixdb', hdvb: 'hdvb',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'kinoukr', zerx: 'zerx',
       eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'starlight',
@@ -27754,6 +27754,18 @@ var q = qualityMapFromAlloha(json);
         imdb: false,
         disabled: true
       }, {
+        name: 'rc-zetflixdb',
+        title: 'ZetflixDB',
+        // 1.1.180: візуальне джерело "ZetflixDB" було просто аліасом на старий
+        // engine 'zetflix', який стукається на self-host hidxlglk.deploy.cx/lite/zetflix —
+        // цей хост більше не відповідає, тому ZetflixDB не працював. ZetflixDB офіційно
+        // підтримується сервером rc.bwa.ad (той самий, яким уже користуються
+        // KinoTochka/iRemux/VeoVeo/HDVB/KinoUkr у цьому плагіні).
+        source: new lampauaRemoteSource(this, object, ['zetflixdb', 'zetflix db', 'zetflix-db'], 'ZetflixDB', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'zetflixdb', movieVoiceFilter: true, sourceQualityHint: true }),
+        search: true,
+        kp: true,
+        imdb: true
+      }, {
         name: 'fancdn',
         title: 'FanCDN',
         source: new fancdn(this, object),
@@ -28699,6 +28711,7 @@ var q = qualityMapFromAlloha(json);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
           if (name === 'kinoukr' || engine === 'kinoukr') return new lampauaRemoteSource(fake, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinoukr', sourceQualityHint: true });
+          if (name === 'zetflixdb' || engine === 'rc-zetflixdb') return new lampauaRemoteSource(fake, object, ['zetflixdb', 'zetflix db', 'zetflix-db'], 'ZetflixDB', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'zetflixdb', movieVoiceFilter: true, sourceQualityHint: true });
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
