@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.177';
+    var STELS_ONLINE_VERSION = '1.1.173';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -112,7 +112,7 @@
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
       'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
       'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
-      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie', 'mirkino', 'kinopub-z01', 'alloha-z01',
+      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie',
       'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
       'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
       'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
@@ -129,7 +129,7 @@
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
       videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
-      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe', mirkino: 'Мир кино Z', 'kinopub-z01': 'KinoPub 4k', 'alloha-z01': 'Alloha 4k',
+      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
@@ -151,7 +151,7 @@
       mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
       pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', kinoflix: 'videoseed', leproduction: 'videoseed',
-      vkmovie: 'cdnvideohub', mirkino: 'prem-mirkino', 'kinopub-z01': 'prem-kinopub', 'alloha-z01': 'prem-alloha', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
+      vkmovie: 'cdnvideohub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
     };
 
     // 1.1.127: глобальні helpers якості. Частина джерел і ZetflixNet знаходяться
@@ -1253,13 +1253,7 @@
             if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
           }
         }
-        // 1.1.175: цей guard зʼявився через ZetflixNet (signed HLS okcdn часто "пошкоджений"
-        // на Android-вбудованому плеєрі) — там один m3u8 з варіацією бітрейту в самому потоці.
-        // Для prem.z01.online джерел (Мир кино Z, KinoPub) кожен ключ quality-мапи — це окремий
-        // підписаний URL свого CDN (cdntogo.net, mir-kino.pp.ru), а не один проблемний master.
-        // Без цього виключення на Android завжди показувалась лише 1 якість без вибору.
-        var stelsIsPremZ01QualitySafe = typeof (out.url || out.file) == 'string' && /(?:^https?:\/\/[^\/]*\.cdntogo\.net\/|mir-kino\.pp\.ru\/)/i.test(out.url || out.file);
-        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file) && !stelsIsPremZ01QualitySafe) {
+        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
           out._stels_original_quality = out.quality;
           out.quality = false;
         }
@@ -1591,8 +1585,15 @@
           '.stels-online-thumb--loaded img{opacity:1!important;visibility:visible!important;}' +
           '.stels-online-thumb__loader{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));pointer-events:none;}' +
           '.stels-online-episode-badge{position:absolute;right:.45em;top:.28em;z-index:2;color:#fff;font-size:.88em;font-weight:700;text-shadow:0 .08em .25em #000;background:linear-gradient(90deg,rgba(0,0,0,0),rgba(0,0,0,.42));padding:.12em .28em .14em .9em;border-radius:.15em;}' +
-          '.stels-online-progress{height:.3em;width:100%;background:rgba(255,255,255,.34);border-radius:5em;margin:.55em 0 .72em 0;overflow:hidden;}' +
+          '.stels-online-episode-number{position:absolute;left:.32em;bottom:-.18em;z-index:1;color:rgba(255,255,255,.4);font-size:3.1em;font-weight:800;line-height:1;pointer-events:none;text-shadow:0 .1em .3em rgba(0,0,0,.55);}' +
+          '.stels-online-thumb-meta{position:absolute;left:.4em;top:.28em;z-index:2;display:flex;gap:.4em;}' +
+          '.stels-online-thumb-meta:empty{display:none;}' +
+          '.stels-online-thumb-meta>span{color:#fff;font-size:.78em;font-weight:700;background:rgba(0,0,0,.5);padding:.1em .38em;border-radius:.2em;text-shadow:0 .08em .2em #000;white-space:nowrap;}' +
+          '.stels-online-thumb-meta .stels-online-rating{color:#ffd058;}' +
+          '.stels-online-progress{position:relative;height:.3em;width:100%;background:rgba(255,255,255,.34);border-radius:5em;margin:.55em 0 .72em 0;overflow:hidden;}' +
           '.stels-online-progress__bar{height:100%;width:0%;background:#00d36f!important;border-radius:5em;}' +
+          '.stels-online-progress__percent{display:none;margin:-.5em 0 .72em 0;font-size:.78em;font-weight:600;color:rgba(255,255,255,.85);text-align:right;}' +
+          '.stels-online-progress--empty+.stels-online-progress__percent{display:none!important;}' +
           '.online.stels-online-with-thumb>.time-line{display:none!important;}' +
           '.stels-online-progress>.time-line{display:block!important;position:relative!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:100%!important;height:100%!important;margin:0!important;padding:0!important;background:transparent!important;}' +
           '.stels-online-progress>.time-line>*{height:100%!important;border-radius:5em!important;}' +
@@ -1601,7 +1602,7 @@
           '.stels-online-meta-dot{opacity:.8;margin:0 .25em;}' +
           '.stels-online-quality-right{margin-left:auto;text-align:right;font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:45%;}' +
           '.stels-online-with-thumb .torrent-item__viewed{left:12.7em;top:.55em;}' +
-          '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-episode-badge{font-size:.7em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
+          '@media screen and (max-width:700px){.online.stels-online-with-thumb{min-height:6.2em;padding:.55em .65em .55em 8.9em!important}.stels-online-thumb{left:.5em;top:.5em;width:7.8em;height:4.7em}.online.stels-online-with-thumb .online__body{min-height:4.8em}.online.stels-online-with-thumb .online__title{font-size:1.05em;margin-right:2.4em;margin-bottom:.35em}.online.stels-online-with-thumb .online__quality{font-size:.72em}.stels-online-progress{height:.22em;margin:.2em 0 .38em}.stels-online-progress__percent{font-size:.68em;margin-top:-.4em}.stels-online-episode-badge{font-size:.7em}.stels-online-episode-number{font-size:1.9em}.stels-online-thumb-meta>span{font-size:.66em;padding:.06em .3em}.stels-online-with-thumb .torrent-item__viewed{left:7.3em}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*="subtitle"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"]:after{content:none!important;display:none!important;}' +
@@ -23523,12 +23524,7 @@ var q = qualityMapFromAlloha(json);
 
       function addHeaders() {
         var kit = Lampa.Storage.get(remoteOptions.headerKey || 'kit_aesgcmkey', '') || Lampa.Storage.get('bwaesgcmkey', '');
-        var headers = kit ? { 'X-Kit-AesGcm': kit } : {};
-        if (remoteOptions.zpremHeaderKey) {
-          var zprem = Lampa.Storage.get(remoteOptions.zpremHeaderKey, '');
-          if (zprem) headers['X-Zprem-Key'] = zprem;
-        }
-        return headers;
+        return kit ? { 'X-Kit-AesGcm': kit } : {};
       }
 
 
@@ -24269,12 +24265,7 @@ var q = qualityMapFromAlloha(json);
       function preparePlayable(item, json, json_call) {
         json = normalizeRemotePlayableJson(safeDecodeJson(json) || {}) || {};
         json_call = normalizeRemotePlayableJson(safeDecodeJson(json_call) || {}) || {};
-        // 1.1.174: display() конвертує element.quality (об'єкт {2160p:url,1080p:url})
-        // у element.qualitys + element.quality = перший ключ (рядок, напр. "2160p").
-        // Якщо тут пріоритет лишити на json.quality, то замість мапи якостей у плеєр
-        // піде рядок-мітка і селектор якості (наприклад у Мир кино Z) не відобразиться.
-        // item.qualitys — це завжди справжня мапа, тому перевіряємо її першою.
-        var q = item.qualitys || (json_call.quality && typeof json_call.quality === 'object' ? json_call.quality : false) || (json.quality && typeof json.quality === 'object' ? json.quality : false) || json_call.quality || json.quality || item.quality || false;
+        var q = json_call.quality || json.quality || item.qualitys || item.quality || false;
         q = normalizeQualityMap(q);
         var url = json.url || json.stream || json.file || '';
         if (url && typeof url == 'object') {
@@ -27241,7 +27232,7 @@ var q = qualityMapFromAlloha(json);
       function stelsLoadEpisodeMeta(season, episode, call) {
         var movie = object && object.movie || {};
         var tmdb_id = movie.tmdb_id || movie.id;
-        var empty = { still: '', name: '', air_date: '', formatted_date: '' };
+        var empty = { still: '', name: '', air_date: '', formatted_date: '', vote_average: 0, runtime: 0 };
         if (!movie.name || !tmdb_id || !season || !episode || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) {
           call(empty);
           return;
@@ -27253,7 +27244,11 @@ var q = qualityMapFromAlloha(json);
             still: stelsBuildTmdbImage(ep.still_path || '', 'w300'),
             name: ep.name || '',
             air_date: ep.air_date || '',
-            formatted_date: stelsFormatUkrDate(ep.air_date || '')
+            formatted_date: stelsFormatUkrDate(ep.air_date || ''),
+            // 1.1.173: рейтинг і тривалість епізоду з TMDB (season endpoint вже містить
+            // vote_average і runtime для кожного об'єкта episodes[]) — для великої карти серії.
+            vote_average: parseFloat(ep.vote_average || 0) || 0,
+            runtime: parseInt(ep.runtime || 0, 10) || 0
           });
         }
         var cached = stels_tmdb_season_cache[cache_key];
@@ -27309,8 +27304,62 @@ var q = qualityMapFromAlloha(json);
           native.addClass('stels-online-native-timeline');
           holder.empty().append(native);
           stelsLog('timeline-moved-to-center', { ok: true, class_name: String(native.attr('class') || '') });
+          stelsWatchProgressPercent(item);
         } catch (e) {
           stelsLog('timeline-move-error', { error: e && (e.message || e.toString()) });
+        }
+      }
+
+      // 1.1.173: Lampa сама рахує % перегляду і виставляє його як inline width на
+      // внутрішньому елементі нативного .time-line. Нам потрібне саме це число (а не
+      // колір/ширина смужки), щоб показати "97%" поряд з прогрес-баром на карті серії.
+      // Значення може прийти не одразу (Storage.cache вичитується асинхронно), тому
+      // стежимо за style через MutationObserver і оновлюємо підпис на льоту.
+      function stelsReadTimelinePercent(holder) {
+        try {
+          var styled = holder.find('[style*="width"]').first();
+          if (!styled.length) return -1;
+          var raw = (styled.attr('style') || '').match(/width\s*:\s*([\d.]+)\s*%/i);
+          if (!raw) return -1;
+          var value = parseFloat(raw[1]);
+          if (isNaN(value)) return -1;
+          return Math.max(0, Math.min(100, Math.round(value)));
+        } catch (e) {
+          return -1;
+        }
+      }
+
+      function stelsWatchProgressPercent(item) {
+        try {
+          var holder = item.find('.stels-online-progress').first();
+          if (!holder.length || holder.data('stelsPercentWatched')) return;
+          holder.data('stelsPercentWatched', true);
+          var label = $('<div class="stels-online-progress__percent"></div>');
+          holder.after(label);
+          var attempts = 0;
+          function update() {
+            var percent = stelsReadTimelinePercent(holder);
+            if (percent >= 0) {
+              label.text(percent + '%').show();
+              holder.toggleClass('stels-online-progress--empty', percent <= 0);
+            } else {
+              label.hide();
+            }
+            return percent;
+          }
+          if (update() < 0) {
+            var poll = setInterval(function () {
+              attempts++;
+              if (update() >= 0 || attempts > 20 || !$.contains(document.documentElement, holder[0] || document.documentElement)) clearInterval(poll);
+            }, 250);
+          }
+          try {
+            var target = holder.find('.stels-online-native-timeline')[0] || holder[0];
+            var observer = new MutationObserver(update);
+            observer.observe(target, { attributes: true, attributeFilter: ['style'], subtree: true });
+          } catch (e2) {}
+        } catch (e) {
+          stelsLog('progress-percent-error', { error: e && (e.message || e.toString()) });
         }
       }
 
@@ -27329,7 +27378,17 @@ var q = qualityMapFromAlloha(json);
           }
           if (meta.clean_title && item.find('.online__title').length) item.find('.online__title').text(meta.clean_title);
           var thumb = $('<div class="stels-online-thumb"><img alt=""><div class="stels-online-thumb__loader"></div></div>');
-          if (meta.season && meta.episode) thumb.append('<div class="stels-online-episode-badge">S' + meta.season + ':E' + meta.episode + '</div>');
+          if (meta.season && meta.episode) {
+            thumb.append('<div class="stels-online-episode-badge">S' + meta.season + ':E' + meta.episode + '</div>');
+            // 1.1.173: великий напівпрозорий номер серії поверх прев'ю (як у нативних
+            // карток-постерів Lampa), а не лише в дрібному бейджі S1:E5 у кутку.
+            var episode_num = meta.episode < 10 ? '0' + meta.episode : String(meta.episode);
+            thumb.append('<div class="stels-online-episode-number">' + episode_num + '</div>');
+            // Рейтинг (★) і тривалість (хв) з TMDB заповнюються пізніше в finish(),
+            // коли прийде відповідь /tv/{id}/season/{n} — контейнер створюємо одразу,
+            // щоб карта не "стрибала" по висоті.
+            thumb.append('<div class="stels-online-thumb-meta"></div>');
+          }
           item.prepend(thumb);
           if (!item.find('.stels-online-progress').length) item.find('.online__title').after('<div class="stels-online-progress"><div class="stels-online-progress__bar"></div></div>');
           stelsMoveNativeTimelineToCenter(item);
@@ -27341,6 +27400,13 @@ var q = qualityMapFromAlloha(json);
               item.find('.online__title').text(epMeta.name);
             }
             if (epMeta.formatted_date) stelsBuildMetaLine(item, epMeta.formatted_date);
+            var thumb_meta = thumb.find('.stels-online-thumb-meta');
+            if (thumb_meta.length) {
+              var meta_html = '';
+              if (epMeta.vote_average > 0) meta_html += '<span class="stels-online-rating">★ ' + epMeta.vote_average.toFixed(1) + '</span>';
+              if (epMeta.runtime > 0) meta_html += '<span class="stels-online-runtime">' + epMeta.runtime + ' хв</span>';
+              thumb_meta.html(meta_html);
+            }
             var candidates = [];
             function addCandidate(u) {
               u = (u == null ? '' : String(u)).trim();
@@ -27561,59 +27627,6 @@ var q = qualityMapFromAlloha(json);
         title: 'Collaps (DASH)',
         source: new lampauaRemoteSource(this, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
         search: false,
-        kp: true,
-        imdb: true
-      }, {
-        // 1.1.173: Мир кино Z — 4K HDR джерело через prem.z01.online
-        name: 'prem-mirkino',
-        title: 'Мир кино Z',
-        source: new lampauaRemoteSource(this, object, ['мир кино z', 'мир кино z - 4k hdr', 'mirkino', 'mir kino z', 'lme_mirkino'], 'Мир кино Z', {
-          host: 'http://prem.z01.online/',
-          directPath: 'mirkino',
-          preferDirect: false,
-          token: false,
-          headerKey: 'kit_aesgcmkey',
-          zpremHeaderKey: 'zpremkey',
-          movieVoiceFilter: true,
-          sourceQualityHint: true
-        }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        // 1.1.174: KinoPub 4K через prem.z01.online (окремий від рідного OnlineMod kinopub).
-        name: 'prem-kinopub',
-        title: 'KinoPub 4k',
-        source: new lampauaRemoteSource(this, object, ['kinopub 4k', 'kinopub', 'kinopub z01', 'lme_kinopub'], 'KinoPub 4k', {
-          host: 'http://prem.z01.online/',
-          directPath: 'kinopub',
-          preferDirect: false,
-          token: false,
-          headerKey: 'kit_aesgcmkey',
-          zpremHeaderKey: 'zpremkey',
-          movieVoiceFilter: true,
-          sourceQualityHint: true
-        }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        // 1.1.176: Alloha 4K через prem.z01.online (окремий від рідного Alloha-парсера на iframe).
-        // Тут lite/alloha повертає список озвучок з method=call; getFileUrl сама викликає
-        // call-endpoint і отримує реальний quality-map (vkvideo.cloud) — додаткового коду не треба.
-        name: 'prem-alloha',
-        title: 'Alloha 4k',
-        source: new lampauaRemoteSource(this, object, ['alloha 4k', 'alloha z01', 'lme_alloha_z01'], 'Alloha 4k', {
-          host: 'http://prem.z01.online/',
-          directPath: 'alloha',
-          preferDirect: false,
-          token: false,
-          headerKey: 'kit_aesgcmkey',
-          zpremHeaderKey: 'zpremkey',
-          movieVoiceFilter: true,
-          sourceQualityHint: true
-        }),
-        search: true,
         kp: true,
         imdb: true
       }, {
@@ -28661,9 +28674,6 @@ var q = qualityMapFromAlloha(json);
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true, sourceQualityHint: true });
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
-          if (name === 'mirkino' || engine === 'prem-mirkino') return new lampauaRemoteSource(fake, object, ['мир кино z', 'мир кино z - 4k hdr', 'mirkino', 'mir kino z', 'lme_mirkino'], 'Мир кино Z', { host: 'http://prem.z01.online/', directPath: 'mirkino', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
-          if (name === 'kinopub-z01' || engine === 'prem-kinopub') return new lampauaRemoteSource(fake, object, ['kinopub 4k', 'kinopub', 'kinopub z01', 'lme_kinopub'], 'KinoPub 4k', { host: 'http://prem.z01.online/', directPath: 'kinopub', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
-          if (name === 'alloha-z01' || engine === 'prem-alloha') return new lampauaRemoteSource(fake, object, ['alloha 4k', 'alloha z01', 'lme_alloha_z01'], 'Alloha 4k', { host: 'http://prem.z01.online/', directPath: 'alloha', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
@@ -32389,7 +32399,7 @@ var q = qualityMapFromAlloha(json);
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`).' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`). 1.1.173: карта серії з превʼю — додано рейтинг (★) і тривалість (хв) з TMDB season/episode, великий номер серії поверх превʼю та % перегляду поруч з прогрес-баром (з ширини нативного time-line, який Lampa вже рахує сама).' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
