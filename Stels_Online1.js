@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.178';
+    var STELS_ONLINE_VERSION = '1.1.179';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -27676,7 +27676,10 @@ var q = qualityMapFromAlloha(json);
         title: 'KinoUkr',
         // Прямий пошук kinoukr.tv блокується Cloudflare 403, тому для пошуку/списку серій
         // використовуємо той самий LampUA endpoint, який уже бачить KinoUkr у загальному списку джерел.
-        source: new lampauaRemoteSource(this, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { directPath: 'kinoukr' }),
+        // 1.1.179: раніше не було явного host, тому запит йшов на застарілий/нестабільний
+        // lampaua.mooo.com і KinoUkr фактично не працював. Переводимо на той самий rc.bwa.ad,
+        // яким користуються KinoTochka/iRemux/VeoVeo і яким користується робочий rc.js.
+        source: new lampauaRemoteSource(this, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinoukr', sourceQualityHint: true }),
         search: true,
         kp: false,
         imdb: false
@@ -27832,12 +27835,16 @@ var q = qualityMapFromAlloha(json);
       }, {
         name: 'hdvb',
         title: 'HDVB',
-        // 1.1.122: окремий CDNVideoHub-екземпляр для HDVB,
-        // щоб фільми показувались однією карткою, а переклади — у фільтрі/плеєрі.
-        source: new cdnvideohub(this, object, { movieVoiceFilter: true, sourceTitle: 'HDVB' }),
-        search: false,
+        // 1.1.179: раніше HDVB був просто окремим CDNVideoHub-екземпляром (pub=12) —
+        // тим самим спільним каталогом, що й GetsTV/Vokino/IPTVOnline/VKMovie, без
+        // жодного реального звернення до hdvbua.pro. Тому власне "HDVB" часто не мав
+        // потрібного тайтлу і виглядав "непрацюючим". Переводимо на реальний rc.bwa.ad
+        // (той самий сервер, яким користується робочий rc.js і який офіційно підтримує
+        // балансер "hdvb"), як уже зроблено для KinoTochka/iRemux/VeoVeo.
+        source: new lampauaRemoteSource(this, object, ['hdvb', 'hdvb ua', 'hdvbua'], 'HDVB', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true }),
+        search: true,
         kp: true,
-        imdb: false
+        imdb: true
       }, {
         name: 'anilibria',
         title: 'AniLibria',
@@ -28691,7 +28698,7 @@ var q = qualityMapFromAlloha(json);
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
-          if (name === 'kinoukr' || engine === 'kinoukr') return new lampauaRemoteSource(fake, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { directPath: 'kinoukr' });
+          if (name === 'kinoukr' || engine === 'kinoukr') return new lampauaRemoteSource(fake, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinoukr', sourceQualityHint: true });
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
@@ -28710,7 +28717,7 @@ var q = qualityMapFromAlloha(json);
           if (engine === 'redheadsound-dash') return new redheadsound(fake, object, true);
           if (name === 'zetflixnet' || engine === 'zetflixnet') return new zetflixnet(fake, object, { precheckAllVoices: true });
           if (name === 'getstv' || engine === 'getstv') return new cdnvideohub(fake, object, { sourceTitle: 'GetsTV', movieVoiceFilter: true, precheckAllVoices: true });
-          if (name === 'hdvb' || engine === 'hdvb') return new cdnvideohub(fake, object, { sourceTitle: 'HDVB', movieVoiceFilter: true, precheckAllVoices: true });
+          if (name === 'hdvb' || engine === 'hdvb') return new lampauaRemoteSource(fake, object, ['hdvb', 'hdvb ua', 'hdvbua'], 'HDVB', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'vokino') return new cdnvideohub(fake, object, { sourceTitle: 'Vokino', movieVoiceFilter: true, precheckAllVoices: true });
           // 1.1.152: IPTVOnline є видимим alias на CDNVideoHub. Для precheck не можна
           // створювати голий cdnvideohub(fake, object), бо він перевіряє тільки вибрану
