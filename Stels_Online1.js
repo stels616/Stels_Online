@@ -27390,14 +27390,6 @@ var q = qualityMapFromAlloha(json);
             item.addClass('stels-online-episode-card');
             item.attr('data-stels-season', meta.season);
             item.attr('data-stels-episode', meta.episode);
-            // 1.1.175: примушуємо батьківський список стати grid у 2 колонки,
-            // щоб картки серій були більшими (замість 3+ в ряд за замовчуванням).
-            try {
-              var epParent = item.parent();
-              if (epParent && epParent.length && !epParent.hasClass('stels-online-episodes-2col')) {
-                epParent.addClass('stels-online-episodes-2col');
-              }
-            } catch (eGridParent) {}
           }
           if (meta.clean_title && item.find('.online__title').length) item.find('.online__title').text(meta.clean_title);
           var thumb = $('<div class="stels-online-thumb"><img alt=""><div class="stels-online-thumb__loader"></div></div>');
@@ -30043,6 +30035,17 @@ var q = qualityMapFromAlloha(json);
           scroll.update($(e.target), true);
         });
         scroll.append(item);
+        // 1.1.175: картки серій — примусово 2 в ряд. Тегуємо реальний DOM-контейнер
+        // списку (scroll.body()) вже ПІСЛЯ append, бо в момент stelsDecorateItemWithImage
+        // картка ще не вставлена в DOM і item.parent() там порожній.
+        try {
+          if (item && item.hasClass && item.hasClass('stels-online-episode-card')) {
+            var epBody = scroll.body ? scroll.body() : null;
+            if (epBody && epBody.length && !epBody.hasClass('stels-online-episodes-2col')) {
+              epBody.addClass('stels-online-episodes-2col');
+            }
+          }
+        } catch (eGridBody) {}
         try {
           if (!item || !item.hasClass || !item.hasClass('stels-online-future-episode')) {
             var self = this;
