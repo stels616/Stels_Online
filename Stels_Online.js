@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.177';
+    var STELS_ONLINE_VERSION = '1.1.174';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -112,7 +112,7 @@
       'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
       'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
       'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
-      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie', 'mirkino', 'kinopub-z01', 'alloha-z01',
+      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie', 'mirkino', 'kinopub-z01',
       'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
       'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
       'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
@@ -129,7 +129,7 @@
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
       movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
       videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
-      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe', mirkino: 'Мир кино Z', 'kinopub-z01': 'KinoPub 4k', 'alloha-z01': 'Alloha 4k',
+      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe', mirkino: 'Мир кино Z', 'kinopub-z01': 'KinoPub 4k',
       geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
       rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
       fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
@@ -145,13 +145,13 @@
       'kinopub-native': 'kinopub', kinopub: 'kinopub',
       rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'zetflix', hdvb: 'hdvb',
       bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'kinoukr', zerx: 'zerx',
-      eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'uakinobest', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
+      eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
       fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'starlight',
       remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
       mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
       vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
       pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', kinoflix: 'videoseed', leproduction: 'videoseed',
-      vkmovie: 'cdnvideohub', mirkino: 'prem-mirkino', 'kinopub-z01': 'prem-kinopub', 'alloha-z01': 'prem-alloha', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
+      vkmovie: 'cdnvideohub', mirkino: 'prem-mirkino', 'kinopub-z01': 'prem-kinopub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
     };
 
     // 1.1.127: глобальні helpers якості. Частина джерел і ZetflixNet знаходяться
@@ -1253,13 +1253,7 @@
             if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
           }
         }
-        // 1.1.175: цей guard зʼявився через ZetflixNet (signed HLS okcdn часто "пошкоджений"
-        // на Android-вбудованому плеєрі) — там один m3u8 з варіацією бітрейту в самому потоці.
-        // Для prem.z01.online джерел (Мир кино Z, KinoPub) кожен ключ quality-мапи — це окремий
-        // підписаний URL свого CDN (cdntogo.net, mir-kino.pp.ru), а не один проблемний master.
-        // Без цього виключення на Android завжди показувалась лише 1 якість без вибору.
-        var stelsIsPremZ01QualitySafe = typeof (out.url || out.file) == 'string' && /(?:^https?:\/\/[^\/]*\.cdntogo\.net\/|mir-kino\.pp\.ru\/)/i.test(out.url || out.file);
-        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file) && !stelsIsPremZ01QualitySafe) {
+        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
           out._stels_original_quality = out.quality;
           out.quality = false;
         }
@@ -5573,608 +5567,6 @@
       this.filter = function (type, a, b) { choice[a.stype] = b.index; if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index]; component.reset(); append(currentItems()); component.saveChoice(choice); };
       this.destroy = function () { destroyed = true; network.clear(); extract = []; };
     }
-
-    function uakinobest(component, _object) {
-      // Прямий парсер uakino.best (HAR 2026-09-27: пошук POST /ua/, playlists.php, ashdi.vip/vod).
-      // Сезони на сайті часто окремими сторінками (…-N-sezon.html), озвучки — data-voice у playlists.
-      var network = new Lampa.Reguest();
-      var object = _object;
-      var host = 'https://uakino.best';
-      var ref = host + '/';
-      var select_title = '';
-      var extract = [];
-      var filter_items = {};
-      var choice = { season: 0, voice: 0, voice_name: '' };
-      var destroyed = false;
-      var prox = component.proxy('uakino') || component.proxy('other') || '';
-      var user_agent = (typeof Utils !== 'undefined' && Utils.baseUserAgent) ? Utils.baseUserAgent() : (navigator && navigator.userAgent) || '';
-      var page_headers = {
-        'User-Agent': user_agent,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'uk-UA,uk;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Referer': ref
-      };
-      var ajax_headers = {
-        'User-Agent': user_agent,
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Referer': ref,
-        'Origin': host
-      };
-      var stream_headers = {
-        'User-Agent': user_agent,
-        'Referer': 'https://ashdi.vip/',
-        'Origin': 'https://ashdi.vip'
-      };
-
-      function preview(value, len) {
-        value = value == null ? '' : String(value);
-        return value.length > (len || 220) ? value.slice(0, len || 220) + '...' : value;
-      }
-      function cleanText(value) {
-        value = value == null ? '' : String(value);
-        value = value.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-        try { value = component.decodeHtml(value); } catch (e) {}
-        return value.replace(/\s+/g, ' ').trim();
-      }
-      function abs(url, base) {
-        url = (url == null ? '' : String(url)).trim().replace(/&amp;/g, '&');
-        if (!url) return '';
-        if (/^\/\//.test(url)) return 'https:' + url;
-        if (/^https?:\/\//i.test(url)) return url;
-        return component.fixLink(url, base || (host + '/'));
-      }
-      function norm(value) {
-        return String(value || '').toLowerCase().replace(/ё/g, 'е').replace(/[’'`"]/g, '').replace(/[^a-zа-яіїєґ0-9]+/gi, ' ').replace(/\s+/g, ' ').trim();
-      }
-      function isSerial() {
-        return !!(object && object.movie && (object.movie.number_of_seasons || object.movie.name || object.movie.first_air_date));
-      }
-      function yearOf() {
-        var d = object && object.search_date || object && object.movie && (object.movie.release_date || object.movie.first_air_date || object.movie.last_air_date) || '';
-        var y = parseInt(String(d).slice(0, 4), 10);
-        return y || 0;
-      }
-      function requestText(url, success, fail, opts) {
-        opts = opts || {};
-        var post = opts.post || false;
-        var req_headers = opts.headers || page_headers;
-        var kind = opts.kind || 'request';
-        var timeout = opts.timeout || 18000;
-        var req_url = opts.raw ? url : (component.proxyLink ? component.proxyLink(url, prox, opts.prox_enc || '', opts.enc || 'enc2t') : url);
-        try {
-          network.clear();
-          network.timeout(timeout);
-          network['native'](req_url, function (str) {
-            stelsLog('uakinobest-request-done', { kind: kind, url: preview(url), length: (str == null ? 0 : String(str).length), sample: preview(str, 220) });
-            if (success) success(str || '');
-          }, function (a, c) {
-            var message = '';
-            try { message = network.errorDecode(a, c); } catch (e) {}
-            if (!message) message = (a && (a.statusText || a.status) || c || 'request error') + '';
-            stelsLog('uakinobest-request-fail', { kind: kind, url: preview(url), status: a && a.status, message: message });
-            if (fail) fail(message);
-          }, post, { dataType: 'text', headers: req_headers, withCredentials: false });
-        } catch (e) {
-          stelsLog('uakinobest-request-exception', { kind: kind, error: e && (e.message || e.toString()) });
-          if (fail) fail(e && (e.message || e.toString()) || 'exception');
-        }
-      }
-      function isCloudflareChallenge(html) {
-        html = String(html || '');
-        return html.indexOf('Just a moment') !== -1 || html.indexOf('/cdn-cgi/challenge-platform/') !== -1 || html.indexOf('cf_chl') !== -1;
-      }
-      function seasonFromText(text) {
-        text = String(text || '');
-        var m = text.match(/(?:^|[^\d])(\d{1,2})\s*(?:-)?\s*сезон/i) || text.match(/(\d{1,2})\s*-\s*sezon/i) || text.match(/sezon[^\d]*(\d{1,2})/i);
-        return m ? (parseInt(m[1], 10) || 0) : 0;
-      }
-      function episodeFromText(text) {
-        text = String(text || '');
-        var m = text.match(/(?:сер[іїія]*|episode|епізод|эпизод)\s*(\d{1,3})/i) || text.match(/^(\d{1,3})\s*(?:сер|$)/i);
-        return m ? (parseInt(m[1], 10) || 0) : 0;
-      }
-      function newsIdFromUrl(url) {
-        var m = String(url || '').match(/\/(\d{3,})-[^\/]+\.html/i);
-        return m ? m[1] : '';
-      }
-      function queryVariants() {
-        var arr = [];
-        function add(v) {
-          v = cleanText(v || '');
-          if (!v) return;
-          if (arr.indexOf(v) === -1) arr.push(v);
-        }
-        var movie = object && object.movie || {};
-        var original = norm(movie.original_title || movie.original_name || '');
-        var year = yearOf();
-        // From / Зовні
-        if (original === 'from') {
-          add('Ззовні');
-          add('Зовні');
-          add('Извне');
-          add('From');
-          if (year) { add('Ззовні ' + year); add('From ' + year); }
-        }
-        [object && object.search, select_title, movie.title, movie.name, movie.original_title, movie.original_name].forEach(add);
-        try {
-          var alts = movie.alternative_titles && movie.alternative_titles.results || [];
-          if (Array.isArray(alts)) alts.forEach(function (a) { add(a && (a.title || a.name)); });
-        } catch (e) {}
-        if (year) {
-          var base = arr.slice();
-          base.forEach(function (t) { if (!/\b(19|20)\d{2}\b/.test(t)) add(t + ' ' + year); });
-        }
-        return arr.slice(0, 8);
-      }
-      function parseSearchCards(html) {
-        html = String(html || '');
-        var out = [];
-        var seen = {};
-        // movie-item / short-item blocks
-        var blocks = html.split(/<div class="movie-item[^"]*"[^>]*>/i);
-        for (var i = 1; i < blocks.length; i++) {
-          var block = blocks[i].split(/<div class="movie-item/i)[0];
-          var href = (block.match(/href="(https?:\/\/uakino\.best\/[^"]+\.html)"/i) || block.match(/href="(\/[^"]+\.html)"/i) || [])[1] || '';
-          if (!href) continue;
-          href = abs(href, host + '/');
-          if (/\/news\//i.test(href)) continue;
-          if (seen[href]) continue;
-          seen[href] = true;
-          var title = '';
-          var tm = block.match(/class="movie-title"[^>]*>\s*([\s\S]*?)<\/a>/i);
-          if (tm) title = cleanText(tm[1]);
-          if (!title) {
-            var im = block.match(/alt="([^"]+)"/i);
-            if (im) title = cleanText(im[1]).replace(/\s+\d+\s*сезон.*$/i, '').trim();
-          }
-          var season = seasonFromText(block) || seasonFromText(href) || seasonFromText(title);
-          var quality = '';
-          var qm = block.match(/full-quality[^>]*>\s*([^<]+)/i);
-          if (qm) quality = cleanText(qm[1]);
-          out.push({ title: title || href, url: href, season: season, quality: quality, id: newsIdFromUrl(href) });
-        }
-        // fallback generic links with title near zzovni-like paths
-        if (!out.length) {
-          var re = /href="((?:https?:\/\/uakino\.best)?\/(?:films?|seriesss|serials?|cartoon|anime)[^"]+\.html)"[^>]*>\s*([^<]{2,120})/ig;
-          var m;
-          while ((m = re.exec(html))) {
-            var u = abs(m[1], host + '/');
-            if (/\/news\//i.test(u) || seen[u]) continue;
-            seen[u] = true;
-            out.push({ title: cleanText(m[2]), url: u, season: seasonFromText(u + ' ' + m[2]), id: newsIdFromUrl(u) });
-          }
-        }
-        return out;
-      }
-      function scoreCard(card) {
-        var movie = object && object.movie || {};
-        var t = norm(card.title || '');
-        var want = norm(select_title || movie.title || movie.name || '');
-        var orig = norm(movie.original_title || movie.original_name || '');
-        var score = 0;
-        if (!t) return -100;
-        if (want && (t === want || t.indexOf(want) !== -1 || want.indexOf(t) !== -1)) score += 50;
-        if (orig === 'from' && /(ззовн|зовн|извне|\bfrom\b)/i.test(card.title || '')) score += 40;
-        if (card.season) score += 5;
-        if (/сезон/i.test(card.title || '')) score += 3;
-        if (/1080|720|4k|uhd/i.test(card.quality || '')) score += 2;
-        return score;
-      }
-      function filterCards(list) {
-        list = (list || []).slice();
-        list.sort(function (a, b) { return scoreCard(b) - scoreCard(a); });
-        var best = list[0] && scoreCard(list[0]);
-        if (best == null || best < 10) return list;
-        return list.filter(function (c) { return scoreCard(c) >= Math.max(10, best - 25); });
-      }
-      function searchQuery(query, done, fail) {
-        var url = host + '/ua/';
-        var post = 'do=search&subaction=search&story=' + encodeURIComponent(query);
-        requestText(url, function (html) {
-          if (isCloudflareChallenge(html)) { fail && fail('cloudflare'); return; }
-          var cards = parseSearchCards(html);
-          stelsLog('uakinobest-search', { query: query, count: cards.length, sample: cards.slice(0, 6) });
-          done(cards);
-        }, fail, { kind: 'search', post: post, headers: ajax_headers, timeout: 18000 });
-      }
-      function searchAll(variants, index, acc, done, fail) {
-        acc = acc || [];
-        if (index >= variants.length) {
-          var merged = [];
-          var seen = {};
-          acc.forEach(function (c) {
-            if (!c || !c.url || seen[c.url]) return;
-            seen[c.url] = true;
-            merged.push(c);
-          });
-          merged = filterCards(merged);
-          if (merged.length) done(merged);
-          else fail && fail('empty');
-          return;
-        }
-        searchQuery(variants[index], function (list) {
-          (list || []).forEach(function (c) { acc.push(c); });
-          if (list && list.length && scoreCard(list[0]) >= 40) {
-            // достатньо вдалий пошук — не ганяємо всі варіанти
-            searchAll(variants, variants.length, acc, done, fail);
-          } else {
-            searchAll(variants, index + 1, acc, done, fail);
-          }
-        }, function () {
-          searchAll(variants, index + 1, acc, done, fail);
-        });
-      }
-      function parsePlaylistHtml(html, seasonHint, pageUrl) {
-        html = String(html || '');
-        var items = [];
-        var liRe = /<li\b([^>]*)>([\s\S]*?)<\/li>/ig;
-        var m;
-        while ((m = liRe.exec(html))) {
-          var attrs = m[1] || '';
-          var text = cleanText(m[2] || '');
-          var file = (attrs.match(/data-file="([^"]+)"/i) || [])[1] || '';
-          var voice = (attrs.match(/data-voice="([^"]+)"/i) || [])[1] || '';
-          if (!file) continue;
-          file = abs(file, 'https://ashdi.vip/');
-          var ep = episodeFromText(text);
-          if (!ep) {
-            var idm = (attrs.match(/data-id="([^"]+)"/i) || [])[1] || '';
-            // fallback sequential later
-          }
-          items.push({
-            title: text || ('Серія ' + ep),
-            season: seasonHint || 0,
-            episode: ep || 0,
-            voice: cleanText(voice) || 'UAKino',
-            url: file,
-            page: pageUrl || '',
-            quality: '480p ~ 1080p',
-            info: voice ? (' / ' + cleanText(voice)) : ''
-          });
-        }
-        // fill missing episode numbers per voice group
-        var byVoice = {};
-        items.forEach(function (it) {
-          var k = it.voice || '';
-          if (!byVoice[k]) byVoice[k] = [];
-          byVoice[k].push(it);
-        });
-        Object.keys(byVoice).forEach(function (k) {
-          var seq = 0;
-          byVoice[k].forEach(function (it) {
-            if (!it.episode) { seq++; it.episode = seq; it.title = it.title || ('Серія ' + seq); }
-            else seq = it.episode;
-            if (it.season && it.episode) it.title = component.formatEpisodeTitle(it.season, it.episode);
-          });
-        });
-        return items;
-      }
-      function loadPlaylist(card, done, fail) {
-        var newsId = card.id || newsIdFromUrl(card.url);
-        var season = card.season || seasonFromText(card.url + ' ' + (card.title || '')) || 0;
-        if (!newsId) { fail && fail('no news_id'); return; }
-        var time = Math.floor(Date.now() / 1000);
-        var url = host + '/engine/ajax/playlists.php?news_id=' + encodeURIComponent(newsId) + '&xfield=playlist&time=' + time;
-        var headers = {}; for (var hk in ajax_headers) if (Object.prototype.hasOwnProperty.call(ajax_headers, hk)) headers[hk] = ajax_headers[hk]; headers.Referer = card.url || ref;
-        requestText(url, function (text) {
-          var html = text;
-          try {
-            var json = JSON.parse(text);
-            if (json && (json.response || json.html)) html = json.response || json.html;
-          } catch (e) {}
-          var items = parsePlaylistHtml(html, season, card.url);
-          stelsLog('uakinobest-playlist', { news_id: newsId, season: season, items: items.length, voices: items.map(function (i) { return i.voice; }).filter(function (v, i, a) { return a.indexOf(v) === i; }) });
-          if (!items.length) { fail && fail('empty playlist'); return; }
-          // if season still 0, try page html
-          if (!season) {
-            requestText(card.url, function (pageHtml) {
-              var s2 = seasonFromText(pageHtml) || seasonFromText(card.url) || 1;
-              items.forEach(function (it) {
-                it.season = s2;
-                if (it.episode) it.title = component.formatEpisodeTitle(s2, it.episode);
-              });
-              done(items);
-            }, function () {
-              items.forEach(function (it) { if (!it.season) it.season = isSerial() ? 1 : 0; });
-              done(items);
-            }, { kind: 'page', headers: page_headers, timeout: 15000 });
-          } else done(items);
-        }, fail, { kind: 'playlist', headers: headers, timeout: 15000 });
-      }
-      function loadAllCards(cards, index, acc, done, fail) {
-        acc = acc || [];
-        if (index >= cards.length) {
-          if (acc.length) done(acc);
-          else fail && fail('no items');
-          return;
-        }
-        loadPlaylist(cards[index], function (items) {
-          acc = acc.concat(items || []);
-          loadAllCards(cards, index + 1, acc, done, fail);
-        }, function () {
-          loadAllCards(cards, index + 1, acc, done, fail);
-        });
-      }
-      function extractJsFile(html) {
-        html = String(html || '');
-        var m = html.match(/(?:^|[^\w])file\s*[:=]\s*["']([^"']+)["']/i);
-        if (m) return m[1];
-        m = html.match(/https?:\/\/[^"'<\s]+\/hls\/[^"'<\s]+index\.m3u8/i);
-        return m ? m[0] : '';
-      }
-      function parseM3u8Qualities(text, masterUrl) {
-        text = String(text || '');
-        var map = {};
-        var lines = text.split(/\r?\n/);
-        for (var i = 0; i < lines.length; i++) {
-          var line = lines[i];
-          if (line.indexOf('#EXT-X-STREAM-INF') === 0) {
-            var res = (line.match(/RESOLUTION=\d+x(\d+)/i) || [])[1];
-            var next = lines[i + 1] || '';
-            if (!next || next.charAt(0) === '#') continue;
-            var q = parseInt(res, 10) || 0;
-            if (!q) {
-              var pm = next.match(/\/(2160|1440|1080|720|480|360|240)\//);
-              if (pm) q = parseInt(pm[1], 10);
-            }
-            if (!q) continue;
-            var label = q >= 2160 ? '2160p' : q >= 1440 ? '1440p' : q >= 1080 ? '1080p' : q >= 720 ? '720p' : q >= 480 ? '480p' : q + 'p';
-            var absUrl = abs(next.trim(), masterUrl);
-            map[label] = component.proxyStream ? component.proxyStream(absUrl, 'uakino') : absUrl;
-          }
-        }
-        return Object.keys(map).length ? map : false;
-      }
-      function getStream(element, call, error) {
-        if (element.stream) { call(element); return; }
-        var vod = element.url || '';
-        if (!vod) { error && error(); return; }
-        // already m3u8
-        if (/\.m3u8(\?|$)/i.test(vod)) {
-          requestText(vod, function (body) {
-            var qs = parseM3u8Qualities(body, vod);
-            element.stream = component.proxyStream ? component.proxyStream(vod, 'uakino') : vod;
-            element.qualitys = qs;
-            element.headers = stream_headers;
-            call(element);
-          }, function () {
-            element.stream = component.proxyStream ? component.proxyStream(vod, 'uakino') : vod;
-            element.qualitys = false;
-            element.headers = stream_headers;
-            call(element);
-          }, { kind: 'm3u8', raw: true, timeout: 10000, headers: stream_headers });
-          return;
-        }
-        requestText(vod, function (html) {
-          if (isCloudflareChallenge(html)) { error && error(); return; }
-          var file = extractJsFile(html);
-          if (!file) { error && error(); return; }
-          file = abs(file, 'https://ashdi.vip/');
-          requestText(file, function (body) {
-            var qs = parseM3u8Qualities(body, file);
-            element.stream = component.proxyStream ? component.proxyStream(file, 'uakino') : file;
-            element.qualitys = qs;
-            element.headers = stream_headers;
-            // max quality label
-            if (qs) {
-              var max = 0;
-              Object.keys(qs).forEach(function (k) {
-                var v = parseInt(k, 10) || 0;
-                if (v > max) max = v;
-              });
-              if (max) element.quality = max + 'p';
-            }
-            call(element);
-          }, function () {
-            element.stream = component.proxyStream ? component.proxyStream(file, 'uakino') : file;
-            element.qualitys = false;
-            element.headers = stream_headers;
-            call(element);
-          }, { kind: 'm3u8', raw: true, timeout: 10000, headers: stream_headers });
-        }, error, { kind: 'ashdi', raw: true, timeout: 15000, headers: (function () { var h = {}; for (var k in page_headers) if (Object.prototype.hasOwnProperty.call(page_headers, k)) h[k] = page_headers[k]; h.Referer = element.page || host + '/'; h.Origin = 'https://ashdi.vip'; return h; })() });
-      }
-      function buildFilters(items) {
-        filter_items = { season: [], season_num: [], voice: [] };
-        var seasons = {};
-        var voices = {};
-        (items || []).forEach(function (it) {
-          if (it.season) seasons[it.season] = true;
-          if (it.voice) voices[it.voice] = true;
-        });
-        Object.keys(seasons).map(function (s) { return parseInt(s, 10); }).sort(function (a, b) { return a - b; }).forEach(function (s) {
-          filter_items.season_num.push(s);
-          filter_items.season.push('Сезон ' + s);
-        });
-        Object.keys(voices).sort().forEach(function (v) { filter_items.voice.push(v); });
-        if (!filter_items.voice.length) filter_items.voice.push('UAKino');
-        if (!filter_items.season[choice.season]) choice.season = 0;
-        if (choice.voice_name) {
-          var vi = filter_items.voice.indexOf(choice.voice_name);
-          choice.voice = vi >= 0 ? vi : 0;
-        }
-        if (!filter_items.voice[choice.voice]) choice.voice = 0;
-        choice.voice_name = filter_items.voice[choice.voice] || '';
-        component.filter(filter_items, choice, items);
-      }
-      function currentItems() {
-        var season = filter_items.season_num && filter_items.season_num[choice.season] || 0;
-        var voice = filter_items.voice && filter_items.voice[choice.voice] || '';
-        return (extract || []).filter(function (it) {
-          if (season && it.season && it.season !== season) return false;
-          if (voice && it.voice && it.voice !== voice) return false;
-          return true;
-        });
-      }
-      function append(items) {
-        component.reset();
-        var viewed = Lampa.Storage.cache('online_view', 5000, []);
-        var last_episode = component.getLastEpisode(items);
-        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
-        items.forEach(function (element) {
-          if (element.season) {
-            element.translate_episode_end = last_episode;
-            element.translate_voice = element.voice || (filter_items.voice && filter_items.voice[choice.voice]) || '';
-          }
-          var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title || object.movie.name || object.movie.title].join('') : (object.movie.original_title || object.movie.title || select_title));
-          var view = Lampa.Timeline.view(hash);
-          var item = Lampa.Template.get('stels_online', element);
-          var hash_file = Lampa.Utils.hash((element.season ? [element.season, element.episode, object.movie.original_title || object.movie.name || object.movie.title, element.voice].join(':') : (object.movie.original_title || select_title) + element.title));
-          element.timeline = view;
-          item.append(Lampa.Timeline.render(view));
-          if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
-          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
-          item.on('hover:enter', function () {
-            if (element.loading) return;
-            if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
-            element.loading = true;
-            getStream(element, function (element) {
-              element.loading = false;
-              var first = {
-                url: component.getDefaultQuality(element.qualitys, element.stream),
-                quality: component.renameQualityMap(element.qualitys),
-                timeline: element.timeline,
-                title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title),
-                headers: element.headers || false
-              };
-              Lampa.Player.play(first);
-              if (element.season && Lampa.Platform.version) {
-                var playlist = [];
-                items.forEach(function (elem) {
-                  if (elem == element) playlist.push(first);
-                  else {
-                    var cell = {
-                      url: function (ready) {
-                        getStream(elem, function (elem) {
-                          cell.url = component.getDefaultQuality(elem.qualitys, elem.stream);
-                          cell.quality = component.renameQualityMap(elem.qualitys);
-                          cell.headers = elem.headers || false;
-                          ready();
-                        }, function () { cell.url = ''; ready(); });
-                      },
-                      timeline: elem.timeline,
-                      title: elem.title
-                    };
-                    playlist.push(cell);
-                  }
-                });
-                Lampa.Player.playlist(playlist);
-              } else Lampa.Player.playlist([first]);
-              try { stelsSaveWatchHistory(object.movie, 'uakino-lampaua', 'UAKino', element, { voice: element.voice }); } catch (eHist) {}
-              if (viewed.indexOf(hash_file) == -1) {
-                viewed.push(hash_file);
-                item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
-                Lampa.Storage.set('online_view', viewed);
-              }
-            }, function () {
-              element.loading = false;
-              Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
-            });
-          });
-          component.append(item);
-          component.contextmenu({
-            item: item, view: view, viewed: viewed, hash_file: hash_file, element: element,
-            file: function (call) {
-              getStream(element, function (element) {
-                call({ file: element.stream, quality: element.qualitys, headers: element.headers || false });
-              }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
-            }
-          });
-        });
-        component.start(true);
-      }
-      function finalize(items) {
-        extract = items || [];
-        extract.sort(function (a, b) {
-          if ((a.season || 0) !== (b.season || 0)) return (a.season || 0) - (b.season || 0);
-          if ((a.episode || 0) !== (b.episode || 0)) return (a.episode || 0) - (b.episode || 0);
-          return String(a.voice || '').localeCompare(String(b.voice || ''));
-        });
-        if (!extract.length) {
-          component.loading(false);
-          component.emptyForQuery(select_title);
-          return;
-        }
-        buildFilters(extract);
-        append(currentItems());
-        component.loading(false);
-        component.saveChoice(choice);
-      }
-
-      this.search = function (_object, data) {
-        object = _object;
-        select_title = object.search || object.movie && (object.movie.title || object.movie.name || object.movie.original_title) || '';
-        extract = [];
-        choice = { season: 0, voice: 0, voice_name: '' };
-        try {
-          var saved = component.getChoice ? component.getChoice() : null;
-          if (saved) Lampa.Arrays.extend(choice, saved, true);
-        } catch (e) {}
-        component.loading(true);
-        stelsLog('uakinobest-search-start', { title: select_title, serial: isSerial(), year: yearOf() });
-
-        // якщо online_mod вже дав зовнішні результати з url
-        if (data && data[0] && (data[0].url || data[0].link)) {
-          var cards0 = data.map(function (d) {
-            return { title: d.title || d.name || select_title, url: d.url || d.link, season: seasonFromText((d.title || '') + ' ' + (d.url || '')), id: newsIdFromUrl(d.url || d.link) };
-          }).filter(function (c) { return c.url; });
-          loadAllCards(cards0, 0, [], finalize, function () {
-            component.loading(false);
-            component.emptyForQuery(select_title);
-          });
-          return;
-        }
-
-        var variants = queryVariants();
-        searchAll(variants, 0, [], function (cards) {
-          // Для серіалів беремо всі сезонні сторінки з близьким score
-          var use = cards;
-          if (isSerial()) {
-            var top = scoreCard(cards[0]);
-            use = cards.filter(function (c) { return scoreCard(c) >= Math.max(15, top - 20); }).slice(0, 12);
-          } else {
-            use = cards.slice(0, 3);
-          }
-          stelsLog('uakinobest-cards-selected', { count: use.length, sample: use.slice(0, 8) });
-          if (use.length > 1 && !isSerial() && !object.clarification) {
-            // фільми: similars якщо кілька різних
-            var uniqTitles = {};
-            use.forEach(function (c) { uniqTitles[norm(c.title)] = c; });
-            var vals = Object.keys(uniqTitles).map(function (k) { return uniqTitles[k]; });
-            if (vals.length > 1) {
-              component.similars(vals.map(function (c) { return { title: c.title, url: c.url }; }));
-              component.loading(false);
-              return;
-            }
-          }
-          loadAllCards(use, 0, [], finalize, function () {
-            component.loading(false);
-            component.emptyForQuery(select_title);
-          });
-        }, function () {
-          component.loading(false);
-          component.emptyForQuery(select_title);
-        });
-      };
-      this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
-      this.reset = function () {
-        component.reset();
-        choice = { season: 0, voice: 0, voice_name: '' };
-        buildFilters(extract);
-        append(currentItems());
-        component.saveChoice(choice);
-      };
-      this.filter = function (type, a, b) {
-        choice[a.stype] = b.index;
-        if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index];
-        component.reset();
-        append(currentItems());
-        component.saveChoice(choice);
-      };
-      this.destroy = function () { destroyed = true; network.clear(); extract = []; };
-    }
-
 
     function kinoukr(component, _object) {
       var network = new Lampa.Reguest();
@@ -28052,8 +27444,7 @@ var q = qualityMapFromAlloha(json);
       }, {
         name: 'lampaua-uakino',
         title: 'UAKino',
-        // 1.1.177: прямий парсер uakino.best (пошук /ua/, playlists.php, ashdi.vip), без залежності від LampUA.
-        source: new uakinobest(this, object),
+        source: new lampauaRemoteSource(this, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino', { movieVoiceFilter: true }),
         search: true,
         kp: true,
         imdb: true
@@ -28157,25 +27548,6 @@ var q = qualityMapFromAlloha(json);
         source: new lampauaRemoteSource(this, object, ['kinopub 4k', 'kinopub', 'kinopub z01', 'lme_kinopub'], 'KinoPub 4k', {
           host: 'http://prem.z01.online/',
           directPath: 'kinopub',
-          preferDirect: false,
-          token: false,
-          headerKey: 'kit_aesgcmkey',
-          zpremHeaderKey: 'zpremkey',
-          movieVoiceFilter: true,
-          sourceQualityHint: true
-        }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        // 1.1.176: Alloha 4K через prem.z01.online (окремий від рідного Alloha-парсера на iframe).
-        // Тут lite/alloha повертає список озвучок з method=call; getFileUrl сама викликає
-        // call-endpoint і отримує реальний quality-map (vkvideo.cloud) — додаткового коду не треба.
-        name: 'prem-alloha',
-        title: 'Alloha 4k',
-        source: new lampauaRemoteSource(this, object, ['alloha 4k', 'alloha z01', 'lme_alloha_z01'], 'Alloha 4k', {
-          host: 'http://prem.z01.online/',
-          directPath: 'alloha',
           preferDirect: false,
           token: false,
           headerKey: 'kit_aesgcmkey',
@@ -29220,7 +28592,7 @@ var q = qualityMapFromAlloha(json);
           if (name === 'klonfun' || engine === 'lampaua-klonfun') return new lampauaRemoteSource(fake, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun', { movieVoiceFilter: true });
           if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno', { movieVoiceFilter: true });
           if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
-          if (name === 'uakino-lampaua' || engine === 'lampaua-uakino' || engine === 'uakinobest' || name === 'uakinobest') return new uakinobest(fake, object);
+          if (name === 'uakino-lampaua' || engine === 'lampaua-uakino') return new lampauaRemoteSource(fake, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino', { movieVoiceFilter: true });
           if (name === 'uafilmme-lampaua' || engine === 'lampaua-uafilmme') return new lampauaRemoteSource(fake, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true, noLazyPlaylist: true });
           if (name === 'rezka720' || engine === 'lampaua-rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720');
           if (name === 'makhno' || engine === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', movieVoiceFilter: true, precheckAllVoices: true });
@@ -29233,7 +28605,6 @@ var q = qualityMapFromAlloha(json);
           if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'mirkino' || engine === 'prem-mirkino') return new lampauaRemoteSource(fake, object, ['мир кино z', 'мир кино z - 4k hdr', 'mirkino', 'mir kino z', 'lme_mirkino'], 'Мир кино Z', { host: 'http://prem.z01.online/', directPath: 'mirkino', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'kinopub-z01' || engine === 'prem-kinopub') return new lampauaRemoteSource(fake, object, ['kinopub 4k', 'kinopub', 'kinopub z01', 'lme_kinopub'], 'KinoPub 4k', { host: 'http://prem.z01.online/', directPath: 'kinopub', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
-          if (name === 'alloha-z01' || engine === 'prem-alloha') return new lampauaRemoteSource(fake, object, ['alloha 4k', 'alloha z01', 'lme_alloha_z01'], 'Alloha 4k', { host: 'http://prem.z01.online/', directPath: 'alloha', preferDirect: false, token: false, headerKey: 'kit_aesgcmkey', zpremHeaderKey: 'zpremkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
