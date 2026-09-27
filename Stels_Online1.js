@@ -1584,8 +1584,8 @@
           '.stels-online-thumb img{width:100%;height:100%;object-fit:cover;display:block;opacity:1!important;visibility:visible!important;}' +
           '.stels-online-thumb--loaded img{opacity:1!important;visibility:visible!important;}' +
           '.stels-online-thumb__loader{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));pointer-events:none;}' +
-          '.stels-online-episode-number{position:absolute;left:.32em;bottom:-.18em;z-index:1;color:rgba(255,255,255,.4);font-size:3.1em;font-weight:800;line-height:1;pointer-events:none;text-shadow:0 .1em .3em rgba(0,0,0,.55);}' +
-          '.stels-online-episode-index{position:absolute;right:.32em;bottom:-.18em;z-index:1;color:rgba(255,255,255,.4);font-size:3.1em;font-weight:800;line-height:1;pointer-events:none;text-shadow:0 .1em .3em rgba(0,0,0,.55);}' +
+          '.stels-online-episode-number{position:absolute;left:.32em;bottom:calc(-.18em + 5px);z-index:1;color:rgba(255,255,255,.4);font-size:3.1em;font-weight:800;line-height:1;pointer-events:none;text-shadow:0 .1em .3em rgba(0,0,0,.55);}' +
+          '.stels-online-episode-index{position:absolute;right:.32em;bottom:calc(-.18em + 5px);z-index:1;color:rgba(255,255,255,.4);font-size:3.1em;font-weight:800;line-height:1;pointer-events:none;text-shadow:0 .1em .3em rgba(0,0,0,.55);}' +
           '.stels-online-thumb-meta{position:absolute;left:.4em;top:.28em;z-index:2;display:flex;gap:.4em;}' +
           '.stels-online-thumb-meta:empty{display:none;}' +
           '.stels-online-thumb-meta>span{color:#fff;font-size:.78em;font-weight:700;background:rgba(0,0,0,.5);padding:.1em .38em;border-radius:.2em;text-shadow:0 .08em .2em #000;white-space:nowrap;}' +
@@ -32078,6 +32078,25 @@ var q = qualityMapFromAlloha(json);
       template += "\n        <div class=\"settings-param\" data-name=\"stels_online_current_version\">\n            <div class=\"settings-param__name\">Версія</div>\n            <div class=\"settings-param__value\">" + STELS_ONLINE_VERSION + "</div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_sources\" data-static=\"true\">\n            <div class=\"settings-param__name\">Джерела</div>\n            <div class=\"settings-param__descr\">Увімкнення або вимкнення джерел у меню Сортувати</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_interface_settings\" data-static=\"true\">\n            <div class=\"settings-param__name\">Налаштування інтерфейсу</div>\n            <div class=\"settings-param__descr\">Вигляд карток серій: картки або список</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
+      template += `
+        <div class="settings-param selector" data-name="stels_online_episode_view" data-type="select" data-stels-interface-setting="1" style="display:none">
+            <div class="settings-param__name">Відображення серій</div>
+            <div class="settings-param__descr">Як показувати картки серій у списку</div>
+            <div class="settings-param__value"></div>
+        </div>`;
+
+      Lampa.Template.add('settings_stels_online_interface_settings', `
+        <div>
+          <div class="settings-param">
+            <div class="settings-param__name">Налаштування інтерфейсу</div>
+            <div class="settings-param__value">` + STELS_ONLINE_VERSION + `</div>
+          </div>
+          <div class="settings-param selector" data-name="stels_online_episode_view" data-type="select">
+              <div class="settings-param__name">Відображення серій</div>
+              <div class="settings-param__descr">Як показувати картки серій у списку</div>
+              <div class="settings-param__value"></div>
+          </div>
+        </div>`);
       template += "\n        <div class=\"stels-online-advanced-settings\" style=\"display:none\">";
 
       if (Utils.isDebug()) {
@@ -32324,17 +32343,74 @@ var q = qualityMapFromAlloha(json);
         }
       }
 
+      function stelsOpenInterfaceSettingsPanel(parent_body) {
+        var opened = false;
+        var errors = [];
+        stelsLog('interface-settings-open-try', { mode: 'side', version: STELS_ONLINE_VERSION });
+
+        function tryOpen(name, fn) {
+          if (opened) return;
+          try {
+            if (fn()) {
+              opened = true;
+              stelsLog('interface-settings-open-ok', { api: name });
+            }
+          } catch (err) {
+            errors.push(name + ': ' + ((err && (err.message || err.toString())) || 'error'));
+          }
+        }
+
+        // Той самий підхід, що й для ZetflixNet: спочатку пробуємо відкрити як
+        // рідну вкладену сторінку налаштувань Lampa, і лише якщо жоден з API
+        // не спрацював — відкриваємо запасний варіант (Modal).
+        tryOpen('Settings.create(component)', function () {
+          if (Lampa.Settings && typeof Lampa.Settings.create === 'function') {
+            Lampa.Settings.create('stels_online_interface_settings');
+            return true;
+          }
+          return false;
+        });
+
+        tryOpen('Settings.open(component)', function () {
+          if (Lampa.Settings && typeof Lampa.Settings.open === 'function') {
+            Lampa.Settings.open('stels_online_interface_settings');
+            return true;
+          }
+          return false;
+        });
+
+        tryOpen('Settings.main().create(component)', function () {
+          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().create === 'function') {
+            Lampa.Settings.main().create('stels_online_interface_settings');
+            return true;
+          }
+          return false;
+        });
+
+        tryOpen('Settings.main().open(component)', function () {
+          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().open === 'function') {
+            Lampa.Settings.main().open('stels_online_interface_settings');
+            return true;
+          }
+          return false;
+        });
+
+        if (!opened) {
+          stelsLog('interface-settings-open-fallback-modal', { errors: errors });
+          stelsOpenInterfaceSettingsModal(parent_body);
+        }
+      }
+
       function stelsOpenInterfaceSettingsModal(parent_body) {
         try {
           var modal = $('<div class="stels-online-interface-modal settings"><div class="settings__content" style="padding:0 0 1em"></div></div>');
           var content = modal.find('.settings__content');
-          var row = $('<div class="settings-param selector" data-name="stels_online_episode_view" data-type="select">' +
-            '<div class="settings-param__name">Відображення серій</div>' +
-            '<div class="settings-param__descr">Як показувати картки серій у списку</div>' +
-            '<div class="settings-param__value"></div>' +
-          '</div>');
-          try { Lampa.Params.update(row, [], modal); } catch (e) {}
-          content.append(row);
+          var rows = $('[data-stels-interface-setting="1"]').clone(true, true).show();
+          rows.each(function () {
+            var row = $(this);
+            try { Lampa.Params.update(row, [], modal); } catch (e) {}
+          });
+          content.append(rows);
           Lampa.Modal.open({
             title: 'Налаштування інтерфейсу',
             html: modal,
@@ -32348,12 +32424,12 @@ var q = qualityMapFromAlloha(json);
           });
           try {
             Lampa.Controller.add('stels_interface_settings_modal', {
-              toggle: function () { Lampa.Controller.collectionSet(modal); Lampa.Controller.collectionFocus(row[0], modal); },
+              toggle: function () { Lampa.Controller.collectionSet(modal); Lampa.Controller.collectionFocus(rows.filter('.selector').first()[0] || modal.find('.selector').first()[0], modal); },
               back: function () { Lampa.Modal.close(); Lampa.Controller.toggle('settings_component'); }
             });
             Lampa.Controller.toggle('stels_interface_settings_modal');
           } catch (e2) {}
-          stelsLog('interface-settings-modal-open', {});
+          stelsLog('interface-settings-modal-open', { rows: rows.length });
         } catch (err) {
           stelsLog('interface-settings-modal-error', { error: err && (err.message || err.toString()) || '' });
           Lampa.Noty.show('Не вдалося відкрити налаштування інтерфейсу');
@@ -32369,7 +32445,7 @@ var q = qualityMapFromAlloha(json);
           });
           var stels_interface_settings_button = e.body.find('[data-name="stels_online_interface_settings"]');
           stels_interface_settings_button.unbind('hover:enter').on('hover:enter', function () {
-            stelsOpenInterfaceSettingsModal(e.body);
+            stelsOpenInterfaceSettingsPanel(e.body);
           });
           var stels_clear_cache = e.body.find('[data-name="stels_online_clear_plugin_cache"]');
           stels_clear_cache.unbind('hover:enter').on('hover:enter', function () {
@@ -32413,6 +32489,14 @@ var q = qualityMapFromAlloha(json);
             });
             stelsLog('zetflixnet-settings-side-open', { version: STELS_ONLINE_VERSION });
           } catch (errz) { stelsLog('zetflixnet-settings-side-error', { error: errz && (errz.message || errz.toString()) || '' }); }
+        }
+        if (e.name == 'stels_online_interface_settings') {
+          try {
+            e.body.find('[data-name="stels_online_episode_view"]').each(function () {
+              Lampa.Params.update($(this), [], e.body);
+            });
+            stelsLog('interface-settings-side-open', { version: STELS_ONLINE_VERSION });
+          } catch (errz) { stelsLog('interface-settings-side-error', { error: errz && (errz.message || errz.toString()) || '' }); }
         }
         if (e.name == 'stels_online') {
           var clear_last_balanser = e.body.find('[data-name="stels_online_clear_last_balanser"]');
