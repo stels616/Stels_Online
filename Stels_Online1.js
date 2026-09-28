@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.180';
+    var STELS_ONLINE_VERSION = '1.1.181';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1546,7 +1546,7 @@
         location: (window.location && window.location.href) || '',
         storage: stelsStorageSnapshot()
       };
-      return 'Stels_Online debug log\n' + stelsSafeJson(header) + '\n\nEvents:\n' + stelsSafeJson(stelsReadLog());
+      return 'Stels_Online debug log\n' + stelsSafeJson(header) + '\n\nAd diagnostics:\n' + stelsSafeJson((function () { try { return Lampa.Storage.get('STELS_ONLINE_AD_LOG', []); } catch (e) { return []; } })()) + '\n\nEvents:\n' + stelsSafeJson(stelsReadLog());
     }
 
     function stelsEscapeHtml(value) {
@@ -32460,6 +32460,19 @@ var q = qualityMapFromAlloha(json);
       if (window.stels_ad_diag_installed) return;
       window.stels_ad_diag_installed = true;
 
+      // Окремий буфер: основний лог (1200 подій) забивається voice-quality подіями
+      // і витісняє ad-diag записи, тому реклама пишеться у власний ключ.
+      var AD_LOG_KEY = 'STELS_ONLINE_AD_LOG';
+      function adLog(event, data) {
+        try {
+          var list = Lampa.Storage.get(AD_LOG_KEY, []);
+          if (!Array.isArray(list)) list = [];
+          list.push({ time: new Date().toISOString(), event: event, data: data || {} });
+          if (list.length > 200) list = list.slice(list.length - 200);
+          Lampa.Storage.set(AD_LOG_KEY, list);
+        } catch (e) {}
+      }
+
       var AD_RE = /vast|preroll|pre-roll|advert|adserver|doubleclick|imasdk|googlesyndication|(^|[^a-z])ads?([^a-z]|$)|adv[_-]/i;
       var play_ts = 0;
       var WINDOW_MS = 90000;
@@ -32482,7 +32495,7 @@ var q = qualityMapFromAlloha(json);
           }
           return r;
         }, {});
-        stelsLog('ad-diag-env', {
+        adLog('ad-diag-env', {
           reason: reason,
           lampa_ad_related_keys: lampa_keys,
           vpn: safe(function () { return Lampa.VPN ? cut(JSON.stringify(Lampa.VPN), 300) : null; }, 'n/a'),
@@ -32499,7 +32512,7 @@ var q = qualityMapFromAlloha(json);
         Lampa.Player.play = function (data) {
           play_ts = Date.now();
           safe(function () {
-            stelsLog('ad-diag-player-play', {
+            adLog('ad-diag-player-play', {
               title: cut(data && data.title, 120),
               keys: Object.keys(data || {}),
               url_type: typeof (data && data.url),
@@ -32522,7 +32535,7 @@ var q = qualityMapFromAlloha(json);
           Lampa.Player.playlist = function (list) {
             safe(function () {
               var arr = list || [];
-              stelsLog('ad-diag-player-playlist', {
+              adLog('ad-diag-player-playlist', {
                 count: arr.length,
                 with_vast_url: arr.filter(function (i) { return i && i.vast_url; }).length,
                 first_keys: Object.keys(arr[0] || {})
@@ -32537,7 +32550,7 @@ var q = qualityMapFromAlloha(json);
       safe(function () {
         if (Lampa.Player.listener && Lampa.Player.listener.follow) {
           Lampa.Player.listener.follow('start,ready,external,destroy,error,ended,preroll,ad,vast', function (e) {
-            stelsLog('ad-diag-player-event', { type: e && e.type, ms_since_play: since(), keys: safe(function () { return Object.keys(e || {}); }, []) });
+            adLog('ad-diag-player-event', { type: e && e.type, ms_since_play: since(), keys: safe(function () { return Object.keys(e || {}); }, []) });
           });
         }
       });
@@ -32548,7 +32561,7 @@ var q = qualityMapFromAlloha(json);
           if (!active()) return;
           list.forEach(function (m) {
             if (m.type === 'attributes' && m.target && m.target.tagName === 'VIDEO' && m.attributeName === 'src') {
-              stelsLog('ad-diag-video-src', { ms_since_play: since(), src: cut(m.target.getAttribute('src')) });
+              adLog('ad-diag-video-src', { ms_since_play: since(), src: cut(m.target.getAttribute('src')) });
               return;
             }
             Array.prototype.forEach.call(m.addedNodes || [], function (n) {
@@ -32556,7 +32569,7 @@ var q = qualityMapFromAlloha(json);
               var cls = (n.className && n.className.baseVal !== undefined ? n.className.baseVal : n.className) || '';
               var sig = (n.tagName || '') + ' ' + cls + ' ' + (n.id || '');
               if (n.tagName === 'VIDEO' || n.tagName === 'IFRAME' || AD_RE.test(sig)) {
-                stelsLog('ad-diag-dom-added', { ms_since_play: since(), tag: n.tagName, cls: cut(cls, 120), id: n.id || '', src: cut(n.getAttribute && (n.getAttribute('src') || ''), 200), html: cut(n.outerHTML, 300) });
+                adLog('ad-diag-dom-added', { ms_since_play: since(), tag: n.tagName, cls: cut(cls, 120), id: n.id || '', src: cut(n.getAttribute && (n.getAttribute('src') || ''), 200), html: cut(n.outerHTML, 300) });
               }
             });
           });
@@ -32567,7 +32580,7 @@ var q = qualityMapFromAlloha(json);
       ['loadedmetadata', 'play', 'ended'].forEach(function (evt) {
         document.addEventListener(evt, function (ev) {
           if (!active() || !ev.target || ev.target.tagName !== 'VIDEO') return;
-          stelsLog('ad-diag-video-' + evt, { ms_since_play: since(), current_src: cut(ev.target.currentSrc || ev.target.src), duration: ev.target.duration });
+          adLog('ad-diag-video-' + evt, { ms_since_play: since(), current_src: cut(ev.target.currentSrc || ev.target.src), duration: ev.target.duration });
         }, true);
       });
 
@@ -32575,13 +32588,13 @@ var q = qualityMapFromAlloha(json);
       safe(function () {
         var xo = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function (method, url) {
-          safe(function () { if (active() && AD_RE.test(String(url))) stelsLog('ad-diag-xhr', { ms_since_play: since(), method: method, url: cut(url, 300) }); });
+          safe(function () { if (active() && AD_RE.test(String(url))) adLog('ad-diag-xhr', { ms_since_play: since(), method: method, url: cut(url, 300) }); });
           return xo.apply(this, arguments);
         };
         if (window.fetch) {
           var of = window.fetch;
           window.fetch = function (input) {
-            safe(function () { var u = typeof input === 'string' ? input : (input && input.url) || ''; if (active() && AD_RE.test(u)) stelsLog('ad-diag-fetch', { ms_since_play: since(), url: cut(u, 300) }); });
+            safe(function () { var u = typeof input === 'string' ? input : (input && input.url) || ''; if (active() && AD_RE.test(u)) adLog('ad-diag-fetch', { ms_since_play: since(), url: cut(u, 300) }); });
             return of.apply(this, arguments);
           };
         }
