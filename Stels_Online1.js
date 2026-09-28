@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.181';
+    var STELS_ONLINE_VERSION = '1.1.182';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -32584,17 +32584,51 @@ var q = qualityMapFromAlloha(json);
         }, true);
       });
 
-      // 4) Мережа: запити, схожі на рекламні (лише лог)
+      // 4) Мережа: лог рекламних запитів + блокування рекламного сервера.
+      // З логу: прероллер Lampa (не джерело!) послідовно кличе рекламний сервер
+      // bid.ctv.house (2 плейсменти), кожен раз чекає ~10 с і отримує error — тому
+      // перед відео було ~24 с "Реклама". Тут такі запити відразу завершуються помилкою
+      // (як у рекламному блокувальнику), і прероллер одразу переходить до відео.
+      // Вимкнути блокування: Lampa.Storage.set('stels_online_block_ads', false).
+      var AD_BLOCK_RE = /(^|[/.])ctv\.house([/:?]|$)/i;
+      function adBlockOn() { return safe(function () { return Lampa.Storage.get('stels_online_block_ads', true) !== false; }, true); }
       safe(function () {
         var xo = XMLHttpRequest.prototype.open;
+        var xs = XMLHttpRequest.prototype.send;
         XMLHttpRequest.prototype.open = function (method, url) {
-          safe(function () { if (active() && AD_RE.test(String(url))) adLog('ad-diag-xhr', { ms_since_play: since(), method: method, url: cut(url, 300) }); });
+          var u = String(url);
+          var blocked = adBlockOn() && AD_BLOCK_RE.test(u);
+          this.__stels_ad_blocked = blocked;
+          safe(function () {
+            if (blocked || (active() && AD_RE.test(u))) adLog(blocked ? 'ad-block-xhr' : 'ad-diag-xhr', { ms_since_play: since(), method: method, url: cut(u, 300) });
+          });
           return xo.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function () {
+          if (this.__stels_ad_blocked) {
+            var x = this;
+            setTimeout(function () {
+              safe(function () {
+                var ev = new Event('error');
+                if (typeof x.onerror === 'function') x.onerror(ev);
+                x.dispatchEvent(ev);
+                var ev2 = new Event('loadend');
+                if (typeof x.onloadend === 'function') x.onloadend(ev2);
+              });
+            }, 0);
+            return;
+          }
+          return xs.apply(this, arguments);
         };
         if (window.fetch) {
           var of = window.fetch;
           window.fetch = function (input) {
-            safe(function () { var u = typeof input === 'string' ? input : (input && input.url) || ''; if (active() && AD_RE.test(u)) adLog('ad-diag-fetch', { ms_since_play: since(), url: cut(u, 300) }); });
+            var u = safe(function () { return typeof input === 'string' ? input : (input && input.url) || ''; }, '');
+            if (adBlockOn() && AD_BLOCK_RE.test(u)) {
+              adLog('ad-block-fetch', { ms_since_play: since(), url: cut(u, 300) });
+              return Promise.reject(new TypeError('blocked by Stels_Online'));
+            }
+            safe(function () { if (active() && AD_RE.test(u)) adLog('ad-diag-fetch', { ms_since_play: since(), url: cut(u, 300) }); });
             return of.apply(this, arguments);
           };
         }
