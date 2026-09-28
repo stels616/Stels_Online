@@ -3517,8 +3517,6 @@
                     episode: episode.episode,
                     media: episode,
                     subtitles: parseSubs(episode.subtitles),
-                    vast_url: episode.vast_url,
-                    vast_msg: episode.vast_msg
                   });
                 });
               }
@@ -3533,8 +3531,6 @@
                 info: '',
                 media: voice,
                 subtitles: parseSubs(voice.subtitles),
-                vast_url: voice.vast_url,
-                vast_msg: voice.vast_msg
               });
             }
           });
@@ -3613,8 +3609,6 @@
                 url: component.getDefaultQuality(element.qualitys, element.stream),
                 quality: component.renameQualityMap(element.qualitys),
                 subtitles: element.subtitles,
-                vast_url: element.vast_url,
-                vast_msg: element.vast_msg,
                 timeline: element.timeline,
                 title: element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title)
               };
@@ -3638,8 +3632,6 @@
                           call();
                         });
                       },
-                      vast_url: elem.vast_url,
-                      vast_msg: elem.vast_msg,
                       timeline: elem.timeline,
                       title: elem.title
                     };
@@ -24321,13 +24313,8 @@ var q = qualityMapFromAlloha(json);
           thumbnail: item.thumbnail
         };
         if (lampauaIsMirageSource()) play.isonline = true;
-        if (json.vast && json.vast.url) {
-          play.vast_url = json.vast.url;
-          play.vast_msg = json.vast.msg;
-          play.vast_region = json.vast.region;
-          play.vast_platform = json.vast.platform;
-          play.vast_screen = json.vast.screen;
-        }
+        // 1.1.181: реклама (VAST) вимкнена — не передаємо vast_* у плеєр,
+        // щоб перед відтворенням не запускався рекламний ролик.
         orUrlReserve(play);
         lampauaStabilizeUafilmMePlayable(play, 'preparePlayable');
         stelsLog('lampaua-playable-prepared', {
@@ -27782,7 +27769,7 @@ var q = qualityMapFromAlloha(json);
         // цей хост більше не відповідає, тому ZetflixDB не працював. ZetflixDB офіційно
         // підтримується сервером rc.bwa.ad (той самий, яким уже користуються
         // KinoTochka/iRemux/VeoVeo/HDVB/KinoUkr у цьому плагіні).
-        source: new lampauaRemoteSource(this, object, ['zetflixdb', 'zetflix db', 'zetflix-db'], 'ZetflixDB', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'zetflixdb', movieVoiceFilter: true, sourceQualityHint: true }),
+        source: new lampauaRemoteSource(this, object, ['zetflixdb', 'zetflix db', 'zetflix-db'], 'ZetflixDB', { host: 'https://lam.maxvol.pro/', token: false, headerKey: 'kit_aesgcmkey', directPath: 'zetflixdb', movieVoiceFilter: true, sourceQualityHint: true }),
         search: true,
         kp: true,
         imdb: true
@@ -28732,7 +28719,7 @@ var q = qualityMapFromAlloha(json);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
           if (name === 'kinoukr' || engine === 'kinoukr') return new lampauaRemoteSource(fake, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinoukr', sourceQualityHint: true });
-          if (name === 'zetflixdb' || engine === 'rc-zetflixdb') return new lampauaRemoteSource(fake, object, ['zetflixdb', 'zetflix db', 'zetflix-db'], 'ZetflixDB', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'zetflixdb', movieVoiceFilter: true, sourceQualityHint: true });
+          if (name === 'zetflixdb' || engine === 'rc-zetflixdb') return new lampauaRemoteSource(fake, object, ['zetflixdb', 'zetflix db', 'zetflix-db'], 'ZetflixDB', { host: 'https://lam.maxvol.pro/', token: false, headerKey: 'kit_aesgcmkey', directPath: 'zetflixdb', movieVoiceFilter: true, sourceQualityHint: true });
           if (engine === 'lumex') return new lumex(fake, object);
           if (engine === 'lumex2') return new lumex2(fake, object);
           if (engine === 'rezka2') return new rezka2(fake, object);
