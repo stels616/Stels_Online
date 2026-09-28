@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.183';
+    var STELS_ONLINE_VERSION = '1.1.184';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -32506,6 +32506,47 @@ var q = qualityMapFromAlloha(json);
         });
       }
 
+      // 0) Регіон реклами. З логу: блокування ctv.house працює (ad-block-xhr), але прероллер
+      // Lampa керується власними таймерами (4 с + 10 с + 10 с) і не реагує на швидку помилку.
+      // Оскільки з VPN реклама пропускається, вона залежить від регіону, який визначає
+      // Lampa.VPN. На час старту відтворення (30 с) підміняємо регіон на 'de' — так само,
+      // як цей плагін уже робить для Filmix у режимі налагодження. Після цього все
+      // повертається як було. Вимкнути: Lampa.Storage.set('stels_online_ad_region_spoof', false).
+      var SPOOF_CODE = 'de';
+      var spoof_timer = null;
+      function spoofOn() { return safe(function () { return Lampa.Storage.get('stels_online_ad_region_spoof', true) !== false; }, true); }
+      function spoofRegionForPlay() {
+        if (!spoofOn()) return;
+        var V = safe(function () { return Lampa.VPN; }, null);
+        if (!V) { adLog('ad-diag-vpn-spoof', { applied: false, reason: 'no Lampa.VPN' }); return; }
+        var info = {
+          keys: safe(function () { return Object.getOwnPropertyNames(V); }, []),
+          region_type: typeof V.region,
+          code_type: typeof V.code,
+          orig_code: safe(function () { return typeof V.code === 'function' ? V.code() : null; }, 'err')
+        };
+        safe(function () { if (typeof V.region === 'function') V.region(function (r) { adLog('ad-diag-vpn-orig-region', { region: r }); }); });
+        if (spoof_timer) { clearTimeout(spoof_timer); spoof_timer = null; }
+        else {
+          var origRegion = V.region, origCode = V.code;
+          try {
+            if (typeof origRegion === 'function') V.region = function (call) { if (call) call(SPOOF_CODE); };
+            if (typeof origCode === 'function') V.code = function () { return SPOOF_CODE; };
+            info.applied = true;
+          } catch (e) { info.applied = false; info.error = String(e && e.message || e); }
+          V.__stels_orig = { region: origRegion, code: origCode };
+        }
+        spoof_timer = setTimeout(function () {
+          safe(function () {
+            var o = V.__stels_orig;
+            if (o) { if (o.region) V.region = o.region; if (o.code) V.code = o.code; delete V.__stels_orig; }
+            adLog('ad-diag-vpn-spoof-restored', {});
+          });
+          spoof_timer = null;
+        }, 30000);
+        adLog('ad-diag-vpn-spoof', info);
+      }
+
       // 1) Що саме передається в плеєр
       safe(function () {
         var origPlay = Lampa.Player.play;
@@ -32528,6 +32569,7 @@ var q = qualityMapFromAlloha(json);
             });
             envSnapshot('before-play');
           });
+          spoofRegionForPlay();
           return origPlay.apply(this, arguments);
         };
         var origPlaylist = Lampa.Player.playlist;
