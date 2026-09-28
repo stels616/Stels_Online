@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.179';
+    var STELS_ONLINE_VERSION = '1.1.180';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -27226,9 +27226,19 @@ var q = qualityMapFromAlloha(json);
         try { badge = item.find('.stels-online-episode-badge').text() || ''; } catch (e2) {}
         var season = 0;
         var episode = 0;
+        // 1.1.180: найточніше джерело — дані, які Template.get('stels_online', element)
+        // прикріпив одразу при створенні картки (реальні element.season/episode від
+        // самого джерела). Атрибути та регекс — лише запасний варіант.
         try {
-          season = parseInt(item.attr('data-stels-season') || item.data('stelsSeason') || 0, 10) || 0;
-          episode = parseInt(item.attr('data-stels-episode') || item.data('stelsEpisode') || 0, 10) || 0;
+          var stashed = item.data('stelsElement');
+          if (stashed) {
+            season = parseInt(stashed.season, 10) || 0;
+            episode = parseInt(stashed.episode, 10) || 0;
+          }
+        } catch (eStash) {}
+        try {
+          if (!season) season = parseInt(item.attr('data-stels-season') || item.data('stelsSeason') || 0, 10) || 0;
+          if (!episode) episode = parseInt(item.attr('data-stels-episode') || item.data('stelsEpisode') || 0, 10) || 0;
         } catch (e3) {}
         var sourceText = (badge ? badge + ' ' : '') + title;
         var m = !season && (sourceText.match(/(?:^|\b)S\s*(\d+)/i) || sourceText.match(/(?:сезон|season)\s*(\d+)/i));
@@ -31339,6 +31349,27 @@ var q = qualityMapFromAlloha(json);
     }
 
     function resetTemplates() {
+      // 1.1.180: раніше сезон/серія на картці бралися регексом із заголовка (рядки на
+      // кшталт "5 серія" без слова "сезон" тоді за замовчуванням отримували S1, навіть
+      // якщо реально йде 2-й чи 3-й сезон). Кожне з ~30 джерел створює картку через
+      // Lampa.Template.get('stels_online', element), де element.season/episode — вже
+      // точні дані з відповіді джерела. Одноразово підмінюємо Template.get, щоб одразу
+      // прикріпити ці точні значення до DOM-елемента (item.data), а
+      // stelsParseEpisodeFromItem бере їх звідти в першу чергу — регекс лишається лише
+      // запасним варіантом для зовсім старих кешованих карток без цих даних.
+      if (!Lampa.Template._stelsElementPatch) {
+        var stelsOrigTemplateGet = Lampa.Template.get;
+        Lampa.Template.get = function (name, data, js) {
+          var result = stelsOrigTemplateGet.apply(Lampa.Template, arguments);
+          try {
+            if (name === 'stels_online' && data && result && result.data && typeof result.data === 'function') {
+              result.data('stelsElement', { season: parseInt(data.season, 10) || 0, episode: parseInt(data.episode, 10) || 0 });
+            }
+          } catch (e) {}
+          return result;
+        };
+        Lampa.Template._stelsElementPatch = true;
+      }
       Lampa.Template.add('stels_online', "<div class=\"online selector\">\n        <div class=\"online__body\">\n            <div style=\"position: absolute;left: 0;top: -0.3em;width: 2.4em;height: 2.4em\">\n                <svg style=\"height: 2.4em; width:  2.4em;\" viewBox=\"0 0 128 128\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n                    <circle cx=\"64\" cy=\"64\" r=\"56\" stroke=\"white\" stroke-width=\"16\"/>\n                    <path d=\"M90.5 64.3827L50 87.7654L50 41L90.5 64.3827Z\" fill=\"white\"/>\n                </svg>\n            </div>\n            <div class=\"online__title\" style=\"padding-left: 2.1em;\">{title}</div>\n            <div class=\"online__quality\" style=\"padding-left: 3.4em;\">{quality}{info}</div>\n        </div>\n    </div>");
       Lampa.Template.add('stels_online_folder', "<div class=\"online selector\">\n        <div class=\"online__body\">\n            <div style=\"position: absolute;left: 0;top: -0.3em;width: 2.4em;height: 2.4em\">\n                <svg style=\"height: 2.4em; width:  2.4em;\" viewBox=\"0 0 128 112\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n                    <rect y=\"20\" width=\"128\" height=\"92\" rx=\"13\" fill=\"white\"/>\n                    <path d=\"M29.9963 8H98.0037C96.0446 3.3021 91.4079 0 86 0H42C36.5921 0 31.9555 3.3021 29.9963 8Z\" fill=\"white\" fill-opacity=\"0.23\"/>\n                    <rect x=\"11\" y=\"8\" width=\"106\" height=\"76\" rx=\"13\" fill=\"white\" fill-opacity=\"0.51\"/>\n                </svg>\n            </div>\n            <div class=\"online__title\" style=\"padding-left: 2.1em;\">{title}</div>\n            <div class=\"online__quality\" style=\"padding-left: 3.4em;\">{quality}{info}</div>\n        </div>\n    </div>");
     }
@@ -32101,19 +32132,15 @@ var q = qualityMapFromAlloha(json);
       template += `
         <div class="settings-param selector" data-name="stels_online_episode_view" data-type="select" data-stels-interface-setting="1" style="display:none">
             <div class="settings-param__name">Відображення серій</div>
-            <div class="settings-param__descr">Як показувати картки серій у списку</div>
+            <div class="settings-param__descr">Як відображати серії</div>
             <div class="settings-param__value"></div>
         </div>`;
 
       Lampa.Template.add('settings_stels_online_interface_settings', `
         <div>
-          <div class="settings-param">
-            <div class="settings-param__name">Налаштування інтерфейсу</div>
-            <div class="settings-param__value">` + STELS_ONLINE_VERSION + `</div>
-          </div>
           <div class="settings-param selector" data-name="stels_online_episode_view" data-type="select">
               <div class="settings-param__name">Відображення серій</div>
-              <div class="settings-param__descr">Як показувати картки серій у списку</div>
+              <div class="settings-param__descr">Як відображати серії</div>
               <div class="settings-param__value"></div>
           </div>
         </div>`);
@@ -32143,14 +32170,10 @@ var q = qualityMapFromAlloha(json);
         template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_cdnvideohub\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_balanser} CDNVideoHub</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       }
 
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_anilibria\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_balanser} AniLibria</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_anilibria2\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_balanser} AniLibria.top</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
-
       if (Utils.isDebug()) {
         template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_animelib\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_balanser} AnimeLib</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       }
 
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_kodik\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_balanser} Kodik</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_skip_kp_search\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_skip_kp_search}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_iframe_proxy\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_iframe_proxy}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_proxy_iframe\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_proxy_balanser} iframe</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
@@ -32218,47 +32241,6 @@ var q = qualityMapFromAlloha(json);
       }
       template += "\n        </div>";
 
-      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_zetflixnet_settings\" data-static=\"true\">\n            <div class=\"settings-param__name\">Налаштування ZetflixNet</div>\n            <div class=\"settings-param__descr\">Окремі параметри джерела: плеєр Android та логіка перемикання перекладів</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
-      template += `
-        <div class="settings-param selector" data-name="stels_online_android_player_fix" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
-            <div class="settings-param__name">Правка плеєра Андроїд</div>
-            <div class="settings-param__descr">Для Android вмикає окремий режим ZetflixNet: один прямий MP4/OKCDN потік без карти якостей, без playlist, без reserve-url і без custom headers.</div>
-            <div class="settings-param__value"></div>
-        </div>`;
-      template += `
-        <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
-            <div class="settings-param__name">Зміна логіки Перекладів</div>
-            <div class="settings-param__descr">Після зміни перекладу ZetflixNet плагін запускає новий переклад з тією самою якістю. На Tizen потік замінюється у поточному video без створення другого audio/video.</div>
-            <div class="settings-param__value"></div>
-        </div>
-        <div class="settings-param selector" data-name="stels_online_zetflixnet_tizen_hls_voice" data-type="toggle" data-stels-zetflixnet-setting="1" style="display:none">
-            <div class="settings-param__name">Tizen: HLS при зміні перекладу</div>
-            <div class="settings-param__descr">Експериментально: при зміні перекладу на Tizen замість попередньої якості запускати HLS-потік, якщо він є у ZetflixNet.</div>
-            <div class="settings-param__value"></div>
-        </div>`;
-
-      Lampa.Template.add('settings_stels_online_zetflixnet', `
-        <div>
-          <div class="settings-param">
-            <div class="settings-param__name">ZetflixNet</div>
-            <div class="settings-param__value">` + STELS_ONLINE_VERSION + `</div>
-          </div>
-          <div class="settings-param selector" data-name="stels_online_android_player_fix" data-type="toggle">
-              <div class="settings-param__name">Правка плеєра Андроїд</div>
-              <div class="settings-param__descr">Для Android вмикає окремий режим ZetflixNet: один прямий MP4/OKCDN потік без карти якостей, без playlist, без reserve-url і без custom headers.</div>
-              <div class="settings-param__value"></div>
-          </div>
-          <div class="settings-param selector" data-name="stels_online_zetflixnet_voice_quality_fix" data-type="toggle">
-              <div class="settings-param__name">Зміна логіки Перекладів</div>
-              <div class="settings-param__descr">Після зміни перекладу ZetflixNet запускає новий переклад з тією самою якістю. На Tizen потік замінюється у поточному video без створення другого audio/video.</div>
-              <div class="settings-param__value"></div>
-          </div>
-          <div class="settings-param selector" data-name="stels_online_zetflixnet_tizen_hls_voice" data-type="toggle">
-              <div class="settings-param__name">Tizen: HLS при зміні перекладу</div>
-              <div class="settings-param__descr">Експериментально: при зміні перекладу на Tizen запускати HLS-потік, якщо він є у ZetflixNet.</div>
-              <div class="settings-param__value"></div>
-          </div>
-        </div>`);
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
@@ -32268,99 +32250,6 @@ var q = qualityMapFromAlloha(json);
         Lampa.Listener.follow('app', function (e) {
           if (e.type == 'ready') addSettingsOnlineMod();
         });
-      }
-
-      function stelsOpenZetflixNetSettingsPanel(parent_body) {
-        var opened = false;
-        var errors = [];
-        stelsLog('zetflixnet-settings-open-try', { mode: 'side', version: STELS_ONLINE_VERSION });
-
-        function tryOpen(name, fn) {
-          if (opened) return;
-          try {
-            if (fn()) {
-              opened = true;
-              stelsLog('zetflixnet-settings-open-ok', { api: name });
-            }
-          } catch (err) {
-            errors.push(name + ': ' + ((err && (err.message || err.toString())) || 'error'));
-          }
-        }
-
-        // У різних збірках Lampa API відкриття вкладених налаштувань трохи відрізняється.
-        // Пробуємо тільки безпечні варіанти, а кнопку в основному шаблоні робимо data-static,
-        // щоб Lampa.Params.update не падав на settings-folder всередині іншого settings-компонента.
-        tryOpen('Settings.create(component)', function () {
-          if (Lampa.Settings && typeof Lampa.Settings.create === 'function') {
-            Lampa.Settings.create('stels_online_zetflixnet');
-            return true;
-          }
-          return false;
-        });
-
-        tryOpen('Settings.open(component)', function () {
-          if (Lampa.Settings && typeof Lampa.Settings.open === 'function') {
-            Lampa.Settings.open('stels_online_zetflixnet');
-            return true;
-          }
-          return false;
-        });
-
-        tryOpen('Settings.main().create(component)', function () {
-          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().create === 'function') {
-            Lampa.Settings.main().create('stels_online_zetflixnet');
-            return true;
-          }
-          return false;
-        });
-
-        tryOpen('Settings.main().open(component)', function () {
-          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().open === 'function') {
-            Lampa.Settings.main().open('stels_online_zetflixnet');
-            return true;
-          }
-          return false;
-        });
-
-        if (!opened) {
-          stelsLog('zetflixnet-settings-open-fallback-modal', { errors: errors });
-          stelsOpenZetflixNetSettingsModal(parent_body);
-        }
-      }
-
-      function stelsOpenZetflixNetSettingsModal(parent_body) {
-        try {
-          var modal = $('<div class="stels-online-zetflixnet-modal settings"><div class="settings__content" style="padding:0 0 1em"></div></div>');
-          var content = modal.find('.settings__content');
-          var rows = $('[data-stels-zetflixnet-setting="1"]').clone(true, true).show();
-          rows.each(function () {
-            var row = $(this);
-            try { Lampa.Params.update(row, [], modal); } catch (e) {}
-          });
-          content.append(rows);
-          Lampa.Modal.open({
-            title: 'Налаштування ZetflixNet',
-            html: modal,
-            size: 'medium',
-            onBack: function () {
-              Lampa.Modal.close();
-              setTimeout(function () {
-                try { Lampa.Controller.toggle('settings_component'); } catch (e) {}
-              }, 50);
-            }
-          });
-          try {
-            Lampa.Controller.add('stels_zetflixnet_settings_modal', {
-              toggle: function () { Lampa.Controller.collectionSet(modal); Lampa.Controller.collectionFocus(rows.filter('.selector').first()[0] || modal.find('.selector').first()[0], modal); },
-              back: function () { Lampa.Modal.close(); Lampa.Controller.toggle('settings_component'); }
-            });
-            Lampa.Controller.toggle('stels_zetflixnet_settings_modal');
-          } catch (e2) {}
-          stelsLog('zetflixnet-settings-modal-open', { rows: rows.length });
-        } catch (err) {
-          stelsLog('zetflixnet-settings-modal-error', { error: err && (err.message || err.toString()) || '' });
-          Lampa.Noty.show('Не вдалося відкрити налаштування ZetflixNet');
-        }
       }
 
       function stelsOpenInterfaceSettingsPanel(parent_body) {
@@ -32497,18 +32386,6 @@ var q = qualityMapFromAlloha(json);
               }
             });
           }
-          var stels_zetflixnet_settings = e.body.find('[data-name="stels_online_zetflixnet_settings"]');
-          stels_zetflixnet_settings.unbind('hover:enter').on('hover:enter', function () {
-            stelsOpenZetflixNetSettingsPanel(e.body);
-          });
-        }
-        if (e.name == 'stels_online_zetflixnet') {
-          try {
-            e.body.find('[data-name="stels_online_android_player_fix"], [data-name="stels_online_zetflixnet_voice_quality_fix"], [data-name="stels_online_zetflixnet_tizen_hls_voice"]').each(function () {
-              Lampa.Params.update($(this), [], e.body);
-            });
-            stelsLog('zetflixnet-settings-side-open', { version: STELS_ONLINE_VERSION });
-          } catch (errz) { stelsLog('zetflixnet-settings-side-error', { error: errz && (errz.message || errz.toString()) || '' }); }
         }
         if (e.name == 'stels_online_interface_settings') {
           try {
@@ -32580,7 +32457,7 @@ var q = qualityMapFromAlloha(json);
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`). 1.1.173: карта серії з превʼю — додано рейтинг (★) і тривалість (хв) з TMDB season/episode, великий номер серії поверх превʼю та % перегляду поруч з прогрес-баром (з ширини нативного time-line, який Lampa вже рахує сама).' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`). 1.1.173: карта серії з превʼю — додано рейтинг (★) і тривалість (хв) з TMDB season/episode, великий номер серії поверх превʼю та % перегляду поруч з прогрес-баром (з ширини нативного time-line, який Lampa вже рахує сама). 1.1.180: сезон на картці серії тепер береться з точних даних джерела (element.season/episode), а не з регексу заголовка — усунуто випадки, коли показувалось S1 замість реального сезону; з "Налаштування інтерфейсу" прибрано показ версії плагіна і перейменовано опис на "Як відображати серії"; видалено розділ "Налаштування ZetflixNet" з меню налаштувань; з розширених налаштувань прибрано перемикачі проксі AniLibria, AniLibria.top і Kodik.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
