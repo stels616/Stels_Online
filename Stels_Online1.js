@@ -23795,9 +23795,20 @@ var q = qualityMapFromAlloha(json);
         var arr = (list && list.online) || list || [];
         if (!arr.forEach) arr = [];
         var found = null;
+        // 1.1.181: спочатку шукаємо ТОЧНИЙ збіг (balanser/key/name), і лише потім нечіткий
+        // збіг за підрядком. Раніше для ZetflixDB нечіткий збіг ('zetflixdb' містить 'zetflix')
+        // міг вибрати сусідній запис "Zetflix" замість "ZetflixDB": у списку джерел
+        // з'являлось знайдене джерело, а при відкритті сервер повертав помилку.
         arr.forEach(function (j) {
-          if (!found && isWanted(j)) found = j;
+          if (found) return;
+          var keys = sourceKey(j);
+          if (keys.some(function (key) { return wanted.indexOf(key) !== -1; })) found = j;
         });
+        if (!found) {
+          arr.forEach(function (j) {
+            if (!found && isWanted(j)) found = j;
+          });
+        }
         if (found && found.name) {
           var foundQ = String(found.name || '').match(/(?:^|[^0-9])((?:2160|1440|1080|720|480|360)p?)(?:[^0-9]|$)|\b(8|4|2)\s*k\b/i);
           if (foundQ) {
