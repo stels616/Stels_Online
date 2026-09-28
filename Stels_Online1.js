@@ -32451,10 +32451,150 @@ var q = qualityMapFromAlloha(json);
       });
     }
 
+
+    // 1.1.181: ДІАГНОСТИКА РЕКЛАМИ. Нічого не змінює — лише пише в лог, звідки і коли
+    // з'являється реклама (VAST/прероли): що передано в Player.play, які події плеєра,
+    // які рекламні DOM-елементи / відео / мережеві запити зʼявились одразу після старту.
+    // Екологія: VPN, premium, ключі localStorage, повʼязані з рекламою/регіоном.
+    function stelsInstallAdDiagnostics() {
+      if (window.stels_ad_diag_installed) return;
+      window.stels_ad_diag_installed = true;
+
+      var AD_RE = /vast|preroll|pre-roll|advert|adserver|doubleclick|imasdk|googlesyndication|(^|[^a-z])ads?([^a-z]|$)|adv[_-]/i;
+      var play_ts = 0;
+      var WINDOW_MS = 90000;
+
+      function safe(fn, def) { try { return fn(); } catch (e) { return def; } }
+      function cut(v, n) { v = v == null ? '' : String(v); return v.length > (n || 220) ? v.slice(0, n || 220) + '…' : v; }
+      function active() { return play_ts && (Date.now() - play_ts) < WINDOW_MS; }
+      function since() { return play_ts ? Date.now() - play_ts : -1; }
+
+      function envSnapshot(reason) {
+        var lampa_keys = safe(function () {
+          return Object.keys(Lampa).filter(function (k) { return /vpn|advert|^ads?$|vast|preroll|premium|region/i.test(k); });
+        }, []);
+        var ls = safe(function () {
+          var r = {};
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (/token|password|email|secret/i.test(k)) continue;
+            if (/vpn|advert|(^|_)ads?(_|$)|vast|preroll|premium|region/i.test(k)) r[k] = cut(localStorage.getItem(k), 120);
+          }
+          return r;
+        }, {});
+        stelsLog('ad-diag-env', {
+          reason: reason,
+          lampa_ad_related_keys: lampa_keys,
+          vpn: safe(function () { return Lampa.VPN ? cut(JSON.stringify(Lampa.VPN), 300) : null; }, 'n/a'),
+          has_premium: safe(function () { return Lampa.Account && Lampa.Account.hasPremium ? !!Lampa.Account.hasPremium() : 'n/a'; }, 'n/a'),
+          logged_in: safe(function () { return Lampa.Account && Lampa.Account.logged ? !!Lampa.Account.logged() : 'n/a'; }, 'n/a'),
+          platform: safe(function () { return Lampa.Platform.is('android') ? 'android' : (Lampa.Platform.is('tizen') ? 'tizen' : (Lampa.Platform.is('webos') ? 'webos' : 'other')); }, ''),
+          storage_ad_related: ls
+        });
+      }
+
+      // 1) Що саме передається в плеєр
+      safe(function () {
+        var origPlay = Lampa.Player.play;
+        Lampa.Player.play = function (data) {
+          play_ts = Date.now();
+          safe(function () {
+            stelsLog('ad-diag-player-play', {
+              title: cut(data && data.title, 120),
+              keys: Object.keys(data || {}),
+              url_type: typeof (data && data.url),
+              url_preview: typeof (data && data.url) === 'string' ? cut(data.url) : '(function)',
+              has_vast_url: !!(data && data.vast_url),
+              vast_url: cut(data && data.vast_url),
+              vast_msg: cut(data && data.vast_msg),
+              vast_region: data && data.vast_region,
+              vast_platform: data && data.vast_platform,
+              vast_screen: data && data.vast_screen,
+              has_headers: !!(data && data.headers),
+              source_ctx: safe(function () { return Lampa.Storage.get('stels_online_balanser', ''); }, '')
+            });
+            envSnapshot('before-play');
+          });
+          return origPlay.apply(this, arguments);
+        };
+        var origPlaylist = Lampa.Player.playlist;
+        if (typeof origPlaylist === 'function') {
+          Lampa.Player.playlist = function (list) {
+            safe(function () {
+              var arr = list || [];
+              stelsLog('ad-diag-player-playlist', {
+                count: arr.length,
+                with_vast_url: arr.filter(function (i) { return i && i.vast_url; }).length,
+                first_keys: Object.keys(arr[0] || {})
+              });
+            });
+            return origPlaylist.apply(this, arguments);
+          };
+        }
+      });
+
+      // 2) Події плеєра
+      safe(function () {
+        if (Lampa.Player.listener && Lampa.Player.listener.follow) {
+          Lampa.Player.listener.follow('start,ready,external,destroy,error,ended,preroll,ad,vast', function (e) {
+            stelsLog('ad-diag-player-event', { type: e && e.type, ms_since_play: since(), keys: safe(function () { return Object.keys(e || {}); }, []) });
+          });
+        }
+      });
+
+      // 3) DOM: рекламні елементи та відео (перші 90 с після Player.play)
+      safe(function () {
+        var mo = new MutationObserver(function (list) {
+          if (!active()) return;
+          list.forEach(function (m) {
+            if (m.type === 'attributes' && m.target && m.target.tagName === 'VIDEO' && m.attributeName === 'src') {
+              stelsLog('ad-diag-video-src', { ms_since_play: since(), src: cut(m.target.getAttribute('src')) });
+              return;
+            }
+            Array.prototype.forEach.call(m.addedNodes || [], function (n) {
+              if (!n || n.nodeType !== 1) return;
+              var cls = (n.className && n.className.baseVal !== undefined ? n.className.baseVal : n.className) || '';
+              var sig = (n.tagName || '') + ' ' + cls + ' ' + (n.id || '');
+              if (n.tagName === 'VIDEO' || n.tagName === 'IFRAME' || AD_RE.test(sig)) {
+                stelsLog('ad-diag-dom-added', { ms_since_play: since(), tag: n.tagName, cls: cut(cls, 120), id: n.id || '', src: cut(n.getAttribute && (n.getAttribute('src') || ''), 200), html: cut(n.outerHTML, 300) });
+              }
+            });
+          });
+        });
+        mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+      });
+
+      ['loadedmetadata', 'play', 'ended'].forEach(function (evt) {
+        document.addEventListener(evt, function (ev) {
+          if (!active() || !ev.target || ev.target.tagName !== 'VIDEO') return;
+          stelsLog('ad-diag-video-' + evt, { ms_since_play: since(), current_src: cut(ev.target.currentSrc || ev.target.src), duration: ev.target.duration });
+        }, true);
+      });
+
+      // 4) Мережа: запити, схожі на рекламні (лише лог)
+      safe(function () {
+        var xo = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function (method, url) {
+          safe(function () { if (active() && AD_RE.test(String(url))) stelsLog('ad-diag-xhr', { ms_since_play: since(), method: method, url: cut(url, 300) }); });
+          return xo.apply(this, arguments);
+        };
+        if (window.fetch) {
+          var of = window.fetch;
+          window.fetch = function (input) {
+            safe(function () { var u = typeof input === 'string' ? input : (input && input.url) || ''; if (active() && AD_RE.test(u)) stelsLog('ad-diag-fetch', { ms_since_play: since(), url: cut(u, 300) }); });
+            return of.apply(this, arguments);
+          };
+        }
+      });
+
+      envSnapshot('startup');
+    }
+
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
       stelsInstallAndroidPlayerFixPatch();
+      stelsInstallAdDiagnostics();
       stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`). 1.1.173: карта серії з превʼю — додано рейтинг (★) і тривалість (хв) з TMDB season/episode, великий номер серії поверх превʼю та % перегляду поруч з прогрес-баром (з ширини нативного time-line, який Lampa вже рахує сама). 1.1.180: сезон на картці серії тепер береться з точних даних джерела (element.season/episode), а не з регексу заголовка — усунуто випадки, коли показувалось S1 замість реального сезону; з "Налаштування інтерфейсу" прибрано показ версії плагіна і перейменовано опис на "Як відображати серії"; видалено розділ "Налаштування ZetflixNet" з меню налаштувань; з розширених налаштувань прибрано перемикачі проксі AniLibria, AniLibria.top і Kodik.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
