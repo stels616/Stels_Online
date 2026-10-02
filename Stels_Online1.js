@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.185';
+    var STELS_ONLINE_VERSION = '1.1.187';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -122,21 +122,16 @@
       'zerx',
       'kinotochka',
       'iremux',
-      'animego',
       'alloha',
       'mirage',
       'phantom',
-      'animelib',
       'cdnvideohub',
       'vokino',
-      'autoembed',
       'pidtor',
-      'videoseed',
       'iptvonline',
       'veoveo',
       'tartuga',
       'vkmovie',
-      'collaps-dash',
       'fanserials'
     ];
 
@@ -145,35 +140,27 @@
         starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
         getstv: 'GetsTV',  zetflixdb: 'ZetflixDB', zetflixnet: 'ZetflixNet',
       collaps: 'Collaps', hdvb: 'HDVB',   eneyida: 'Eneyida',
-      kinoukr: 'KinoUkr', zerx: 'Zerx',  kinotochka: 'KinoTochka', iremux: 'iRemux',  
-       animego: 'AnimeGo',   alloha: 'Alloha',
-      mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib',  
-      cdnvideohub: 'CDNVideoHub', vokino: 'Vokino',   
-         autoembed: 'AutoEmbed', pidtor: 'PidTor',
-      videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', 
+      kinoukr: 'KinoUkr', zerx: 'Zerx',  kinotochka: 'KinoTochka', iremux: 'iRemux',   alloha: 'Alloha',
+      mirage: 'Mirage', phantom: 'Phantom',  
+      cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', pidtor: 'PidTor', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', 
        vkmovie: 'VKMovie',  
-          
-       'collaps-dash': 'Collaps (DASH)',  
        fanserials: 'FanSerials', 
            uaserials: 'UASerials', rezka720: 'Rezka ~ 720'
     };
 
     var STELS_SOURCE_ENGINE_ALIAS = {
-          collaps: 'collaps',
-      'collaps-dash': 'collaps-dash',  filmix: 'filmix',  zetflixnet: 'zetflixnet',
-        fanserials: 'fanserials', videoseed: 'videoseed', 
-        cdnvideohub: 'cdnvideohub',
-        animelib: 'animelib',  alloha: 'alloha',
+          collaps: 'collaps',  filmix: 'filmix',  zetflixnet: 'zetflixnet',
+        fanserials: 'fanserials', 
+        cdnvideohub: 'cdnvideohub',  alloha: 'alloha',
        
         pizatoadhd: 'rezka2', zetflixdb: 'rc-zetflixdb', hdvb: 'hdvb',
           kinoukr: 'kinoukr', zerx: 'zerx',
       eneyida: 'eneyida', uaserials: 'uaserials',  kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix',     rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
-      fxapi: 'filmix',    starlight: 'starlight',
-        animego: 'animelib',  
-      mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub',  
-          autoembed: 'videoseed',
-      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga',  
-      vkmovie: 'cdnvideohub',    getstv: 'getstv'
+      fxapi: 'filmix',    starlight: 'starlight',  
+      mirage: 'rc-mirage', vokino: 'cdnvideohub', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga',  
+      vkmovie: 'cdnvideohub', getstv: 'getstv',
+      phantom: 'collaps',
+      pidtor: 'collaps'
     };
 
     // 1.1.127: глобальні helpers якості. Частина джерел і ZetflixNet знаходяться
@@ -19127,30 +19114,48 @@ var q = qualityMapFromAlloha(json);
         return out;
       }
 
-      function loadPlaylist(kp_id, force_direct) {
+      function zetflixnetApiProxyChain() {
+        // Ланцюжок обходів блокування plapi.cdnvideohub.com без VPN:
+        // 1) напряму  2) prox_api (якщо є)  3) публічні CORS-проксі плагіна.
+        var chain = [''];
+        var seen = { '': true };
+        function add(p) {
+          p = p || '';
+          if (seen[p]) return;
+          seen[p] = true;
+          chain.push(p);
+        }
+        add(prox_api);
+        try {
+          var p1 = component.proxy && component.proxy('cookie');
+          var p2 = component.proxy && component.proxy('cookie2');
+          var p3 = component.proxy && component.proxy('cookie3');
+          add(p1); add(p2); add(p3);
+        } catch (e) {}
+        return chain;
+      }
+
+      function loadPlaylist(kp_id, attempt) {
+        attempt = parseInt(attempt, 10) || 0;
         var url = api + 'playlist?pub=' + encodeURIComponent(pub_id) + '&aggr=kp&id=' + encodeURIComponent(kp_id);
-        // Спочатку йдемо напряму. У логах 1.0.89 proxy-виклик до apn-latest давав
-        // `Malformed URL`, а прямий виклик plapi.cdnvideohub.com повертав коректний JSON.
-        var use_prox = force_direct ? prox_api : '';
-        var use_enc = force_direct ? prox_enc_api : '';
+        var chain = zetflixnetApiProxyChain();
+        var use_prox = chain[attempt] || '';
+        var use_enc = use_prox ? prox_enc_api : '';
         network.clear();
         network.timeout(12000);
         api_headers.Referer = api_ref || ref;
+        stelsLog('zetflixnet-playlist-try', { kp: kp_id, attempt: attempt, proxy: use_prox ? 'yes' : 'direct', proxy_host: (use_prox || '').slice(0, 60) });
         network['native'](component.proxyLink(url, use_prox, use_enc), function (json) {
-          stelsLog('zetflixnet-playlist-response', { kp: kp_id, direct: !!force_direct, ok: true });
+          stelsLog('zetflixnet-playlist-response', { kp: kp_id, attempt: attempt, ok: true });
           parsePlaylist(json, kp_id);
         }, function (a, c) {
           var status = a && a.status;
           var message = network.errorDecode(a, c);
-          stelsLog('zetflixnet-playlist-error', { kp: kp_id, direct: !!force_direct, status: status || 0, message: message || '' });
-
-          // Якщо увімкнений proxy для CDNVideoHub, він може віддати 404 саме на pub=338.
-          // Повторюємо прямим URL, як у HAR, і тільки після цього показуємо помилку.
-          if (!force_direct && prox_api) {
-            loadPlaylist(kp_id, true);
+          stelsLog('zetflixnet-playlist-error', { kp: kp_id, attempt: attempt, status: status || 0, message: message || '' });
+          if (attempt + 1 < chain.length) {
+            loadPlaylist(kp_id, attempt + 1);
             return;
           }
-
           if (status == 404 || status == 500 && !a.responseText || status == 0 && a.statusText !== 'timeout') {
             parsePlaylist(null, kp_id);
           } else {
@@ -19563,13 +19568,19 @@ var q = qualityMapFromAlloha(json);
         stelsLog('zetflixnet-extractitems-before-proxy', { data_id: ctx && ctx.data_id || '', count: items.length, sources: zlogSourceSummary(sources), items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, url: zlogUrlInfo(item.file) }; }) });
         items.forEach(function (item) {
           item.original_file = item.file;
-          // Важливо: сам video API можна читати через proxy/fallback, але реальні потоки ZetflixNet
-          // приходять з okcdn/vd*.okcdn.ru. Їх не можна проганяти через apn/onrender proxy.
-          // На Android не переводимо okcdn у http: WebView/ExoPlayer часто блокує cleartext.
+          // Потоки ZetflixNet — okcdn/vd*.okcdn.ru. Без VPN провайдер часто їх ріже.
+          // Якщо увімкнено "Проксі для потоку" (stels_online_use_stream_proxy) — проганяємо
+          // через stream-proxy плагіна (apn.watch), інакше лишаємо прямий URL.
           if (stelsAndroidPlayerFixEnabled()) item.file = component.fixLinkProtocol(item.file, false, 'full');
           else item.file = component.fixLinkProtocol(item.file, prefer_http, true);
+          try {
+            if (component.proxyStream && item.file) {
+              var proxied = component.proxyStream(item.file, 'zetflixnet');
+              if (proxied && proxied !== item.file) item.file = proxied;
+            }
+          } catch (eProxy) {}
         });
-        stelsLog('zetflixnet-extractitems-after-proxy', { data_id: ctx && ctx.data_id || '', prox_api: false, stream_proxy_disabled: true, prefer_http: prefer_http, count: items.length, items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, original: zlogUrlInfo(item.original_file), final: zlogUrlInfo(item.file) }; }) });
+        stelsLog('zetflixnet-extractitems-after-proxy', { data_id: ctx && ctx.data_id || '', prefer_http: prefer_http, count: items.length, items: items.map(function (item) { return { label: item.label, quality: item.quality, source_key: item.source_key, original: zlogUrlInfo(item.original_file), final: zlogUrlInfo(item.file) }; }) });
         return items;
       }
 
@@ -20393,7 +20404,8 @@ var q = qualityMapFromAlloha(json);
       }
 
 
-      function getStream(element, call, error, force_direct) {
+      function getStream(element, call, error, attempt) {
+        attempt = parseInt(attempt, 10) || 0;
         if (element.stream) {
           stelsLog('zetflixnet-getstream-cache-hit', { data_id: element.data_id || '', stream: zlogUrlInfo(element.stream), quality_keys: element.qualitys ? Object.keys(element.qualitys) : [] });
           return call(element);
@@ -20403,15 +20415,14 @@ var q = qualityMapFromAlloha(json);
           return error();
         }
         var url = api + 'video/' + encodeURIComponent(element.data_id);
-        // Спочатку йдемо напряму. У логах 1.0.89 proxy-виклик до apn-latest давав
-        // `Malformed URL`, а прямий виклик plapi.cdnvideohub.com повертав коректний JSON.
-        var use_prox = force_direct ? prox_api : '';
-        var use_enc = force_direct ? prox_enc_api : '';
+        var chain = zetflixnetApiProxyChain();
+        var use_prox = chain[attempt] || '';
+        var use_enc = use_prox ? prox_enc_api : '';
         var final_url = component.proxyLink(url, use_prox, use_enc);
         network.clear();
         network.timeout(12000);
         api_headers.Referer = api_ref || ref;
-        stelsLog('zetflixnet-video-request', { data_id: element.data_id, direct: !!force_direct, source_url: zlogUrlInfo(url), final_url: zlogUrlInfo(final_url), prox_api: !!prox_api, use_proxy: !!use_prox, headers: api_headers, element: { title: element.title || '', season: element.season || '', episode: element.episode || '', voice: element.translate_voice || '', media: element.media || null } });
+        stelsLog('zetflixnet-video-request', { data_id: element.data_id, attempt: attempt, source_url: zlogUrlInfo(url), final_url: zlogUrlInfo(final_url), use_proxy: !!use_prox, headers: api_headers, element: { title: element.title || '', season: element.season || '', episode: element.episode || '', voice: element.translate_voice || '', media: element.media || null } });
         network['native'](final_url, function (json) {
           var raw_type = typeof json;
           var raw_len = raw_type === 'string' ? json.length : 0;
@@ -20445,8 +20456,9 @@ var q = qualityMapFromAlloha(json);
             error();
           }
         }, function (a, c) {
-          stelsLog('zetflixnet-video-error', { data_id: element.data_id, direct: !!force_direct, status: a && a.status || 0, statusText: a && a.statusText || '', responseText: a && a.responseText ? String(a.responseText).slice(0, 800) : '', message: network.errorDecode(a, c) || '', referer: api_headers.Referer || '', origin: api_headers.Origin || '', final_url: zlogUrlInfo(final_url) });
-          if (!force_direct && prox_api) getStream(element, call, error, true);else error();
+          stelsLog('zetflixnet-video-error', { data_id: element.data_id, attempt: attempt, status: a && a.status || 0, statusText: a && a.statusText || '', responseText: a && a.responseText ? String(a.responseText).slice(0, 800) : '', message: network.errorDecode(a, c) || '', referer: api_headers.Referer || '', origin: api_headers.Origin || '', final_url: zlogUrlInfo(final_url) });
+          if (attempt + 1 < chain.length) getStream(element, call, error, attempt + 1);
+          else error();
         }, false, {
           headers: api_headers
         });
@@ -27418,13 +27430,6 @@ var q = qualityMapFromAlloha(json);
         kp: true,
         imdb: true
       }, {
-        name: 'rc-collaps-dash',
-        title: 'Collaps (DASH)',
-        source: new lampauaRemoteSource(this, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' }),
-        search: false,
-        kp: true,
-        imdb: true
-      }, {
         name: 'uaserials',
         title: 'UASerials',
         source: new uaserials(this, object),
@@ -27473,14 +27478,6 @@ var q = qualityMapFromAlloha(json);
         imdb: true,
         disabled: collapsBlocked
       }, {
-        name: 'collaps-dash',
-        title: 'Collaps (DASH)',
-        source: new collaps(this, object, true),
-        search: false,
-        kp: true,
-        imdb: true,
-        disabled: collapsBlocked
-      },  {
         name: 'filmix',
         title: 'Filmix',
         source: new filmix(this, object),
@@ -27507,15 +27504,8 @@ var q = qualityMapFromAlloha(json);
         kp: true,
         imdb: false,
         disabled: disable_dbg && !isAndroid
-      }, {
-        name: 'videoseed',
-        title: 'VideoSeed',
-        source: new videoseed(this, object),
-        search: false,
-        kp: true,
-        imdb: true,
-        disabled: true
-      },    {
+      },
+      {
         name: 'zetflixnet',
         title: 'ZetflixNet',
         source: new zetflixnet(this, object),
@@ -27551,15 +27541,8 @@ var q = qualityMapFromAlloha(json);
         search: true,
         kp: true,
         imdb: true
-      },   {
-        name: 'animelib',
-        title: 'AnimeLib',
-        source: new animelib(this, object),
-        search: true,
-        kp: false,
-        imdb: false,
-        disabled: true
-      },  {
+      },
+      {
         name: 'alloha',
         title: 'Alloha',
         source: new alloha(this, object),
@@ -28370,7 +28353,6 @@ var q = qualityMapFromAlloha(json);
           if (name === 'veoveo' || engine === 'rc-veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true });
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true, sourceQualityHint: true });
-          if (name === 'collaps-dash' || engine === 'rc-collaps-dash') return new lampauaRemoteSource(fake, object, ['collaps-dash', 'collaps dash', 'collaps'], 'Collaps (DASH)', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey' });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
@@ -28381,14 +28363,12 @@ var q = qualityMapFromAlloha(json);
           if (engine === 'rezka2') return new rezka2(fake, object);
           if (engine === 'kinobase') return new kinobase(fake, object);
           if (engine === 'collaps') return new collaps(fake, object, false);
-          if (engine === 'collaps-dash') return new collaps(fake, object, true);
           if (engine === 'cdnmovies') return new cdnmovies(fake, object);
           if (engine === 'filmix') return new filmix(fake, object);
           if (engine === 'zetflix') return new zetflix(fake, object);
           if (engine === 'fancdn') return new fancdn(fake, object);
           if (engine === 'fancdn2') return new fancdn2(fake, object);
           if (engine === 'fanserials') return new fanserials(fake, object);
-          if (engine === 'videoseed') return new videoseed(fake, object);
           if (engine === 'vibix') return new vibix(fake, object);
           if (engine === 'redheadsound') return new redheadsound(fake, object, false);
           if (engine === 'redheadsound-dash') return new redheadsound(fake, object, true);
@@ -28408,7 +28388,6 @@ var q = qualityMapFromAlloha(json);
           if (engine === 'cdnvideohub') return new cdnvideohub(fake, object);
           if (engine === 'anilibria') return new anilibria(fake, object);
           if (engine === 'anilibria2') return new anilibria2(fake, object);
-          if (engine === 'animelib') return new animelib(fake, object);
           if (engine === 'kodik') return new kodik(fake, object);
           if (engine === 'alloha') return new alloha(fake, object);
           if (engine === 'zerx') return new zerx(fake, object);
