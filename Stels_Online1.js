@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.184';
+    var STELS_ONLINE_VERSION = '1.1.185';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -104,54 +104,76 @@
     var STELS_WATCH_HISTORY_KEY = 'stels_online_watch_history';
     var STELS_WATCH_HISTORY_MAX = 300;
 
-    var STELS_REQUESTED_SOURCE_NAMES = [
-      'uaflix', 'klonfun', 'batkomakhno', 'jacktor', 'uakino-lampaua', 'uafilmme-lampaua', 'uaserials', 'rezka720',
-      'makhno', 'filmix', 'bambooua', 'animeon', 'mikai', 'moonanime', 'starlight',
-      'filmixtv', 'fxapi', 'rezka', 'pizdatoehd', 'getstv', 'kinopub', 'zetflixdb', 'zetflixnet', 'collaps',
-      'hdvb', 'kodik', 'bamboo', 'eneyida', 'kinoukr', 'zerx', 'uafilm', 'kinotochka', 'iremux', 'remux',
-      'anilibria', 'animedia', 'animego', 'animevost', 'animebesst', 'alloha', 'mirage',
-      'phantom', 'animelib', 'vibix', 'fancdn', 'cdnvideohub', 'vokino', 'hydraflix',
-      'videasy', 'vidsrc', 'movpi', 'vidlink', 'smashystream', 'autoembed', 'pidtor',
-      'videoseed', 'iptvonline', 'veoveo', 'tartuga', 'kinoflix', 'leproduction', 'vkmovie',
-      'kinobase', 'asiage', 'geosaitebi', 'dreamerscast', 'uakino',
-      'lumex', 'lumex2', 'rezka2', 'collaps-dash', 'cdnmovies', 'zetflix', 'fancdn2',
-      'fanserials', 'redheadsound', 'redheadsound-dash', 'anilibria2', 'kinopub-native'
+    var STELS_REQUESTED_SOURCE_NAMES = [      'uaflix',
+      'uaserials',
+      'rezka720',
+      'makhno',
+      'filmix',
+      'starlight',
+      'filmixtv',
+      'fxapi',
+      'getstv',
+      'zetflixdb',
+      'zetflixnet',
+      'collaps',
+      'hdvb',
+      'eneyida',
+      'kinoukr',
+      'zerx',
+      'kinotochka',
+      'iremux',
+      'animego',
+      'alloha',
+      'mirage',
+      'phantom',
+      'animelib',
+      'cdnvideohub',
+      'vokino',
+      'autoembed',
+      'pidtor',
+      'videoseed',
+      'iptvonline',
+      'veoveo',
+      'tartuga',
+      'vkmovie',
+      'collaps-dash',
+      'fanserials'
     ];
 
     var STELS_SOURCE_TITLES = {
-      uaflix: 'UAflix', klonfun: 'KlonFun', batkomakhno: 'BatkoMakhno', jacktor: 'JackTor', makhno: 'Makhno', filmix: 'Filmix', bambooua: 'BambooUA', animeon: 'AnimeOn',
-      mikai: 'Mikai', moonanime: 'MoonAnime', starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
-      rezka: 'Rezka', pizdatoehd: 'PizdatoeHD', getstv: 'GetsTV', kinopub: 'KinoPub', zetflixdb: 'ZetflixDB', zetflixnet: 'ZetflixNet',
-      collaps: 'Collaps', hdvb: 'HDVB', kodik: 'Kodik', bamboo: 'Bamboo', eneyida: 'Eneyida',
-      kinoukr: 'KinoUkr', zerx: 'Zerx', uafilm: 'UAFilm', kinotochka: 'KinoTochka', iremux: 'iRemux', remux: 'Remux', anilibria: 'AniLibria',
-      animedia: 'Animedia', animego: 'AnimeGo', animevost: 'AnimeVost', animebesst: 'AnimeBesst', alloha: 'Alloha',
-      mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib', vibix: 'Vibix', fancdn: 'FanCDN',
-      cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', hydraflix: 'HydraFlix', videasy: 'Videasy', vidsrc: 'VidSrc',
-      movpi: 'MovPi', vidlink: 'VidLink', smashystream: 'SmashyStream', autoembed: 'AutoEmbed', pidtor: 'PidTor',
-      videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', kinoflix: 'KinoFlix',
-      leproduction: 'LeProduction', vkmovie: 'VKMovie', kinobase: 'Kinobaza', asiage: 'AsiaGe',
-      geosaitebi: 'Geosaitebi', dreamerscast: 'DreamersCast', uakino: 'UAkino (HDRezka)', lumex: 'Lumex', lumex2: 'Lumex (Ads)',
-      rezka2: 'HDrezka', 'collaps-dash': 'Collaps (DASH)', cdnmovies: 'CDNMovies', zetflix: 'Zetflix',
-      fancdn2: 'FanCDN (ID)', fanserials: 'FanSerials', redheadsound: 'RedHeadSound',
-      'redheadsound-dash': 'RedHeadSound (DASH)', anilibria2: 'AniLibria.top', 'kinopub-native': 'KinoPub (OnlineMod)', 'uakino-lampaua': 'UAKino', 'uafilmme-lampaua': 'UafilmMe', uaserials: 'UASerials', rezka720: 'Rezka ~ 720'
+      uaflix: 'UAflix',    makhno: 'Makhno', filmix: 'Filmix',  
+        starlight: 'Midnight', filmixtv: 'FilmixTV', fxapi: 'FxAPI',
+        getstv: 'GetsTV',  zetflixdb: 'ZetflixDB', zetflixnet: 'ZetflixNet',
+      collaps: 'Collaps', hdvb: 'HDVB',   eneyida: 'Eneyida',
+      kinoukr: 'KinoUkr', zerx: 'Zerx',  kinotochka: 'KinoTochka', iremux: 'iRemux',  
+       animego: 'AnimeGo',   alloha: 'Alloha',
+      mirage: 'Mirage', phantom: 'Phantom', animelib: 'AnimeLib',  
+      cdnvideohub: 'CDNVideoHub', vokino: 'Vokino',   
+         autoembed: 'AutoEmbed', pidtor: 'PidTor',
+      videoseed: 'VideoSeed', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', 
+       vkmovie: 'VKMovie',  
+          
+       'collaps-dash': 'Collaps (DASH)',  
+       fanserials: 'FanSerials', 
+           uaserials: 'UASerials', rezka720: 'Rezka ~ 720'
     };
 
     var STELS_SOURCE_ENGINE_ALIAS = {
-      lumex: 'lumex', lumex2: 'lumex2', rezka2: 'rezka2', kinobase: 'kinobase', collaps: 'collaps',
-      'collaps-dash': 'collaps-dash', cdnmovies: 'cdnmovies', filmix: 'filmix', zetflix: 'zetflix', zetflixnet: 'zetflixnet',
-      fancdn: 'fancdn', fancdn2: 'fancdn2', fanserials: 'fanserials', videoseed: 'videoseed', vibix: 'vibix',
-      redheadsound: 'redheadsound', 'redheadsound-dash': 'redheadsound-dash', cdnvideohub: 'cdnvideohub',
-      anilibria: 'anilibria', anilibria2: 'anilibria2', animelib: 'animelib', kodik: 'kodik', alloha: 'alloha',
-      'kinopub-native': 'kinopub', kinopub: 'kinopub',
-      rezka: 'rezka2', pizdatoehd: 'rezka2', pizatoadhd: 'rezka2', zetflixdb: 'rc-zetflixdb', hdvb: 'hdvb',
-      bambooua: 'lumex2', bamboo: 'lumex2', uakino: 'rezka2', uafilm: 'rezka2', kinoukr: 'kinoukr', zerx: 'zerx',
-      eneyida: 'eneyida', uaserials: 'uaserials', jacktor: 'lampaua-jacktor', kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix', klonfun: 'lampaua-klonfun', batkomakhno: 'lampaua-batkomakhno', 'uakino-lampaua': 'lampaua-uakino', 'uafilmme-lampaua': 'lampaua-uafilmme', rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
-      fxapi: 'filmix', animeon: 'anilibria2', mikai: 'animelib', moonanime: 'anilibria2', starlight: 'starlight',
-      remux: 'cdnmovies', animedia: 'animelib', animego: 'animelib', animevost: 'animelib', animebesst: 'animelib',
-      mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub', hydraflix: 'videoseed', videasy: 'videoseed',
-      vidsrc: 'videoseed', movpi: 'videoseed', vidlink: 'videoseed', smashystream: 'videoseed', autoembed: 'videoseed',
-      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga', kinoflix: 'videoseed', leproduction: 'videoseed',
-      vkmovie: 'cdnvideohub', asiage: 'rezka2', geosaitebi: 'rezka2', dreamerscast: 'rezka2', getstv: 'getstv'
+          collaps: 'collaps',
+      'collaps-dash': 'collaps-dash',  filmix: 'filmix',  zetflixnet: 'zetflixnet',
+        fanserials: 'fanserials', videoseed: 'videoseed', 
+        cdnvideohub: 'cdnvideohub',
+        animelib: 'animelib',  alloha: 'alloha',
+       
+        pizatoadhd: 'rezka2', zetflixdb: 'rc-zetflixdb', hdvb: 'hdvb',
+          kinoukr: 'kinoukr', zerx: 'zerx',
+      eneyida: 'eneyida', uaserials: 'uaserials',  kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix',     rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
+      fxapi: 'filmix',    starlight: 'starlight',
+        animego: 'animelib',  
+      mirage: 'rc-mirage', phantom: 'collaps-dash', vokino: 'cdnvideohub',  
+          autoembed: 'videoseed',
+      pidtor: 'collaps-dash', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga',  
+      vkmovie: 'cdnvideohub',    getstv: 'getstv'
     };
 
     // 1.1.127: глобальні helpers якості. Частина джерел і ZetflixNet знаходяться
@@ -19519,129 +19541,9 @@ var q = qualityMapFromAlloha(json);
 
       var zetflixnet_tmdb_season_cache = {};
 
-      function zetflixnetSelectedSeasonNumber() {
-        try {
-          var s = extract && extract.seasons && extract.seasons[choice.season] || null;
-          var n = parseInt(s && s.id || 0, 10) || 0;
-          if (!n && filter_items && filter_items.season && filter_items.season[choice.season]) {
-            var m = String(filter_items.season[choice.season] || '').match(/(\d+)/);
-            if (m) n = parseInt(m[1], 10) || 0;
-          }
-          return n || 0;
-        } catch (e) { return 0; }
-      }
 
-      function zetflixnetFormatEpisodeDate(date) {
-        date = (date == null ? '' : String(date)).trim();
-        var m = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (!m) return '';
-        var months = ['', 'Січня', 'Лютого', 'Березня', 'Квітня', 'Травня', 'Червня', 'Липня', 'Серпня', 'Вересня', 'Жовтня', 'Листопада', 'Грудня'];
-        var mi = parseInt(m[2], 10) || 0;
-        return parseInt(m[3], 10) + ' ' + (months[mi] || '') + ' ' + m[1];
-      }
 
-      function zetflixnetLoadTmdbSeason(season, call) {
-        try {
-          var movie = object && object.movie || {};
-          var tmdb_id = movie.tmdb_id || movie.id;
-          if (!movie.name || !tmdb_id || !season || !Lampa.Api || !Lampa.Api.sources || !Lampa.Api.sources.tmdb) {
-            call(null);
-            return;
-          }
-          var key = tmdb_id + ':' + season;
-          if (zetflixnet_tmdb_season_cache[key]) {
-            call(zetflixnet_tmdb_season_cache[key]);
-            return;
-          }
-          Lampa.Api.sources.tmdb.get('tv/' + tmdb_id + '/season/' + season, {}, function (data) {
-            zetflixnet_tmdb_season_cache[key] = data || { episodes: [] };
-            call(zetflixnet_tmdb_season_cache[key]);
-          }, function () {
-            zetflixnet_tmdb_season_cache[key] = { episodes: [] };
-            call(zetflixnet_tmdb_season_cache[key]);
-          });
-        } catch (e) {
-          stelsLog('zetflixnet-future-season-load-error', { season: season || 0, error: e && (e.message || e.toString()) || '' });
-          call(null);
-        }
-      }
 
-      function zetflixnetAppendFutureEpisodeCards(renderedItems) {
-        try {
-          if (!(extract && extract.seasons && extract.seasons.length)) return;
-          var seasonNum = zetflixnetSelectedSeasonNumber();
-          if (!seasonNum) return;
-          var existing = {};
-          var maxExisting = 0;
-          (renderedItems || []).forEach(function (it) {
-            var ep = parseInt(it && it.episode || 0, 10) || 0;
-            if (ep) {
-              existing[ep] = true;
-              if (ep > maxExisting) maxExisting = ep;
-            }
-          });
-          zetflixnetLoadTmdbSeason(seasonNum, function (data) {
-            try {
-              var episodes = data && data.episodes || [];
-              if (!episodes.length) {
-                stelsLog('zetflixnet-future-episodes-skip', { season: seasonNum, reason: 'no-tmdb-episodes' });
-                return;
-              }
-              var future = [];
-              episodes.forEach(function (ep) {
-                var epNum = parseInt(ep && ep.episode_number || 0, 10) || 0;
-                if (!epNum || existing[epNum]) return;
-                // Показуємо саме продовження після останньої доступної серії джерела.
-                // Так якщо в сезоні 9 серій, а в джерелі є 4 — 5..9 будуть затемненими карточками з датою.
-                if (maxExisting && epNum <= maxExisting) return;
-                future.push(ep);
-              });
-              future.sort(function (a, b) { return (parseInt(a.episode_number || 0, 10) || 0) - (parseInt(b.episode_number || 0, 10) || 0); });
-              stelsLog('zetflixnet-future-episodes', {
-                season: seasonNum,
-                existing_count: Object.keys(existing).length,
-                max_existing: maxExisting,
-                tmdb_count: episodes.length,
-                future_count: future.length,
-                sample: future.slice(0, 8).map(function (ep) { return { episode: ep.episode_number, name: ep.name || '', air_date: ep.air_date || '' }; })
-              });
-              future.forEach(function (ep) {
-                var epNum = parseInt(ep.episode_number || 0, 10) || 0;
-                var dateText = zetflixnetFormatEpisodeDate(ep.air_date || '');
-                var element = {
-                  title: component.formatEpisodeTitle(seasonNum, epNum, ep.name || ''),
-                  quality: 'Очікується',
-                  info: dateText ? ' / Вихід: ' + dateText : ' / Дата виходу уточнюється',
-                  season: '' + seasonNum,
-                  episode: epNum,
-                  translate_episode_end: Math.max(maxExisting, epNum),
-                  translate_voice: zetflixnetVoiceRaw(choice.voice) || '',
-                  _stels_future_episode: true,
-                  _stels_air_date: ep.air_date || '',
-                  _stels_air_date_text: dateText,
-                  _stels_episode_name: ep.name || ''
-                };
-                var item = Lampa.Template.get('stels_online', element);
-                item.addClass('stels-online-future-episode');
-                item.attr('data-stels-future-episode', '1');
-                item.append('<div class="stels-online-future-badge">' + stelsEscapeHtml(dateText ? 'Вихід: ' + dateText : 'Очікується') + '</div>');
-                item.on('hover:enter click', function () {
-                  Lampa.Noty.show(dateText ? ('Серія ' + epNum + ' вийде: ' + dateText) : ('Серія ' + epNum + ' ще не вийшла'));
-                  return false;
-                });
-                component.append(item);
-              });
-              if (future.length) {
-                try { component.start(true); } catch (e2) {}
-              }
-            } catch (e3) {
-              stelsLog('zetflixnet-future-episodes-render-error', { season: seasonNum, error: e3 && (e3.message || e3.toString()) || '' });
-            }
-          });
-        } catch (e) {
-          stelsLog('zetflixnet-future-episodes-error', { error: e && (e.message || e.toString()) || '' });
-        }
-      }
 
       function extractItems(sources, ctx) {
         if (!sources) return [];
@@ -19707,56 +19609,6 @@ var q = qualityMapFromAlloha(json);
         return zetflixnetItemToElement(found, element);
       }
 
-      function zetflixnetStopCurrentPlayback(reason) {
-        var stopped = { reason: reason || '', player_pause: false, player_stop: false, player_video: false, html_media: 0, removed_sources: 0, errors: [] };
-        try {
-          if (Lampa && Lampa.Player && typeof Lampa.Player.pause === 'function') {
-            Lampa.Player.pause();
-            stopped.player_pause = true;
-          }
-        } catch (e) { stopped.errors.push('player_pause:' + (e && (e.message || e.toString()) || e)); }
-        try {
-          if (Lampa && Lampa.Player && typeof Lampa.Player.stop === 'function') {
-            Lampa.Player.stop();
-            stopped.player_stop = true;
-          }
-        } catch (e0) { stopped.errors.push('player_stop:' + (e0 && (e0.message || e0.toString()) || e0)); }
-        try {
-          var pv = null;
-          if (Lampa && Lampa.Player && typeof Lampa.Player.video === 'function') pv = Lampa.Player.video();
-          if (pv && pv.pause) {
-            pv.pause();
-            try { pv.muted = true; pv.volume = 0; } catch (em) {}
-            try { pv.removeAttribute('src'); } catch (e1) {}
-            try { pv.src = ''; } catch (e2) {}
-            try { pv.srcObject = null; } catch (e2b) {}
-            try {
-              var srcs = pv.querySelectorAll ? pv.querySelectorAll('source') : [];
-              for (var si = 0; si < srcs.length; si++) { try { srcs[si].removeAttribute('src'); stopped.removed_sources++; } catch (es) {} }
-            } catch (es2) {}
-            try { pv.load(); } catch (e3) {}
-            stopped.player_video = true;
-          }
-        } catch (e4) { stopped.errors.push('player_video:' + (e4 && (e4.message || e4.toString()) || e4)); }
-        try {
-          var nodes = document.querySelectorAll('video,audio');
-          for (var i = 0; i < nodes.length; i++) {
-            var m = nodes[i];
-            try { m.pause(); } catch (e5) {}
-            try { m.muted = true; m.volume = 0; } catch (e5b) {}
-            try { m.removeAttribute('src'); } catch (e6) {}
-            try { m.src = ''; } catch (e7) {}
-            try { m.srcObject = null; } catch (e7b) {}
-            try {
-              var children = m.querySelectorAll ? m.querySelectorAll('source') : [];
-              for (var j = 0; j < children.length; j++) { try { children[j].removeAttribute('src'); stopped.removed_sources++; } catch (ecs) {} }
-            } catch (ecs2) {}
-            try { m.load(); } catch (e8) {}
-            stopped.html_media++;
-          }
-        } catch (e9) { stopped.errors.push('html_media:' + (e9 && (e9.message || e9.toString()) || e9)); }
-        stelsLog('zetflixnet-player-stop-before-switch', stopped);
-      }
 
       function zetflixnetKeepCurrentMediaOnly(reason) {
         var result = { reason: reason || '', total: 0, keep: false, stopped: 0, errors: [] };
@@ -20004,20 +19856,6 @@ var q = qualityMapFromAlloha(json);
         } catch (e) { stelsLog('zetflixnet-voice-quality-color-observer-error', { error: e && (e.message || e.toString()) || '' }); }
       }
 
-      function zetflixnetInstallVoiceCheckStyle() {
-        try {
-          if (document.getElementById('stels-zetflixnet-voice-check-style')) return;
-          var st = document.createElement('style');
-          st.id = 'stels-zetflixnet-voice-check-style';
-          st.textContent = '' +
-            '.stels-zetflixnet-voice-row{position:relative!important;}' +
-            '.stels-zetflixnet-voice-row .stels-zetflixnet-voice-check{position:absolute!important;right:1.35em!important;top:50%!important;transform:translateY(-50%)!important;font-size:1.25em!important;line-height:1!important;z-index:9!important;color:#fff!important;text-shadow:0 0 4px rgba(0,0,0,.9)!important;pointer-events:none!important;}' +
-            '.stels-zetflixnet-voice-row.stels-zetflixnet-voice-current .stels-zetflixnet-voice-check{display:block!important;}' +
-            '.stels-zetflixnet-voice-row:not(.stels-zetflixnet-voice-current) [class*=\"check\"]:not(.stels-zetflixnet-voice-check),.stels-zetflixnet-voice-row:not(.stels-zetflixnet-voice-current) [class*=\"checked\"]:not(.stels-zetflixnet-voice-check){opacity:0!important;visibility:hidden!important;}' +
-            '.stels-zetflixnet-voice-row.stels-zetflixnet-voice-current [class*=\"check\"]{opacity:1!important;visibility:visible!important;}';
-          (document.head || document.documentElement).appendChild(st);
-        } catch (e) {}
-      }
 
       function zetflixnetInstallVoiceMenuObserver() {
         // 1.1.127: вимкнено DOM-observer для галочок. Він сканував увесь document.body,
@@ -20367,37 +20205,7 @@ var q = qualityMapFromAlloha(json);
         }
         return Math.max(0, Number(out) || 0);
       }
-      function zetflixnetManualQualitySelectAfterVoiceSwitch(play, wantedLabel, voiceName, item) {
-        if (!play || !wantedLabel || !play.quality) {
-          stelsLog('zetflixnet-voice-quality-select-skip', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), reason: !play ? 'no-play' : !wantedLabel ? 'no-quality' : 'no-map' });
-          return;
-        }
-        var found = zetflixnetFindQualityByLabel(play.quality, wantedLabel);
-        var target = found.url || '';
-        var resolvedLabel = found.label || wantedLabel;
-        var delay = (Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('tizen')) ? 2200 : 1800;
-        stelsLog('zetflixnet-voice-quality-select-plan', { voice: voiceName || '', wanted_quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), resolved_quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), data_id: item && item.data_id || '', delay: delay, quality_keys: play.quality ? Object.keys(play.quality).map(zetflixnetNormalizeQualityLabel) : [], target: zlogUrlInfo(target) });
-        if (!target) return;
-        setTimeout(function () {
-          try {
-            var qplay = {};
-            for (var k in play) qplay[k] = play[k];
-            qplay.url = target;
-            qplay.file = target;
-            qplay.stream = target;
-            qplay._quality = resolvedLabel;
-            qplay.quality_name = resolvedLabel;
-            qplay.qualityLabel = resolvedLabel;
-            qplay._stels_zetflixnet_manual_quality_select = true;
-            qplay._stels_zetflixnet_voice_quality_data_id = item && item.data_id || '';
-            stelsLog('zetflixnet-voice-quality-select-play', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(resolvedLabel || ''), delay: delay, url: zlogUrlInfo(target), data_id: item && item.data_id || '' });
-            Lampa.Player.play(qplay);
-            try { Lampa.Player.playlist([qplay]); } catch (e1) {}
-          } catch (e) {
-            stelsLog('zetflixnet-voice-quality-select-error', { voice: voiceName || '', quality: zetflixnetNormalizeQualityLabel(wantedLabel || ''), delay: delay, error: e && (e.message || e.toString()) || '' });
-          }
-        }, delay);
-      }
+
 
       function zetflixnetVoiceovers(element, selectedVoice) {
         if (!(filter_items.voice_raw && filter_items.voice_raw.length > 1 || filter_items.voice && filter_items.voice.length > 1)) return false;
@@ -27547,42 +27355,7 @@ var q = qualityMapFromAlloha(json);
         search: true,
         kp: true,
         imdb: true
-      }, {
-        name: 'lampaua-klonfun',
-        title: 'KlonFun',
-        source: new lampauaRemoteSource(this, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun', { movieVoiceFilter: true }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'lampaua-jacktor',
-        title: 'JackTor',
-        source: new lampauaRemoteSource(this, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor'),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'lampaua-batkomakhno',
-        title: 'BatkoMakhno',
-        source: new lampauaRemoteSource(this, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno', { movieVoiceFilter: true }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'lampaua-uakino',
-        title: 'UAKino',
-        source: new lampauaRemoteSource(this, object, ['uakino', 'ua kino', 'lme_uakino'], 'UAKino', { movieVoiceFilter: true }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
-        name: 'lampaua-uafilmme',
-        title: 'UafilmMe',
-        source: new lampauaRemoteSource(this, object, ['uafilmme', 'uafilm me', 'lme_uafilmme'], 'UafilmMe', { movieVoiceFilter: true, noLazyPlaylist: true }),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
+      },      {
         name: 'lampaua-rezka720',
         title: 'Rezka ~ 720',
         source: new lampauaRemoteSource(this, object, ['rezka720', 'rezka 720', 'rezka ~ 720', 'hdrezka720', 'pizdatoehd', 'rezka'], 'Rezka ~ 720'),
@@ -27691,38 +27464,7 @@ var q = qualityMapFromAlloha(json);
         search: true,
         kp: false,
         imdb: false
-      }, {
-        name: 'lumex',
-        title: 'Lumex',
-        source: new lumex(this, object),
-        search: false,
-        kp: false,
-        imdb: true,
-        disabled: true
-      }, {
-        name: 'lumex2',
-        title: 'Lumex (Ads)',
-        source: new lumex2(this, object),
-        search: false,
-        kp: false,
-        imdb: true,
-        disabled: true
-      }, {
-        name: 'rezka2',
-        title: 'HDrezka',
-        source: new rezka2(this, object),
-        search: true,
-        kp: false,
-        imdb: false
-      }, {
-        name: 'kinobase',
-        title: 'Kinobaza',
-        source: new kinobase(this, object),
-        search: true,
-        kp: false,
-        imdb: true,
-        disabled: false
-      }, {
+      },     {
         name: 'collaps',
         title: 'Collaps',
         source: new collaps(this, object, false),
@@ -27738,30 +27480,14 @@ var q = qualityMapFromAlloha(json);
         kp: true,
         imdb: true,
         disabled: collapsBlocked
-      }, {
-        name: 'cdnmovies',
-        title: 'CDNMovies',
-        source: new cdnmovies(this, object),
-        search: false,
-        kp: true,
-        imdb: true,
-        disabled: true
-      }, {
+      },  {
         name: 'filmix',
         title: 'Filmix',
         source: new filmix(this, object),
         search: true,
         kp: false,
         imdb: false
-      }, {
-        name: 'zetflix',
-        title: 'Zetflix',
-        source: new zetflix(this, object),
-        search: false,
-        kp: true,
-        imdb: false,
-        disabled: true
-      }, {
+      },  {
         name: 'rc-zetflixdb',
         title: 'ZetflixDB',
         // 1.1.180: візуальне джерело "ZetflixDB" було просто аліасом на старий
@@ -27773,23 +27499,7 @@ var q = qualityMapFromAlloha(json);
         search: true,
         kp: true,
         imdb: true
-      }, {
-        name: 'fancdn',
-        title: 'FanCDN',
-        source: new fancdn(this, object),
-        search: true,
-        kp: false,
-        imdb: false,
-        disabled: disable_dbg
-      }, {
-        name: 'fancdn2',
-        title: 'FanCDN (ID)',
-        source: new fancdn2(this, object),
-        search: false,
-        kp: true,
-        imdb: true,
-        disabled: disable_dbg
-      }, {
+      },   {
         name: 'fanserials',
         title: 'FanSerials',
         source: new fanserials(this, object),
@@ -27805,31 +27515,7 @@ var q = qualityMapFromAlloha(json);
         kp: true,
         imdb: true,
         disabled: true
-      }, {
-        name: 'vibix',
-        title: 'Vibix',
-        source: new vibix(this, object),
-        search: false,
-        kp: true,
-        imdb: true,
-        disabled: true
-      }, {
-        name: 'redheadsound',
-        title: 'RedHeadSound',
-        source: new redheadsound(this, object, false),
-        search: true,
-        kp: false,
-        imdb: true,
-        disabled: true
-      }, {
-        name: 'redheadsound-dash',
-        title: 'RedHeadSound (DASH)',
-        source: new redheadsound(this, object, true),
-        search: true,
-        kp: false,
-        imdb: true,
-        disabled: true
-      }, {
+      },    {
         name: 'zetflixnet',
         title: 'ZetflixNet',
         source: new zetflixnet(this, object),
@@ -27865,22 +27551,7 @@ var q = qualityMapFromAlloha(json);
         search: true,
         kp: true,
         imdb: true
-      }, {
-        name: 'anilibria',
-        title: 'AniLibria',
-        source: new anilibria(this, object),
-        search: true,
-        kp: false,
-        imdb: false,
-        disabled: true
-      }, {
-        name: 'anilibria2',
-        title: 'AniLibria.top',
-        source: new anilibria2(this, object),
-        search: true,
-        kp: false,
-        imdb: false
-      }, {
+      },   {
         name: 'animelib',
         title: 'AnimeLib',
         source: new animelib(this, object),
@@ -27888,14 +27559,7 @@ var q = qualityMapFromAlloha(json);
         kp: false,
         imdb: false,
         disabled: true
-      }, {
-        name: 'kodik',
-        title: 'Kodik',
-        source: new kodik(this, object),
-        search: true,
-        kp: true,
-        imdb: true
-      }, {
+      },  {
         name: 'alloha',
         title: 'Alloha',
         source: new alloha(this, object),
@@ -27903,15 +27567,7 @@ var q = qualityMapFromAlloha(json);
         kp: true,
         imdb: true,
         disabled: true
-      }, {
-        name: 'kinopub',
-        title: 'KinoPub',
-        source: new kinopub(this, object),
-        search: true,
-        kp: false,
-        imdb: true,
-        disabled: true
-      }];
+      }, ];
       var stels_force_source_order = stelsGetSourceOrder();
 
       function stelsBuildFullSourceList(list) {
