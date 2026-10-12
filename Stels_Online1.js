@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.188';
+    var STELS_ONLINE_VERSION = '1.1.189';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13639,37 +13639,46 @@ var q = qualityMapFromAlloha(json);
         if (element.stream) return call(element);
         var id = element.alloha_id || element.media && (element.media.id || element.media.id_file || element.media.file_id) || '';
         if (!id || !player_origin || !player_token) return error && error();
-        var url = player_origin + '/bnsi/movies/' + encodeURIComponent(id);
-        var post = 'token=' + encodeURIComponent(player_token) + '&av1=' + (av1_support ? 'true' : 'false') + '&autoplay=0&audio=&subtitle=';
-        var headers = {
-          'User-Agent': mars_user_agent,
-          'Accept': '*/*',
-          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Origin': player_origin,
-          'Referer': player_referer,
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Sec-Fetch-Dest': 'empty',
-          'Sec-Fetch-Mode': 'cors',
-          'Sec-Fetch-Site': 'same-origin'
-        };
-        var api_prox_enc = '';
-        if (prox2) {
-          api_prox_enc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
-          api_prox_enc += 'param/Accept=' + encodeURIComponent('*/*') + '/';
-          api_prox_enc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
-          api_prox_enc += 'param/Referer=' + encodeURIComponent(player_referer || (player_origin + '/')) + '/';
-          if (player_origin) api_prox_enc += 'param/Origin=' + encodeURIComponent(player_origin) + '/';
-          api_prox_enc += 'param/Content-Type=' + encodeURIComponent('application/x-www-form-urlencoded; charset=UTF-8') + '/';
-          api_prox_enc += 'param/X-Requested-With=' + encodeURIComponent('XMLHttpRequest') + '/';
-          api_prox_enc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('empty') + '/';
-          api_prox_enc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('cors') + '/';
-          api_prox_enc += 'param/Sec-Fetch-Site=' + encodeURIComponent('same-origin') + '/';
+
+        // 1.1.188: у HAR робочий POST /bnsi/movies/{id} іде на
+        // synthezoid-as.stravers.live. Інформаційний iframe іноді приходить з
+        // mars.stravers.live, де fileList відкривається, але stream API повертає
+        // помилку. Тому відокремлюємо origin iframe від origin stream API.
+        var apiOrigins = [];
+        function addApiOrigin(origin, first) {
+          origin = String(origin || '').replace(/\/+$/, '');
+          if (!/^https?:\/\//i.test(origin) || apiOrigins.indexOf(origin) !== -1) return;
+          if (first) apiOrigins.unshift(origin);
+          else apiOrigins.push(origin);
         }
-        requestText(url, function (json) {
+        var currentOrigin = String(player_origin || '').replace(/\/+$/, '');
+        if (/^https:\/\/mars\.stravers\.live$/i.test(currentOrigin)) {
+          addApiOrigin('https://synthezoid-as.stravers.live');
+          addApiOrigin(currentOrigin);
+        } else {
+          addApiOrigin(currentOrigin);
+          addApiOrigin('https://synthezoid-as.stravers.live');
+          addApiOrigin('https://synthezoid-as.stloadi.live');
+          addApiOrigin('https://synthezoid-as.allarknow.online');
+          addApiOrigin('https://blink.stloadi.live');
+          addApiOrigin('https://mars.stravers.live');
+        }
+
+        var post = 'token=' + encodeURIComponent(player_token) + '&av1=' + (av1_support ? 'true' : 'false') + '&autoplay=0&audio=&subtitle=';
+        var finished = false;
+        var originPos = 0;
+        var modePos = 0;
+        var lastMessage = '';
+        function finishError(message) {
+          if (finished) return;
+          finished = true;
+          log('stream-all-origins-failed', { id: id, origins: apiOrigins, message: preview(message || lastMessage || 'stream API failed', 350) });
+          error && error(message || lastMessage || 'stream API failed');
+        }
+        function consumeStream(json, apiOrigin) {
           json = safeJsonParse(json) || json;
-          log('stream-response', { id: id, has_hls: !!(json && json.hlsSource && json.hlsSource.length), keys: json && typeof json == 'object' ? Object.keys(json).slice(0, 20) : [], sample: typeof json == 'string' ? preview(json, 300) : '' });
-          if (!(json && json.hlsSource && json.hlsSource.length)) { error && error(); return; }
+          log('stream-response', { id: id, api_origin: apiOrigin, has_hls: !!(json && json.hlsSource && json.hlsSource.length), keys: json && typeof json == 'object' ? Object.keys(json).slice(0, 20) : [], sample: typeof json == 'string' ? preview(json, 300) : '' });
+          if (!(json && json.hlsSource && json.hlsSource.length)) return false;
           var source = null;
           var voice = String(element.voice || '').toLowerCase();
           json.hlsSource.forEach(function (s) {
@@ -13688,7 +13697,7 @@ var q = qualityMapFromAlloha(json);
           });
           arr.sort(function (a, b) { return b.quality - a.quality; });
           if (!arr.length && source.file) arr.push({ label: source.label || 'Alloha', quality: 0, file: component.proxyLink(String(source.file).split(' or ')[0], prox2, stream_prox_enc) });
-          if (!arr.length) { error && error(); return; }
+          if (!arr.length) return false;
           var quality = false;
           if (arr.length > 1) {
             quality = {};
@@ -13698,8 +13707,75 @@ var q = qualityMapFromAlloha(json);
           element.qualitys = quality;
           element.subtitles = parseSubs(json.tracks || json.subtitles || []);
           element.skipTime = json.skipTime || '';
+          finished = true;
+          log('stream-api-success', { id: id, api_origin: apiOrigin, qualities: arr.map(function (x) { return x.label; }), voice: element.voice || '' });
           call(element);
-        }, error, { kind: 'stream', raw: false, proxy: prox2, prox_enc: api_prox_enc, enc: 'enc2t', post: post, headers: headers, dataType: 'text', timeout: 18000 });
+          return true;
+        }
+        function tryRequest() {
+          if (finished) return;
+          if (originPos >= apiOrigins.length) return finishError(lastMessage);
+          var apiOrigin = apiOrigins[originPos];
+          var url = apiOrigin + '/bnsi/movies/' + encodeURIComponent(id);
+          var isRaw = modePos === 0;
+          modePos++;
+          if (modePos > (prox2 ? 2 : 1)) {
+            modePos = 0;
+            originPos++;
+            return tryRequest();
+          }
+          var referer = String(player_referer || (currentOrigin + '/'));
+          if (currentOrigin && apiOrigin !== currentOrigin) referer = referer.replace(currentOrigin, apiOrigin);
+          var headers = {
+            'User-Agent': mars_user_agent,
+            'Accept': '*/*',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Origin': apiOrigin,
+            'Referer': referer,
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin'
+          };
+          var apiProxEnc = '';
+          if (prox2) {
+            apiProxEnc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
+            apiProxEnc += 'param/Accept=' + encodeURIComponent('*/*') + '/';
+            apiProxEnc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
+            apiProxEnc += 'param/Referer=' + encodeURIComponent(referer) + '/';
+            apiProxEnc += 'param/Origin=' + encodeURIComponent(apiOrigin) + '/';
+            apiProxEnc += 'param/Content-Type=' + encodeURIComponent('application/x-www-form-urlencoded; charset=UTF-8') + '/';
+            apiProxEnc += 'param/X-Requested-With=' + encodeURIComponent('XMLHttpRequest') + '/';
+            apiProxEnc += 'param/Sec-Fetch-Dest=' + encodeURIComponent('empty') + '/';
+            apiProxEnc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('cors') + '/';
+            apiProxEnc += 'param/Sec-Fetch-Site=' + encodeURIComponent('same-origin') + '/';
+          }
+          log('stream-api-request', { id: id, api_origin: apiOrigin, mode: isRaw ? 'direct' : 'proxy', referer: preview(referer, 180) });
+          requestText(url, function (response) {
+            if (!consumeStream(response, apiOrigin)) {
+              lastMessage = 'API response has no hlsSource';
+              if (modePos === 0) { originPos++; }
+              tryRequest();
+            }
+          }, function (message) {
+            lastMessage = message || 'request failed';
+            log('stream-api-attempt-failed', { id: id, api_origin: apiOrigin, mode: isRaw ? 'direct' : 'proxy', message: preview(lastMessage, 300) });
+            if (modePos === 0) originPos++;
+            tryRequest();
+          }, {
+            kind: 'stream',
+            raw: isRaw,
+            proxy: isRaw ? false : prox2,
+            prox_enc: isRaw ? '' : apiProxEnc,
+            enc: 'enc2t',
+            post: post,
+            headers: headers,
+            dataType: 'text',
+            timeout: 18000
+          });
+        }
+        tryRequest();
       }
 
       function append(items) {
@@ -13840,41 +13916,18 @@ var q = qualityMapFromAlloha(json);
             getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
           });
         }
-        function kinobazaFallback(directAlreadyTried) {
+        function kinobazaFallback() {
           tryKinopoiskPage(fromPage, function () {
             searchKinobaza(variants, 0, [], fromPage, function () {
-              log('search-no-page', { title: select_title, direct_already_tried: !!directAlreadyTried });
-              if (directAlreadyTried) {
-                component.emptyForQuery(select_title);
-              } else {
-                getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
-              }
+              log('search-no-page', { title: select_title });
+              getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
             });
-          });
-        }
-        function directInfoThenFallback() {
-          // Спочатку пробуємо актуальний Alloha/cinemaplayer API. Старий lomont.site/gt
-          // може повернути сторінку без inputData, а kinobaza.online/id-<KP> — 404.
-          // У такому разі не вважаємо це кінцевою помилкою: пробуємо прямий information API,
-          // і лише якщо він не містить iframe — повертаємось до пошуку сторінки Kinobaza.
-          getInfoDirect(function (info, pageUrl) {
-            var iframe = findAllohaIframe(info);
-            log('direct-info-recovery', {
-              has_iframe: !!iframe,
-              iframe: preview(iframe, 220),
-              keys: info && typeof info === 'object' ? Object.keys(info).slice(0, 16) : []
-            });
-            if (iframe) successInfo(info, pageUrl);
-            else kinobazaFallback(true);
-          }, function (message) {
-            log('direct-info-recovery-fail', { message: preview(message, 350) });
-            kinobazaFallback(false);
           });
         }
         if (kp && isSerialObject()) {
           loadLegacy(kp, finishLegacy, function (message) {
-            log('legacy-to-direct-info-recovery', { message: preview(message, 400) });
-            directInfoThenFallback();
+            log('legacy-to-kinobaza-fallback', { message: preview(message, 400) });
+            kinobazaFallback();
           });
         } else if (kp) {
           loadLegacyMovie(kp, finishLegacy, function (message) {
