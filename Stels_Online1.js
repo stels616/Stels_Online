@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.187';
+    var STELS_ONLINE_VERSION = '1.1.188';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13840,18 +13840,41 @@ var q = qualityMapFromAlloha(json);
             getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
           });
         }
-        function kinobazaFallback() {
+        function kinobazaFallback(directAlreadyTried) {
           tryKinopoiskPage(fromPage, function () {
             searchKinobaza(variants, 0, [], fromPage, function () {
-              log('search-no-page', { title: select_title });
-              getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
+              log('search-no-page', { title: select_title, direct_already_tried: !!directAlreadyTried });
+              if (directAlreadyTried) {
+                component.emptyForQuery(select_title);
+              } else {
+                getInfoDirect(successInfo, function () { component.emptyForQuery(select_title); });
+              }
             });
+          });
+        }
+        function directInfoThenFallback() {
+          // Спочатку пробуємо актуальний Alloha/cinemaplayer API. Старий lomont.site/gt
+          // може повернути сторінку без inputData, а kinobaza.online/id-<KP> — 404.
+          // У такому разі не вважаємо це кінцевою помилкою: пробуємо прямий information API,
+          // і лише якщо він не містить iframe — повертаємось до пошуку сторінки Kinobaza.
+          getInfoDirect(function (info, pageUrl) {
+            var iframe = findAllohaIframe(info);
+            log('direct-info-recovery', {
+              has_iframe: !!iframe,
+              iframe: preview(iframe, 220),
+              keys: info && typeof info === 'object' ? Object.keys(info).slice(0, 16) : []
+            });
+            if (iframe) successInfo(info, pageUrl);
+            else kinobazaFallback(true);
+          }, function (message) {
+            log('direct-info-recovery-fail', { message: preview(message, 350) });
+            kinobazaFallback(false);
           });
         }
         if (kp && isSerialObject()) {
           loadLegacy(kp, finishLegacy, function (message) {
-            log('legacy-to-kinobaza-fallback', { message: preview(message, 400) });
-            kinobazaFallback();
+            log('legacy-to-direct-info-recovery', { message: preview(message, 400) });
+            directInfoThenFallback();
           });
         } else if (kp) {
           loadLegacyMovie(kp, finishLegacy, function (message) {
