@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.189';
+    var STELS_ONLINE_VERSION = '1.1.190';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13652,10 +13652,15 @@ var q = qualityMapFromAlloha(json);
           else apiOrigins.push(origin);
         }
         var currentOrigin = String(player_origin || '').replace(/\/+$/, '');
+        // 1.1.190: актуальний Chrome HAR відтворює потік через astrid-as.stravers.live,
+        // а не лише через старі mars/synthezoid origins. Перевіряємо новий API-origin першим:
+        // iframe може повернути fileList зі старого домену, але цей домен уже не видає потік.
         if (/^https:\/\/mars\.stravers\.live$/i.test(currentOrigin)) {
+          addApiOrigin('https://astrid-as.stravers.live');
           addApiOrigin('https://synthezoid-as.stravers.live');
           addApiOrigin(currentOrigin);
         } else {
+          addApiOrigin('https://astrid-as.stravers.live');
           addApiOrigin(currentOrigin);
           addApiOrigin('https://synthezoid-as.stravers.live');
           addApiOrigin('https://synthezoid-as.stloadi.live');
@@ -13726,8 +13731,9 @@ var q = qualityMapFromAlloha(json);
           }
           var referer = String(player_referer || (currentOrigin + '/'));
           if (currentOrigin && apiOrigin !== currentOrigin) referer = referer.replace(currentOrigin, apiOrigin);
+          var apiUserAgent = /^https:\/\/astrid-as\.stravers\.live$/i.test(apiOrigin) ? user_agent : mars_user_agent;
           var headers = {
-            'User-Agent': mars_user_agent,
+            'User-Agent': apiUserAgent,
             'Accept': '*/*',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
             'Origin': apiOrigin,
@@ -13740,7 +13746,7 @@ var q = qualityMapFromAlloha(json);
           };
           var apiProxEnc = '';
           if (prox2) {
-            apiProxEnc += 'param/User-Agent=' + encodeURIComponent(mars_user_agent) + '/';
+            apiProxEnc += 'param/User-Agent=' + encodeURIComponent(apiUserAgent) + '/';
             apiProxEnc += 'param/Accept=' + encodeURIComponent('*/*') + '/';
             apiProxEnc += 'param/Accept-Language=' + encodeURIComponent('ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7') + '/';
             apiProxEnc += 'param/Referer=' + encodeURIComponent(referer) + '/';
@@ -13751,7 +13757,7 @@ var q = qualityMapFromAlloha(json);
             apiProxEnc += 'param/Sec-Fetch-Mode=' + encodeURIComponent('cors') + '/';
             apiProxEnc += 'param/Sec-Fetch-Site=' + encodeURIComponent('same-origin') + '/';
           }
-          log('stream-api-request', { id: id, api_origin: apiOrigin, mode: isRaw ? 'direct' : 'proxy', referer: preview(referer, 180) });
+          log('stream-api-request', { id: id, api_origin: apiOrigin, mode: isRaw ? 'direct' : 'proxy', user_agent_mode: apiUserAgent === user_agent ? 'platform' : 'desktop-chrome', referer: preview(referer, 180) });
           requestText(url, function (response) {
             if (!consumeStream(response, apiOrigin)) {
               lastMessage = 'API response has no hlsSource';
