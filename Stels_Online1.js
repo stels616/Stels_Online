@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.190';
+    var STELS_ONLINE_VERSION = '1.1.191';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -106,6 +106,7 @@
 
     var STELS_REQUESTED_SOURCE_NAMES = [      'uaflix',
       'uaserials',
+      'uakinoax',
       'rezka720',
       'makhno',
       'filmix',
@@ -145,7 +146,7 @@
       cdnvideohub: 'CDNVideoHub', vokino: 'Vokino', pidtor: 'PidTor', iptvonline: 'IPTVOnline', veoveo: 'VeoVeo', tartuga: 'Tartuga', 
        vkmovie: 'VKMovie',  
        fanserials: 'FanSerials', 
-           uaserials: 'UASerials', rezka720: 'Rezka ~ 720'
+           uaserials: 'UASerials', uakinoax: 'UAKino', rezka720: 'Rezka ~ 720'
     };
 
     var STELS_SOURCE_ENGINE_ALIAS = {
@@ -155,7 +156,7 @@
        
         pizatoadhd: 'rezka2', zetflixdb: 'rc-zetflixdb', hdvb: 'hdvb',
           kinoukr: 'kinoukr', zerx: 'zerx',
-      eneyida: 'eneyida', uaserials: 'uaserials',  kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix',     rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
+      eneyida: 'eneyida', uaserials: 'uaserials', uakinoax: 'uakinoax',  kinotochka: 'rc-kinotochka', iremux: 'rc-iremux', uaflix: 'lampaua-uaflix',     rezka720: 'lampaua-rezka720', makhno: 'makhno', filmixtv: 'filmix',
       fxapi: 'filmix',    starlight: 'starlight',  
       mirage: 'rc-mirage', vokino: 'cdnvideohub', iptvonline: 'cdnvideohub', veoveo: 'rc-veoveo', tartuga: 'tartuga',  
       vkmovie: 'cdnvideohub', getstv: 'getstv',
@@ -8378,6 +8379,360 @@ var q = qualityMapFromAlloha(json);
                 call({
                   file: element.stream,
                   quality: element.qualitys
+                });
+              }, function () {
+                Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
+              });
+            }
+          });
+        });
+        component.start(true);
+      }
+    }
+
+    // 1.1.191: власне джерело UAKino (uakino.ax) — перенесено з окремого плагіна lampa.js.
+    // Працює через API сайту: /hls/api/lampa/find → /hls/api/play. Посилання на відео
+    // підписані сервером і прив'язані до IP пристрою, тому НЕ проксіюються.
+    function uakinoax(component, _object) {
+      var API = 'https://uakino.ax';
+      var network = new Lampa.Reguest();
+      var nets = [];
+      var object = _object || {};
+      var select_title = '';
+      var destroyed = false;
+      var movie_id = 0;
+      var play_data = null;
+      var has4k = false;
+      var filter_items = { season: [], voice: [] };
+      var voice_entries = [];
+      var season_nums = [];
+      var choice = { season: 0, voice: 0, voice_name: '' };
+
+      function sid() {
+        var s = Lampa.Storage.get('uakino_sid', '');
+        if (!s) {
+          s = 'lp' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+          Lampa.Storage.set('uakino_sid', s);
+        }
+        return s;
+      }
+
+      // Чи тягне пристрій HEVC (від цього залежить, чи пропонувати 4K).
+      function hevc() {
+        try {
+          if (Lampa.Platform.is('android')) return 1;
+          var t = 'video/mp4; codecs="hvc1.1.6.L153.90"';
+          if (window.MediaSource && MediaSource.isTypeSupported && MediaSource.isTypeSupported(t)) return 1;
+          if (document.createElement('video').canPlayType(t)) return 1;
+        } catch (e) {}
+        return 0;
+      }
+
+      function q(o) {
+        return Object.keys(o).filter(function (k) {
+          return o[k] !== undefined && o[k] !== null && o[k] !== '';
+        }).map(function (k) {
+          return k + '=' + encodeURIComponent(o[k]);
+        }).join('&');
+      }
+
+      // Lampa вмикає hls.js лише коли в адресі є розширення .m3u8
+      function m3u8(u) {
+        return u && !/\.m3u8($|\?)/.test(u) ? u + '.m3u8' : u;
+      }
+
+      function getJSON(url, ok, fail, net) {
+        var n = net || network;
+        try { n.timeout(15000); } catch (e) {}
+        n["native"](url, function (json) {
+          if (!destroyed) ok(json || {});
+        }, function (a, c) {
+          if (destroyed) return;
+          // find повертає 404 з {found:false}, коли тайтлу немає
+          if (a && a.status == 404) {
+            var j = null;
+            try { j = JSON.parse(a.responseText); } catch (e) {}
+            return ok(j || { found: false });
+          }
+          fail(n.errorDecode ? n.errorDecode(a, c) : 'network');
+        }, false, { dataType: 'json' });
+      }
+
+      function playUrl(opt) {
+        return API + '/hls/api/play?' + q({
+          movie: movie_id, s: sid(), hevc: hevc(), voice: opt.voice,
+          season: opt.season, episode: opt.episode, q: opt.q
+        });
+      }
+
+      function voiceTitle(v) {
+        return v || 'Українська';
+      }
+
+      /**
+       * Начать поиск
+       */
+      this.search = function (_object) {
+        object = _object;
+        var movie = object.movie || {};
+        select_title = object.search || movie.title || movie.name || '';
+        var tv = !!(movie.name || movie.number_of_seasons || movie.first_air_date);
+        var date = movie.release_date || movie.first_air_date || '';
+        var by_id = !object.clarification;
+        var find_url = API + '/hls/api/lampa/find?' + q({
+          tmdb: by_id ? movie.id : '',
+          imdb: by_id ? movie.imdb_id : '',
+          type: tv ? 'tv' : 'movie',
+          year: by_id ? date.slice(0, 4) : '',
+          title: by_id ? (movie.title || movie.name) : select_title,
+          orig: by_id ? (movie.original_title || movie.original_name) : ''
+        });
+        var fail = function (e) { component.empty(e); };
+
+        network.clear();
+        getJSON(find_url, function (f) {
+          if (!f.found) return component.emptyForQuery(select_title);
+          movie_id = f.movie_id;
+          network.clear();
+          getJSON(playUrl({}), function (p) {
+            play_data = p;
+            has4k = !!p.alt4k && hevc() === 1;
+            component.loading(false);
+            buildFilter();
+            append(filtred());
+          }, fail);
+        }, fail);
+      };
+
+      this.extendChoice = function (saved) {
+        Lampa.Arrays.extend(choice, saved, true);
+      };
+
+      /**
+       * Сброс фильтра
+       */
+      this.reset = function () {
+        component.reset();
+        choice = { season: 0, voice: 0, voice_name: '' };
+        buildFilter();
+        append(filtred());
+        component.saveChoice(choice);
+      };
+
+      /**
+       * Применить фильтр
+       */
+      this.filter = function (type, a, b) {
+        choice[a.stype] = b.index;
+        if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index];
+        component.reset();
+        buildFilter();
+        append(filtred());
+        component.saveChoice(choice);
+      };
+
+      /**
+       * Уничтожить
+       */
+      this.destroy = function () {
+        destroyed = true;
+        try { stelsStopSafePrecheck(); } catch (e) {}
+        network.clear();
+        nets.forEach(function (n) { try { n.clear(); } catch (e) {} });
+        nets = [];
+        play_data = null;
+      };
+
+      function episodesOfVoice(v) {
+        return (play_data.episodes || []).filter(function (e) {
+          return (e.voice || null) === (v || null) && e.episode != null;
+        });
+      }
+
+      /**
+       * Построить фильтр
+       */
+      function buildFilter() {
+        var voices = play_data.voices && play_data.voices.length ? play_data.voices : [null];
+        voice_entries = voices.map(function (v) { return { title: voiceTitle(v), voice: v, q: '' }; });
+        // 4K — окремий рядок в кінці списку озвучок (лише фільми і лише де пристрій тягне HEVC); за замовчуванням — звичайна озвучка
+        if (has4k && !play_data.is_series) voice_entries.push({ title: '4K · найвища якість', voice: null, q: '2160' });
+
+        filter_items = { season: [], voice: voice_entries.map(function (e) { return e.title; }) };
+
+        if (choice.voice_name) {
+          var inx = filter_items.voice.indexOf(choice.voice_name);
+          if (inx !== -1) choice.voice = inx;
+        }
+        if (!filter_items.voice[choice.voice]) choice.voice = 0;
+
+        season_nums = [];
+        if (play_data.is_series) {
+          var v = voice_entries[choice.voice].voice;
+          season_nums = episodesOfVoice(v).map(function (e) { return e.season; }).filter(function (s, i, a) {
+            return a.indexOf(s) === i;
+          }).sort(function (a, b) { return a - b; });
+          filter_items.season = season_nums.map(function (s) { return Lampa.Lang.translate('torrent_serial_season') + ' ' + s; });
+          if (!filter_items.season[choice.season]) choice.season = 0;
+        }
+
+        component.filter(filter_items, choice, play_data.is_series ? (play_data.episodes || []) : []);
+      }
+
+      /**
+       * Отфильтровать файлы
+       */
+      function filtred() {
+        var entry = voice_entries[choice.voice] || { title: voiceTitle(null), voice: null, q: '' };
+        var items = [];
+
+        if (!play_data.is_series) {
+          items.push({
+            title: select_title,
+            quality: entry.q ? '4K' : '',
+            info: voice_entries.length > 1 || entry.q ? ' / ' + Lampa.Utils.shortText(entry.title, 50) : '',
+            voice: entry.voice,
+            q: entry.q
+          });
+          return items;
+        }
+
+        var s = season_nums[choice.season];
+        episodesOfVoice(entry.voice).filter(function (e) {
+          return e.season === s;
+        }).sort(function (a, b) {
+          return a.episode - b.episode;
+        }).forEach(function (e) {
+          // «Серія 1 — Серія 1» не дублюємо
+          var own = e.title && !/^\s*(серія|епізод|episode)\s*\d+\s*$/i.test(e.title);
+          items.push({
+            title: component.formatEpisodeTitle(s, e.episode, own ? e.title : ''),
+            quality: '',
+            info: ' / ' + Lampa.Utils.shortText(entry.title, 50),
+            season: s,
+            episode: e.episode,
+            voice: entry.voice,
+            q: ''
+          });
+        });
+        return items;
+      }
+
+      /**
+       * Получить поток
+       */
+      function getStream(element, call, error) {
+        if (element.stream) return call(element);
+        var net = new Lampa.Reguest();
+        nets.push(net);
+        getJSON(playUrl({ voice: element.voice, season: element.season, episode: element.episode, q: element.q }), function (p) {
+          var url = p.manifest_abs || (p.manifest ? API + p.manifest : '');
+          if (!url) return error();
+          element.stream = m3u8(url);
+          element.subtitles = p.subs && p.subs.length ? p.subs.map(function (s) {
+            return { label: s.label, url: API + s.url };
+          }) : false;
+          call(element);
+        }, function () {
+          error();
+        }, net);
+      }
+
+      function playItem(element, title) {
+        return {
+          url: element.stream,
+          subtitles: element.subtitles,
+          timeline: element.timeline,
+          title: title,
+          // програмний HLS: рідний плеєр на перемотці назад віддає «відео недоступно»
+          hls_type: 'hlsjs',
+          // використовує окремий плагін UAKino (lampa.js), якщо він теж встановлений
+          uakino: { movie: movie_id, voice: element.voice, season: element.season, episode: element.episode }
+        };
+      }
+
+      /**
+       * Добавить видео
+       */
+      function append(items) {
+        component.reset();
+        var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        var last_episode = component.getLastEpisode(items);
+        try { component.rememberVoiceEpisodes(items, filter_items, choice, 'append-items'); } catch (eVoiceEpisodes) {}
+        items.forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = last_episode;
+            element.translate_voice = filter_items.voice[choice.voice];
+          }
+
+          var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
+          var view = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', element);
+          var hash_file = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title, filter_items.voice[choice.voice]].join('') : object.movie.original_title + element.title);
+          element.timeline = view;
+          item.append(Lampa.Timeline.render(view));
+
+          if (Lampa.Timeline.details) {
+            item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
+          }
+
+          if (viewed.indexOf(hash_file) !== -1) item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+          item.on('hover:enter', function () {
+            if (element.loading) return;
+            if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
+            element.loading = true;
+            getStream(element, function (element) {
+              element.loading = false;
+              var first = playItem(element, element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title));
+              Lampa.Player.play(first);
+
+              if (element.season && Lampa.Platform.version) {
+                var playlist = [];
+                items.forEach(function (elem) {
+                  if (elem == element) {
+                    playlist.push(first);
+                  } else {
+                    var cell = playItem(elem, elem.title);
+                    cell.url = function (call) {
+                      getStream(elem, function (elem) {
+                        cell.url = elem.stream;
+                        cell.subtitles = elem.subtitles;
+                        call();
+                      }, function () {
+                        cell.url = '';
+                        call();
+                      });
+                    };
+                    playlist.push(cell);
+                  }
+                });
+                Lampa.Player.playlist(playlist);
+              } else {
+                Lampa.Player.playlist([first]);
+              }
+
+              if (viewed.indexOf(hash_file) == -1) {
+                viewed.push(hash_file);
+                item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
+                Lampa.Storage.set('online_view', viewed);
+              }
+            }, function () {
+              element.loading = false;
+              Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
+            });
+          });
+          component.append(item);
+          component.contextmenu({
+            item: item,
+            view: view,
+            viewed: viewed,
+            hash_file: hash_file,
+            element: element,
+            file: function file(call) {
+              getStream(element, function (element) {
+                call({
+                  file: element.stream,
+                  quality: false
                 });
               }, function () {
                 Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
@@ -27512,6 +27867,14 @@ var q = qualityMapFromAlloha(json);
         kp: true,
         imdb: true
       }, {
+        name: 'uakinoax',
+        title: 'UAKino',
+        // 1.1.191: прямий парсер uakino.ax (API з окремого плагіна lampa.js).
+        source: new uakinoax(this, object),
+        search: true,
+        kp: false,
+        imdb: false
+      }, {
         name: 'uaserials',
         title: 'UASerials',
         source: new uaserials(this, object),
@@ -28436,6 +28799,7 @@ var q = qualityMapFromAlloha(json);
           if (name === 'tartuga' || engine === 'tartuga') return new tartuga(fake, object);
           if (name === 'mirage' || engine === 'rc-mirage') return new lampauaRemoteSource(fake, object, ['mirage', 'мираж'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true, sourceQualityHint: true });
           if (name === 'uaserials' || engine === 'uaserials') return new uaserials(fake, object);
+          if (name === 'uakinoax' || engine === 'uakinoax') return new uakinoax(fake, object);
           if (name === 'eneyida' || engine === 'eneyida') return new eneyida(fake, object);
           if (engine === 'lampaua-eneyida') return new eneyida(fake, object);
           if (name === 'kinoukr' || engine === 'kinoukr') return new lampauaRemoteSource(fake, object, ['kinoukr', 'kino ukr', 'kinoukr український'], 'KinoUkr', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinoukr', sourceQualityHint: true });
