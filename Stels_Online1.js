@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.194';
+    var STELS_ONLINE_VERSION = '1.1.195';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -28642,6 +28642,9 @@ var q = qualityMapFromAlloha(json);
             var mkey = stelsSourceMenuKey(raw);
             var replacement = map[mkey] || map[clean];
             if (!replacement) return;
+            // 1.1.195: кілька проходів патча поспіль (refresh, observer, таймери) без змін у даних
+            // переписували HTML усіх рядків і давали мерехтіння галочок/якості — пропускаємо актуальні рядки.
+            if (row.attr('data-stels-src-sig') === replacement) { patchedCount++; return; }
 
             var target = row.children().filter(function () {
               var t = ($(this).text() || '').replace(/\s+/g, ' ').trim();
@@ -28660,6 +28663,7 @@ var q = qualityMapFromAlloha(json);
 
             if (target.length) { target.html(replacement); patchedCount++; }
             else { row.html(replacement); patchedCount++; }
+            row.attr('data-stels-src-sig', replacement);
           });
           if (patchedCount > 2) stelsMarkSourceSortMenuOpen('patch-open-source-sort-menu');
           stelsPatchUaFlagIcons(document.body);
@@ -29234,7 +29238,12 @@ var q = qualityMapFromAlloha(json);
         });
         qualityFilter.subtitle = preferably;
         qualityFilter.items = items;
-        setTimeout(this.closeFilter, 10);
+        // 1.1.195: component.filter може прийти асинхронно (джерело дочитало дані, voice_quality) саме тоді,
+        // коли користувач тримає відкритим меню сортування джерел — раніше це закривало меню за 10 мс.
+        // Явне закриття після вибору джерела (changeBalanser) не змінено.
+        var keepSourceMenu = false;
+        try { keepSourceMenu = stelsIsSourceSortMenuProtected(); } catch (eKeepMenu) {}
+        if (!keepSourceMenu) setTimeout(this.closeFilter, 10);
       };
       /**
        * Начать поиск
