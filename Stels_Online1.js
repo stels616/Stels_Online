@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.191';
+    var STELS_ONLINE_VERSION = '1.1.192';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -8391,6 +8391,7 @@ var q = qualityMapFromAlloha(json);
     }
 
     // 1.1.191: власне джерело UAKino (uakino.ax) — перенесено з окремого плагіна lampa.js.
+    // 1.1.192: озвучки — у кнопці плеєра (translate.tracks), 4K — у виборі якості плеєра, бейдж якості в списку джерел.
     // Працює через API сайту: /hls/api/lampa/find → /hls/api/play. Посилання на відео
     // підписані сервером і прив'язані до IP пристрою, тому НЕ проксіюються.
     function uakinoax(component, _object) {
@@ -8469,6 +8470,21 @@ var q = qualityMapFromAlloha(json);
         return v || 'Українська';
       }
 
+      function streamUrl(p) {
+        var url = p && (p.manifest_abs || (p.manifest ? API + p.manifest : ''));
+        return url ? m3u8(url) : '';
+      }
+
+      function subsOf(p) {
+        return p && p.subs && p.subs.length ? p.subs.map(function (s) {
+          return { label: s.label, url: API + s.url };
+        }) : false;
+      }
+
+      function sameVoice(a, b) {
+        return (a || null) === (b || null);
+      }
+
       /**
        * Начать поиск
        */
@@ -8496,7 +8512,8 @@ var q = qualityMapFromAlloha(json);
           network.clear();
           getJSON(playUrl({}), function (p) {
             play_data = p;
-            has4k = !!p.alt4k && hevc() === 1;
+            // 4K лише для фільмів і лише там, де пристрій тягне HEVC
+            has4k = !!p.alt4k && !p.is_series && hevc() === 1;
             component.loading(false);
             buildFilter();
             append(filtred());
@@ -8545,7 +8562,7 @@ var q = qualityMapFromAlloha(json);
 
       function episodesOfVoice(v) {
         return (play_data.episodes || []).filter(function (e) {
-          return (e.voice || null) === (v || null) && e.episode != null;
+          return sameVoice(e.voice, v) && e.episode != null;
         });
       }
 
@@ -8554,10 +8571,7 @@ var q = qualityMapFromAlloha(json);
        */
       function buildFilter() {
         var voices = play_data.voices && play_data.voices.length ? play_data.voices : [null];
-        voice_entries = voices.map(function (v) { return { title: voiceTitle(v), voice: v, q: '' }; });
-        // 4K — окремий рядок в кінці списку озвучок (лише фільми і лише де пристрій тягне HEVC); за замовчуванням — звичайна озвучка
-        if (has4k && !play_data.is_series) voice_entries.push({ title: '4K · найвища якість', voice: null, q: '2160' });
-
+        voice_entries = voices.map(function (v) { return { title: voiceTitle(v), voice: v }; });
         filter_items = { season: [], voice: voice_entries.map(function (e) { return e.title; }) };
 
         if (choice.voice_name) {
@@ -8579,76 +8593,206 @@ var q = qualityMapFromAlloha(json);
         component.filter(filter_items, choice, play_data.is_series ? (play_data.episodes || []) : []);
       }
 
+      // Якість у списку: 4K, якщо в тайтла є власний 4K, інакше 1080p (максимум звичайного потоку UAKino)
+      function movieItem(entry) {
+        return {
+          title: select_title,
+          quality: has4k ? '4K' : '1080p',
+          info: voice_entries.length > 1 ? ' / ' + Lampa.Utils.shortText(entry.title, 50) : '',
+          voice: entry.voice,
+          has4k: has4k
+        };
+      }
+
+      function episodeItem(e, entry) {
+        // «Серія 1 — Серія 1» не дублюємо
+        var own = e.title && !/^\s*(серія|епізод|episode)\s*\d+\s*$/i.test(e.title);
+        return {
+          title: component.formatEpisodeTitle(e.season, e.episode, own ? e.title : ''),
+          quality: '1080p',
+          info: ' / ' + Lampa.Utils.shortText(entry.title, 50),
+          season: e.season,
+          episode: e.episode,
+          voice: entry.voice
+        };
+      }
+
+      function seasonItems(entry, season) {
+        return episodesOfVoice(entry.voice).filter(function (e) {
+          return e.season === season;
+        }).sort(function (a, b) {
+          return a.episode - b.episode;
+        }).map(function (e) {
+          return episodeItem(e, entry);
+        });
+      }
+
       /**
        * Отфильтровать файлы
        */
       function filtred() {
-        var entry = voice_entries[choice.voice] || { title: voiceTitle(null), voice: null, q: '' };
-        var items = [];
+        var entry = voice_entries[choice.voice] || { title: voiceTitle(null), voice: null };
+        if (!play_data.is_series) return [movieItem(entry)];
+        return seasonItems(entry, season_nums[choice.season]);
+      }
 
-        if (!play_data.is_series) {
-          items.push({
-            title: select_title,
-            quality: entry.q ? '4K' : '',
-            info: voice_entries.length > 1 || entry.q ? ' / ' + Lampa.Utils.shortText(entry.title, 50) : '',
-            voice: entry.voice,
-            q: entry.q
-          });
-          return items;
-        }
+      function titleOf(el) {
+        return el.season ? el.title : select_title + (el.title == select_title ? '' : ' / ' + el.title);
+      }
 
-        var s = season_nums[choice.season];
-        episodesOfVoice(entry.voice).filter(function (e) {
-          return e.season === s;
-        }).sort(function (a, b) {
-          return a.episode - b.episode;
-        }).forEach(function (e) {
-          // «Серія 1 — Серія 1» не дублюємо
-          var own = e.title && !/^\s*(серія|епізод|episode)\s*\d+\s*$/i.test(e.title);
-          items.push({
-            title: component.formatEpisodeTitle(s, e.episode, own ? e.title : ''),
-            quality: '',
-            info: ' / ' + Lampa.Utils.shortText(entry.title, 50),
-            season: s,
-            episode: e.episode,
-            voice: entry.voice,
-            q: ''
-          });
-        });
-        return items;
+      function hashOf(el, with_voice) {
+        var movie_name = object.movie.original_title;
+        if (!el.season) return Lampa.Utils.hash(with_voice ? movie_name + el.title : movie_name);
+        var parts = [el.season, el.season > 10 ? ':' : '', el.episode, movie_name];
+        if (with_voice) parts.push(filter_items.voice[choice.voice]);
+        return Lampa.Utils.hash(parts.join(''));
       }
 
       /**
-       * Получить поток
+       * Получить поток (звичайний + власний 4K для фільмів, якщо є)
        */
       function getStream(element, call, error) {
-        if (element.stream) return call(element);
         var net = new Lampa.Reguest();
         nets.push(net);
-        getJSON(playUrl({ voice: element.voice, season: element.season, episode: element.episode, q: element.q }), function (p) {
-          var url = p.manifest_abs || (p.manifest ? API + p.manifest : '');
+        var pending = element.has4k ? 2 : 1, main = null, alt = null, failed = false;
+        var done = function () {
+          if (--pending > 0 || failed) return;
+          var url = streamUrl(main);
           if (!url) return error();
-          element.stream = m3u8(url);
-          element.subtitles = p.subs && p.subs.length ? p.subs.map(function (s) {
-            return { label: s.label, url: API + s.url };
-          }) : false;
+          element.stream = url;
+          element.subtitles = subsOf(main) || subsOf(alt) || false;
+          var alt_url = streamUrl(alt);
+          element.qualitys = alt_url ? { '4K': alt_url, '1080p': url } : false;
           call(element);
+        };
+        getJSON(playUrl({ voice: element.voice, season: element.season, episode: element.episode }), function (p) {
+          main = p;
+          done();
         }, function () {
+          if (failed) return;
+          failed = true;
           error();
         }, net);
+        if (element.has4k) {
+          var net4k = new Lampa.Reguest();
+          nets.push(net4k);
+          // 4K — окремий файл (без озвучки), його відсутність не блокує звичайний потік
+          getJSON(playUrl({ q: '2160' }), function (p) {
+            alt = p;
+            done();
+          }, function () {
+            done();
+          }, net4k);
+        }
       }
 
-      function playItem(element, title) {
-        return {
+      /**
+       * Кнопка вибору озвучки в плеєрі (translate.tracks)
+       */
+      function voiceTracks(element) {
+        if (voice_entries.length < 2) return false;
+        return voice_entries.map(function (entry) {
+          var sel = sameVoice(entry.voice, element.voice);
+          return {
+            language: entry.title,
+            name: entry.title,
+            title: entry.title,
+            number: false,
+            hide_index: true,
+            voice: entry.voice,
+            selected: sel,
+            active: sel,
+            checked: sel,
+            current: sel,
+            enabled: true,
+            onSelect: function () {
+              switchVoice(element, entry);
+            }
+          };
+        });
+      }
+
+      function switchVoice(element, entry) {
+        if (sameVoice(entry.voice, element.voice)) return;
+        var target, items = null;
+        if (element.season) {
+          items = seasonItems(entry, element.season);
+          items.forEach(function (it) {
+            it.timeline = Lampa.Timeline.view(hashOf(it));
+            if (it.episode === element.episode) target = it;
+          });
+          if (!target) return Lampa.Noty.show('Не вдалося знайти переклад: ' + entry.title);
+        } else {
+          target = movieItem(entry);
+          target.timeline = element.timeline;
+        }
+        try { Lampa.Player.loading(true); } catch (e) {}
+        getStream(target, function (t) {
+          try { Lampa.Player.loading(false); } catch (e) {}
+          var current = Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+          var play = buildPlay(t, current.title || titleOf(t));
+          play.timeline = current.timeline || t.timeline;
+          Lampa.Player.play(play);
+          if (items && Lampa.Platform.version) Lampa.Player.playlist(buildPlaylist(items, t, play));
+          else Lampa.Player.playlist([play]);
+          try {
+            var inx = filter_items.voice.indexOf(entry.title);
+            if (inx !== -1) {
+              choice.voice = inx;
+              choice.voice_name = entry.title;
+              component.saveChoice(choice);
+            }
+          } catch (e) {}
+        }, function () {
+          try { Lampa.Player.loading(false); } catch (e) {}
+          Lampa.Noty.show('Не вдалося завантажити переклад: ' + entry.title);
+        });
+      }
+
+      function buildPlay(element, title) {
+        var tracks = voiceTracks(element);
+        var play = {
           url: element.stream,
           subtitles: element.subtitles,
           timeline: element.timeline,
           title: title,
           // програмний HLS: рідний плеєр на перемотці назад віддає «відео недоступно»
           hls_type: 'hlsjs',
+          hls_manifest_timeout: 30000,
           // використовує окремий плагін UAKino (lampa.js), якщо він теж встановлений
           uakino: { movie: movie_id, voice: element.voice, season: element.season, episode: element.episode }
         };
+        if (element.qualitys) {
+          // 4K — у виборі якості плеєра; за замовчуванням звичайний потік, якщо в налаштуваннях Lampa не 4K
+          var pref = parseInt(Lampa.Storage.get('video_quality_default', '1080'), 10) || 1080;
+          play.url = pref >= 2160 && element.qualitys['4K'] ? element.qualitys['4K'] : element.stream;
+          play.quality = component.renameQualityMap(element.qualitys);
+        }
+        if (tracks) {
+          play.translate = { tracks: tracks };
+          play.voiceovers = tracks;
+          play.voice_name = voiceTitle(element.voice);
+          play.translate_voice = voiceTitle(element.voice);
+        }
+        return play;
+      }
+
+      function buildPlaylist(items, active, first) {
+        return items.map(function (elem) {
+          if (elem === active || (active.season && elem.season === active.season && elem.episode === active.episode && sameVoice(elem.voice, active.voice))) return first;
+          var cell = buildPlay(elem, elem.title);
+          cell.url = function (call) {
+            getStream(elem, function (el) {
+              cell.url = el.stream;
+              cell.subtitles = el.subtitles;
+              call();
+            }, function () {
+              cell.url = '';
+              call();
+            });
+          };
+          return cell;
+        });
       }
 
       /**
@@ -8665,10 +8809,9 @@ var q = qualityMapFromAlloha(json);
             element.translate_voice = filter_items.voice[choice.voice];
           }
 
-          var hash = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title].join('') : object.movie.original_title);
-          var view = Lampa.Timeline.view(hash);
+          var view = Lampa.Timeline.view(hashOf(element));
           var item = Lampa.Template.get('stels_online', element);
-          var hash_file = Lampa.Utils.hash(element.season ? [element.season, element.season > 10 ? ':' : '', element.episode, object.movie.original_title, filter_items.voice[choice.voice]].join('') : object.movie.original_title + element.title);
+          var hash_file = hashOf(element, true);
           element.timeline = view;
           item.append(Lampa.Timeline.render(view));
 
@@ -8683,33 +8826,11 @@ var q = qualityMapFromAlloha(json);
             element.loading = true;
             getStream(element, function (element) {
               element.loading = false;
-              var first = playItem(element, element.season ? element.title : select_title + (element.title == select_title ? '' : ' / ' + element.title));
+              var first = buildPlay(element, titleOf(element));
               Lampa.Player.play(first);
 
-              if (element.season && Lampa.Platform.version) {
-                var playlist = [];
-                items.forEach(function (elem) {
-                  if (elem == element) {
-                    playlist.push(first);
-                  } else {
-                    var cell = playItem(elem, elem.title);
-                    cell.url = function (call) {
-                      getStream(elem, function (elem) {
-                        cell.url = elem.stream;
-                        cell.subtitles = elem.subtitles;
-                        call();
-                      }, function () {
-                        cell.url = '';
-                        call();
-                      });
-                    };
-                    playlist.push(cell);
-                  }
-                });
-                Lampa.Player.playlist(playlist);
-              } else {
-                Lampa.Player.playlist([first]);
-              }
+              if (element.season && Lampa.Platform.version) Lampa.Player.playlist(buildPlaylist(items, element, first));
+              else Lampa.Player.playlist([first]);
 
               if (viewed.indexOf(hash_file) == -1) {
                 viewed.push(hash_file);
@@ -8730,9 +8851,10 @@ var q = qualityMapFromAlloha(json);
             element: element,
             file: function file(call) {
               getStream(element, function (element) {
+                // quality з картою якостей дозволяє precheck побачити 4K у бейджі джерела
                 call({
                   file: element.stream,
-                  quality: false
+                  quality: element.qualitys || false
                 });
               }, function () {
                 Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
@@ -32762,6 +32884,69 @@ var q = qualityMapFromAlloha(json);
       envSnapshot('startup');
     }
 
+    // 1.1.192: розділ «У 4K» у вертикальному меню (перенесено з lampa.js): каталог тайтлів UAKino, що є в 4K.
+    function stelsInitUakino4kMenu() {
+      var API = 'https://uakino.ax';
+      var SRC = 'stels_uakino';
+      var tmdb = function () { return Lampa.Api.sources.tmdb; };
+
+      function list(cat, page, limit, ok, fail) {
+        var net = new Lampa.Reguest();
+        net.timeout(15000);
+        net["native"](API + '/hls/api/lampa/list?cat=' + encodeURIComponent(cat) + '&page=' + (page || 1) + '&limit=' + (limit || 30), function (d) {
+          ok(d || {});
+        }, function (a, c) {
+          fail(net.errorDecode ? net.errorDecode(a, c) : 'network');
+        }, false, { dataType: 'json' });
+      }
+
+      if (!Lampa.Api || !Lampa.Api.sources) return;
+      Lampa.Api.sources[SRC] = {
+        category_full: function (params, oncomplite, onerror) {
+          list(params.url || '4k', params.page || 1, 30, function (d) {
+            oncomplite({ results: d.results || [], total_pages: d.total_pages, page: params.page || 1, total_results: d.total_results, source: SRC });
+          }, onerror);
+        },
+        list: function (params, oncomplite, onerror) {
+          list(params.url || '4k', params.page || 1, 30, oncomplite, onerror);
+        },
+        full: function (params, oncomplite, onerror) { tmdb().full(params, oncomplite, onerror); },
+        seasons: function (tv, from, oncomplite) { tmdb().seasons(tv, from, oncomplite); },
+        person: function (params, oncomplite, onerror) { tmdb().person(params, oncomplite, onerror); },
+        search: function (params, oncomplite) { tmdb().search ? tmdb().search(params, oncomplite) : oncomplite([]); },
+        menu: function (params, oncomplite) { oncomplite([]); },
+        clear: function () {}
+      };
+
+      function addMenu() {
+        // якщо окремий плагін UAKino (lampa.js) вже додав «У 4K» — не дублюємо
+        if ($('.menu [data-uak="4k"], .menu [data-stels-uak4k]').length) return;
+        var $list = $('.menu .menu__list').eq(0);
+        if (!$list.length) return;
+        // Lampa запам'ятовує порядок меню (menu_sort) і ставить невідомі пункти в кінець — тримаємо «У 4K» нагорі
+        try {
+          var ms = Lampa.Storage.get('menu_sort', '[]');
+          if (typeof ms === 'string') ms = JSON.parse(ms);
+          if (ms && ms.length) {
+            ms = ms.filter(function (x) { return x !== '\u0423 4K'; });
+            ms.unshift('\u0423 4K');
+            Lampa.Storage.set('menu_sort', ms);
+          }
+        } catch (e) {}
+        var ico = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2.5"/><text x="12" y="15.4" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor" stroke="none" font-family="Arial,sans-serif">4K</text></svg>';
+        var item = $('<li class="menu__item selector" data-stels-uak4k="1"><div class="menu__ico">' + ico + '</div><div class="menu__text">\u0423 4K</div></li>');
+        item.on('hover:enter', function () {
+          Lampa.Activity.push({ url: '4k', title: '\u0423 4K', component: 'category_full', source: SRC, page: 1, title_from: 'UAKino' });
+        });
+        $list.prepend(item);
+      }
+
+      // з невеликою затримкою: спершу встигає відпрацювати lampa.js, якщо він теж встановлений
+      var run = function () { setTimeout(function () { try { addMenu(); } catch (e) { console.log('stels uakino 4k menu', e); } }, 1500); };
+      if (window.appready) run();
+      else Lampa.Listener.follow('app', function (e) { if (e.type === 'ready') run(); });
+    }
+
     function startPlugin() {
       if (Utils.isDebug3()) return;
       logApp();
@@ -32775,6 +32960,7 @@ var q = qualityMapFromAlloha(json);
       initMain();
       initFilmix();
       initSettings();
+      try { stelsInitUakino4kMenu(); } catch (eUak4k) {}
     }
 
     if (!window.stels_online_mod_engine_loaded) {
