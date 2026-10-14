@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.193';
+    var STELS_ONLINE_VERSION = '1.1.194';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -536,7 +536,7 @@
       return stelsIsOnlyVoiceDisplayPatch(prev, next);
     }
 
-    function stelsBuildDisplayFilterItems(filterItems, sourceName) {
+    function stelsBuildDisplayFilterItems(filterItems, sourceName, fallbackQuality) {
       var out = {};
       filterItems = filterItems || {};
       Object.keys(filterItems).forEach(function (k) {
@@ -552,6 +552,8 @@
             var q = qarr[index] || '';
             if (!q && info[index]) q = stelsVoiceQualityLabelFromAny(info[index]);
             if (!q) q = stelsVoiceQualityPrefix(voice || '');
+            // 1.1.194: джерело не дало якість по перекладу — показуємо відому якість джерела (як у Eneyida)
+            if (!q && fallbackQuality) q = fallbackQuality;
             var ep = parseInt(earr[index], 10) || 0;
             return stelsVoiceDisplayName(voice, q, ep);
           });
@@ -8573,7 +8575,7 @@ var q = qualityMapFromAlloha(json);
       function buildFilter() {
         var voices = play_data.voices && play_data.voices.length ? play_data.voices : [null];
         voice_entries = voices.map(function (v) { return { title: voiceTitle(v), voice: v }; });
-        filter_items = { season: [], voice: voice_entries.map(function (e) { return e.title; }) };
+        filter_items = { season: [], voice: voice_entries.map(function (e) { return e.title; }), voice_quality: voice_entries.map(function () { return '1080p'; }) };
 
         if (choice.voice_name) {
           var inx = filter_items.voice.indexOf(choice.voice_name);
@@ -8692,12 +8694,17 @@ var q = qualityMapFromAlloha(json);
        */
       function voiceTracks(element) {
         if (voice_entries.length < 2) return false;
-        return voice_entries.map(function (entry) {
+        return voice_entries.map(function (entry, index) {
           var sel = sameVoice(entry.voice, element.voice);
+          // як у Eneyida/Alloha: «1080p  Назва E<n>» (кількість серій лише для серіалів)
+          var shown = entry.title;
+          try {
+            shown = stelsVoiceDisplayName(entry.title, filter_items.voice_quality && filter_items.voice_quality[index] || '', element.season && filter_items.voice_episodes ? filter_items.voice_episodes[index] : 0);
+          } catch (eShown) {}
           return {
-            language: entry.title,
-            name: entry.title,
-            title: entry.title,
+            language: shown,
+            name: shown,
+            title: shown,
             number: false,
             hide_index: true,
             voice: entry.voice,
@@ -28757,6 +28764,22 @@ var q = qualityMapFromAlloha(json);
         } catch (e) {}
       }
 
+      // 1.1.194: якість для перекладів, по яких джерело не віддає voice_quality.
+      // Беремо якість, яку Stels уже знає для цього джерела (картки в списку → badge precheck).
+      // Лише до 1080p включно: 4K-badge означає, що 4K є не в усіх озвучках, тож його на всі переклади не переносимо.
+      function stelsVoiceFallbackQualityLabel() {
+        try {
+          var source = stelsNormalizeSourceKey(balanser);
+          if (!source) return '';
+          var rec = stelsRenderedSourceQuality[stelsCurrentQualityKey(source)];
+          var q = rec && rec.max || 0;
+          if (!q) q = stelsQualityToValue(stelsSourceStatus[source] && stelsSourceStatus[source].quality || '');
+          q = stelsClampSourceQualityValue(source, q || 0);
+          return q && q <= 1080 ? stelsQualityLabel(q) : '';
+        } catch (e) {}
+        return '';
+      }
+
       function stelsIsDeepVoiceQualitySource(sourceName) {
         sourceName = stelsNormalizeSourceKey(sourceName || '');
         return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'vkmovie' || sourceName === 'getstv' || sourceName === 'hdvb';
@@ -30109,7 +30132,7 @@ var q = qualityMapFromAlloha(json);
           stelsComputeVoiceEpisodesFromItems(filter_items || {}, extractItems, choice || {});
         } catch (eExtractEp) {}
         stelsApplyVoiceEpisodeCache(filter_items || {}, choice || {});
-        var display_filter_items = stelsBuildDisplayFilterItems(filter_items || {}, balanser);
+        var display_filter_items = stelsBuildDisplayFilterItems(filter_items || {}, balanser, stelsVoiceFallbackQualityLabel());
         try {
           // 1.1.151: Vokino є видимим alias для CDNVideoHub. Сам CDNVideoHub спочатку
           // дає badge 1080p із першої/вибраної озвучки, а 4K для `ТО Дубляжная`
