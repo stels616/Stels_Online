@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.192';
+    var STELS_ONLINE_VERSION = '1.1.193';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1263,7 +1263,8 @@
             if (!out.url_reserve) out.url_reserve = url.replace(/^http:/i, 'https:');
           }
         }
-        if (out.quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
+        // 1.1.193: джерела можуть залишити вибір якості для m3u8 (UAKino 4K) прапорцем _stels_keep_quality
+        if (out.quality && !out._stels_keep_quality && typeof out.quality === 'object' && typeof (out.url || out.file) == 'string' && /\.m3u8(?:$|\?)/i.test(out.url || out.file)) {
           out._stels_original_quality = out.quality;
           out.quality = false;
         }
@@ -8767,6 +8768,8 @@ var q = qualityMapFromAlloha(json);
           var pref = parseInt(Lampa.Storage.get('video_quality_default', '1080'), 10) || 1080;
           play.url = pref >= 2160 && element.qualitys['4K'] ? element.qualitys['4K'] : element.stream;
           play.quality = component.renameQualityMap(element.qualitys);
+          // Android-патч Stels інакше вимикає вибір якості для m3u8 — тут він потрібен для 4K
+          play._stels_keep_quality = true;
         }
         if (tracks) {
           play.translate = { tracks: tracks };
