@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.206';
+    var STELS_ONLINE_VERSION = '1.1.207';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -771,7 +771,9 @@
           var key = stelsVoiceCompareText(stelsStripVoiceEpisodeSuffix(stelsStripVoiceQuality(String(voice || ''))));
           var episodes = byVoice[key] || {};
           var count = Object.keys(episodes).length;
-          return current || count || 0;
+          // 1.1.207: дані з items мають пріоритет; existing лишається fallback
+          // лише для озвучок, яких ще немає в поточному списку серій.
+          return count || current || 0;
         });
         if (out.some(function (n) { return n > 0; })) filterItems.voice_episodes = out;
       } catch (e) {}
@@ -23878,6 +23880,9 @@ var q = qualityMapFromAlloha(json);
       var lampauaVoiceQualityCache = {};
       var lampauaVoiceQualityPending = {};
       var lampauaVoiceQualityRunId = 0;
+      // 1.1.207: фактична кількість епізодів на озвучку+сезон (не копіюємо одну цифру на всі).
+      var lampauaVoiceEpisodeCache = {};
+      var lampauaVoiceEpisodePrefetchId = 0;
 
       function remoteDirectUrl() {
         var direct = remoteOptions.directPath || remoteOptions.directBalanser || '';
@@ -24793,28 +24798,181 @@ var q = qualityMapFromAlloha(json);
         return lampauaVoiceQualityCache[key] || '';
       }
 
+      function lampauaCountEpisodesInItems(items, seasonNum) {
+        var seen = {};
+        seasonNum = parseInt(seasonNum, 10) || 0;
+        try {
+          (items || []).forEach(function (el) {
+            if (!el) return;
+            var method = String(el.method || '').toLowerCase();
+            // Лічимо лише playable/call серії, не сезонні лінки.
+            if (method === 'link' && !(parseInt(el.episode || el.e, 10) > 0)) return;
+            var ep = parseInt(el.episode || el.e || 0, 10) || 0;
+            if (!ep) {
+              var tm = String(el.text || el.title || '').match(/(?:^|[^\d])(?:серія|серия|episode|ep)\s*[:=\-]?\s*(\d{1,3})/i) ||
+                String(el.text || el.title || '').match(/^(\d{1,3})\s*(?:серія|серия)?$/i);
+              if (tm) ep = parseInt(tm[1], 10) || 0;
+            }
+            if (!ep) return;
+            if (seasonNum) {
+              var s = parseInt(el.season || el.s || 0, 10) || 0;
+              if (s && s !== seasonNum) return;
+            }
+            seen[ep] = true;
+          });
+        } catch (e) {}
+        return Object.keys(seen).length;
+      }
+
+      function lampauaVoiceEpisodeCacheKey(voiceTitle, seasonNum) {
+        return norm(voiceTitle || '') + '|s' + (parseInt(seasonNum, 10) || 0);
+      }
+
+      function lampauaRememberVoiceEpisodeCount(voiceTitle, seasonNum, count) {
+        count = parseInt(count, 10) || 0;
+        if (!voiceTitle || count <= 0) return;
+        var key = lampauaVoiceEpisodeCacheKey(voiceTitle, seasonNum);
+        var prev = parseInt(lampauaVoiceEpisodeCache[key], 10) || 0;
+        // Беремо максимум: якщо пізніше підвантажили повніший список — оновлюємо вгору.
+        if (count > prev) lampauaVoiceEpisodeCache[key] = count;
+      }
+
+      function lampauaGetVoiceEpisodeCount(voiceTitle, seasonNum) {
+        return parseInt(lampauaVoiceEpisodeCache[lampauaVoiceEpisodeCacheKey(voiceTitle, seasonNum)], 10) || 0;
+      }
+
+      function lampauaActiveSeasonNum() {
+        try {
+          if (current_videos && current_videos[0]) {
+            var s = parseInt(current_videos[0].season || current_videos[0].s || 0, 10) || 0;
+            if (s) return s;
+          }
+          if (filter_find.season && filter_find.season.length) {
+            var entry = filter_find.season[choice.season] || filter_find.season[0];
+            var t = String(entry && entry.title || '');
+            var m = t.match(/(\d{1,2})/);
+            if (m) return parseInt(m[1], 10) || 0;
+            if (entry && entry.url) {
+              var um = String(entry.url).match(/(?:[?&]|^)s=(\d{1,2})(?:&|$)/i);
+              if (um) return parseInt(um[1], 10) || 0;
+            }
+          }
+        } catch (e) {}
+        return 0;
+      }
+
+      // 1.1.207: для кожного неактивного перекладу один раз підвантажуємо список
+      // серій поточного сезону, щоб badge E<n> був фактичним, а не скопійованим.
+      function lampauaPrefetchVoiceEpisodeCounts(reason) {
+        try {
+          var voices = filter_find.voice || [];
+          if (voices.length <= 1) return;
+          var seasonNum = lampauaActiveSeasonNum();
+          if (!seasonNum) return;
+          var need = voices.filter(function (v) {
+            if (!v || !v.url) return false;
+            if (v.active || v.title == choice.voice_name || v.url == choice.voice_url) return false;
+            return !lampauaGetVoiceEpisodeCount(v.title, seasonNum);
+          });
+          if (!need.length) return;
+          var runId = ++lampauaVoiceEpisodePrefetchId;
+          var pending = need.length;
+          var changed = false;
+          stelsLog('lampaua-voice-episodes-prefetch-start', {
+            source: sourceTitle,
+            reason: reason || '',
+            season: seasonNum,
+            voices: need.map(function (v) { return v.title; })
+          });
+          need.forEach(function (voice) {
+            lampauaRequestVoiceItems(voice, function (items) {
+              if (runId !== lampauaVoiceEpisodePrefetchId) return;
+              var count = lampauaCountEpisodesInItems(items, seasonNum);
+              if (count > 0) {
+                var before = lampauaGetVoiceEpisodeCount(voice.title, seasonNum);
+                lampauaRememberVoiceEpisodeCount(voice.title, seasonNum, count);
+                if (lampauaGetVoiceEpisodeCount(voice.title, seasonNum) !== before) changed = true;
+                // Підживлюємо глобальний кеш серій, щоб refresh не затирав фактичні значення.
+                try {
+                  var tagged = (items || []).map(function (it) {
+                    if (!it) return it;
+                    var copy = {};
+                    for (var k in it) copy[k] = it[k];
+                    if (!copy.voice_name) copy.voice_name = voice.title;
+                    if (!copy.translate_voice) copy.translate_voice = voice.title;
+                    if (!copy.season && seasonNum) copy.season = seasonNum;
+                    return copy;
+                  });
+                  if (component && typeof component.rememberVoiceEpisodes === 'function') {
+                    component.rememberVoiceEpisodes(tagged, null, null, 'lampaua-voice-prefetch');
+                  }
+                } catch (eRem) {}
+              }
+              stelsLog('lampaua-voice-episodes-prefetch-done', {
+                source: sourceTitle,
+                voice: voice.title,
+                season: seasonNum,
+                count: count,
+                items: (items || []).length
+              });
+              pending--;
+              if (pending <= 0 && changed) {
+                try { lampauaRenderFilter('voice-episodes-prefetch'); } catch (e2) {}
+              }
+            });
+          });
+        } catch (e) {}
+      }
+
       function lampauaRenderFilter(reason) {
         var rawVoices = (filter_find.voice || []).map(function (b) { return b.title; });
         var qualities = (filter_find.voice || []).map(function (b, i) { return lampauaVoiceQualityLabel(b, i); });
-        // 1.1.169: рушій lampaua вантажить серії лише для ОДНОГО активного перекладу
-        // одночасно (інші переклади — окремі кнопки/вкладки на сайті-джерелі), тож
-        // глобальний підрахунок serii (stelsComputeVoiceEpisodesFromItems) бачить
-        // лише цей один голос у current_videos і залишає всі інші переклади без
-        // суфікса "E<n>". Кількість серій у межах одного сезону того самого джерела
-        // зазвичай однакова для всіх перекладів, тож рахуємо її з поточного списку
-        // і застосовуємо як орієнтовну оцінку до всіх голосів цього сезону.
-        var episodeCount = 0;
+        var seasonNum = lampauaActiveSeasonNum();
+        // Активна озвучка: рахуємо з current_videos і кладемо в кеш.
         try {
-          var seasonSeen = {};
+          var activeCount = lampauaCountEpisodesInItems(current_videos, seasonNum);
+          var activeName = choice.voice_name || (filter_find.voice && filter_find.voice[choice.voice] && filter_find.voice[choice.voice].title) || '';
+          if (activeCount > 0 && activeName) lampauaRememberVoiceEpisodeCount(activeName, seasonNum, activeCount);
+          // Також, якщо в елементах уже є voice_name — оновлюємо по них.
           (current_videos || []).forEach(function (el) {
-            var ep = parseInt(el && (el.episode || el.e) || 0, 10) || 0;
-            if (ep) seasonSeen[ep] = true;
+            var vn = el && (el.voice_name || el.translate_voice || el.voice) || '';
+            if (!vn) return;
+            var c = lampauaCountEpisodesInItems(
+              (current_videos || []).filter(function (x) {
+                var xv = x && (x.voice_name || x.translate_voice || x.voice) || '';
+                return !xv || norm(xv) === norm(vn);
+              }),
+              seasonNum
+            );
+            if (c > 0) lampauaRememberVoiceEpisodeCount(vn, seasonNum, c);
           });
-          episodeCount = Object.keys(seasonSeen).length;
-        } catch (eEpCount) {}
-        var voiceEpisodes = episodeCount ? rawVoices.map(function () { return episodeCount; }) : [];
-        stelsLog('lampaua-voice-quality-filter-build', { source: sourceTitle, reason: reason || '', voices: rawVoices, voice_quality: qualities, voice_episodes: voiceEpisodes, season: current_videos && current_videos[0] && current_videos[0].season || 0 });
+        } catch (eActive) {}
+        // 1.1.207: кожній озвучці — своя фактична кількість з кешу.
+        // Якщо для озвучки ще немає даних — 0 (не підставляємо чужу цифру).
+        var voiceEpisodes = rawVoices.map(function (title) {
+          return lampauaGetVoiceEpisodeCount(title, seasonNum) || 0;
+        });
+        // Якщо жодна озвучка ще не має кешу, а current_videos є — показуємо
+        // лічильник лише для активної, решта залишаються без суфікса до prefetch.
+        if (!voiceEpisodes.some(function (n) { return n > 0; })) {
+          var fallback = lampauaCountEpisodesInItems(current_videos, seasonNum);
+          if (fallback > 0) {
+            var activeIdx = Math.max(0, parseInt(choice.voice, 10) || 0);
+            voiceEpisodes = rawVoices.map(function (_, i) { return i === activeIdx ? fallback : 0; });
+          }
+        }
+        stelsLog('lampaua-voice-quality-filter-build', {
+          source: sourceTitle,
+          reason: reason || '',
+          voices: rawVoices,
+          voice_quality: qualities,
+          voice_episodes: voiceEpisodes,
+          season: seasonNum
+        });
         component.filter({ season: filter_find.season.map(function (s) { return s.title; }), voice: rawVoices, voice_quality: qualities, voice_episodes: voiceEpisodes }, choice, current_videos);
+        if (reason !== 'voice-episodes-prefetch') {
+          try { lampauaPrefetchVoiceEpisodeCounts(reason || 'display'); } catch (ePf) {}
+        }
       }
 
       // VeoVeo іноді повертає один master HLS з кількома AUDIO-групами замість
@@ -27660,7 +27818,9 @@ var q = qualityMapFromAlloha(json);
             var key = stelsVoiceEpisodeName(voice);
             var rec = key && cache[key];
             var cached = rec && rec.count || 0;
-            return current || cached || 0;
+            // 1.1.207: кеш фактичних серій має пріоритет над "спільною" цифрою,
+            // яку раніше lampaua копіював на всі озвучки з активного списку.
+            return cached || current || 0;
           });
           if (out.some(function (n) { return n > 0; })) filterItems.voice_episodes = out;
         } catch (e) {}
