@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.201';
+    var STELS_ONLINE_VERSION = '1.1.203';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -12,9 +12,11 @@
     var STELS_UA_FLAG_HTML = '<img class="stels-online-ua-flag" src="' + STELS_UA_FLAG_URL + '" alt="" aria-hidden="true">';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
-    // Зберігаємо voiceovers VeoVeo у пам'яті: Lampa очищає playdata після виходу з плеєра,
-    // але кнопка «Озвучка» на сторінці джерела має показувати ті самі доріжки.
-    var stelsVeoVeoVoiceoverCache = [];
+    // Тимчасовий список аудіодоріжок, отриманий із HLS-manifest VeoVeo під час відкриття контенту.
+    // Не зберігається між запусками й не залежить від playdata плеєра.
+    var stelsVeoVeoPageAudioLabels = [];
+    var stelsVeoVeoPageAudioLoading = false;
+    var stelsVeoVeoPageAudioKey = '';
     var stelsPrecheckSilentNoty = 0;
     var stelsPrecheckSilentUntil = 0;
     var stelsOriginalNotyShow = null;
@@ -1299,15 +1301,6 @@
         var nativePlaylist = Lampa.Player.playlist;
         if (typeof nativePlay == 'function') {
           Lampa.Player.play = function (data) {
-            try {
-              var currentBalanser = String(Lampa.Storage && Lampa.Storage.get('stels_online_balanser') || '').toLowerCase();
-              if (currentBalanser === 'veoveo' && data && Array.isArray(data.voiceovers) && data.voiceovers.length) {
-                // Зберігаємо об'єкти у пам'яті разом з onSelect, а не лише назви:
-                // так кнопка на сторінці може відкрити список після очищення playdata.
-                stelsVeoVeoVoiceoverCache = data.voiceovers.slice(0);
-                stelsLog('veoveo-voiceovers-cache-save', { count: stelsVeoVeoVoiceoverCache.length, labels: stelsVeoVeoVoiceoverCache.map(function (v, i) { return String(v && (v.language || v.name || v.title || v.voice) || ('Аудіодоріжка ' + (i + 1))); }) });
-              }
-            } catch (eCacheVoiceovers) {}
             if (stelsAndroidPlayerFixEnabled()) data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
             return nativePlay.apply(this, arguments.length ? [data] : arguments);
           };
@@ -24824,6 +24817,66 @@ var q = qualityMapFromAlloha(json);
         component.filter({ season: filter_find.season.map(function (s) { return s.title; }), voice: rawVoices, voice_quality: qualities, voice_episodes: voiceEpisodes }, choice, current_videos);
       }
 
+      // VeoVeo іноді повертає один master HLS з кількома AUDIO-групами замість
+      // окремих кнопок перекладів. Читаємо назви з manifest під час відкриття контенту,
+      // щоб кнопка «Озвучка» могла показати їх до запуску плеєра.
+      function lampauaPrefetchVeoVeoAudioTracks(videos) {
+        if (norm(sourceTitle || '') !== norm('VeoVeo') || (filter_find.voice && filter_find.voice.length)) return;
+        var base = (videos || [])[0];
+        if (!base) return;
+        var key = String(base.url || base.stream || base.file || base.text || base.title || '');
+        if (!key || key === stelsVeoVeoPageAudioKey || stelsVeoVeoPageAudioLoading) return;
+        stelsVeoVeoPageAudioKey = key;
+        stelsVeoVeoPageAudioLabels = [];
+        stelsVeoVeoPageAudioLoading = true;
+        stelsLog('veoveo-audio-manifest-prefetch-start', { item_title: base.title || base.text || '', method: base.method || '', url_preview: previewUrl(base.url || base.stream || base.file || '') });
+        getFileUrl(base, function (json, json_call) {
+          try {
+            if (!json || !(json.url || json.stream || json.file || (base.method !== 'call' && (base.url || isRealStreamValue(base.stream)))) ) {
+              stelsVeoVeoPageAudioLoading = false;
+              stelsLog('veoveo-audio-manifest-prefetch-skip', { reason: 'no-resolved-stream' });
+              return;
+            }
+            var playable = preparePlayable(base, json, json_call || {});
+            var manifestUrl = String(playable && playable.url || '');
+            if (!manifestUrl || !/\.m3u8(?:$|[?#])/i.test(manifestUrl)) {
+              stelsVeoVeoPageAudioLoading = false;
+              stelsLog('veoveo-audio-manifest-prefetch-skip', { reason: 'not-hls-master', url_preview: previewUrl(manifestUrl) });
+              return;
+            }
+            var req = new Lampa.Reguest();
+            req.timeout(9000);
+            req.native(manifestUrl, function (text) {
+              stelsVeoVeoPageAudioLoading = false;
+              var labels = [];
+              var seen = {};
+              String(text || '').split(/\r?\n/).forEach(function (line) {
+                if (!/#EXT-X-MEDIA:/i.test(line) || !/TYPE\s*=\s*AUDIO/i.test(line)) return;
+                var nameMatch = line.match(/(?:^|,)\s*NAME\s*=\s*(?:"([^"]*)"|([^,]*))/i);
+                var langMatch = line.match(/(?:^|,)\s*LANGUAGE\s*=\s*(?:"([^"]*)"|([^,]*))/i);
+                var label = String(nameMatch && (nameMatch[1] || nameMatch[2]) || langMatch && (langMatch[1] || langMatch[2]) || '').trim();
+                if (!label) return;
+                var normalized = norm(label);
+                if (!normalized || seen[normalized]) return;
+                seen[normalized] = true;
+                labels.push(label);
+              });
+              if (stelsVeoVeoPageAudioKey === key) stelsVeoVeoPageAudioLabels = labels;
+              stelsLog('veoveo-audio-manifest-prefetch-done', { count: labels.length, labels: labels, manifest_url_preview: previewUrl(manifestUrl), is_master: /#EXT-X-MEDIA:/i.test(String(text || '')) });
+            }, function (a, c) {
+              stelsVeoVeoPageAudioLoading = false;
+              stelsLog('veoveo-audio-manifest-prefetch-error', { status: a && a.status || 0, error: c && (c.message || String(c)) || '', url_preview: previewUrl(manifestUrl) });
+            }, false, { dataType: 'text', headers: playable.headers || {} });
+          } catch (ePrefetch) {
+            stelsVeoVeoPageAudioLoading = false;
+            stelsLog('veoveo-audio-manifest-prefetch-error', { error: ePrefetch && (ePrefetch.message || ePrefetch.toString()) || '' });
+          }
+        }, function () {
+          stelsVeoVeoPageAudioLoading = false;
+          stelsLog('veoveo-audio-manifest-prefetch-error', { reason: 'stream-resolve-failed' });
+        });
+      }
+
       function lampauaVoiceQualityCandidates() {
         var out = [];
         if (!lampauaVoiceQualityEnabled() || !(filter_find.voice && filter_find.voice.length)) return out;
@@ -25365,6 +25418,7 @@ var q = qualityMapFromAlloha(json);
           });
         });
         lampauaRenderFilter('display');
+        lampauaPrefetchVeoVeoAudioTracks(current_videos);
         // 1.1.146: для precheck sourceQualityHint-джерел не запускаємо prefetch усіх
         // озвучок, бо він створює зайве навантаження і затримує перевірку меню джерел.
         if (!(component && component._stelsPrecheck && remoteOptions.sourceQualityHint)) lampauaStartVoiceQualityPrefetch('display');
@@ -29271,33 +29325,24 @@ var q = qualityMapFromAlloha(json);
             var display = stelsBuildDisplayFilterItems(stels_last_filter_items || {}, balanser, stelsVoiceFallbackQualityLabel());
             var labels = display && display[type] && display[type].length ? display[type] : raw;
             if ((!labels || !labels.length) && type === 'voice' && stelsNormalizeSourceKey(balanser) === 'veoveo') {
-              // VeoVeo може віддати аудіодоріжки тільки в playdata після ініціалізації
-              // плеєра. Якщо Lampa зберегла ці voiceovers, дозволяємо відкрити їх тут
-              // замість помилкового повідомлення про незавантажені переклади.
-              try {
-                var playerData = Lampa.Player && Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-                var playerVoices = Array.isArray(playerData.voiceovers) && playerData.voiceovers.length ? playerData.voiceovers : stelsVeoVeoVoiceoverCache;
-                if (playerVoices.length) {
-                  var playerVoiceItems = playerVoices.map(function (v, index) {
-                    var name = String(v && (v.language || v.name || v.title || v.voice) || ('Аудіодоріжка ' + (index + 1)));
-                    return { title: name, index: index, selected: !!(v && v.selected), voiceover: v };
-                  });
-                  Lampa.Select.show({
-                    title: title,
-                    items: playerVoiceItems,
-                    onBack: function () { Lampa.Controller.toggle('content'); },
-                    onSelect: function (item) {
-                      var selectedVoice = item && item.voiceover;
-                      if (selectedVoice && typeof selectedVoice.onSelect === 'function') {
-                        try { selectedVoice.onSelect(); } catch (eSelectVoice) { stelsLog('veoveo-player-voice-select-error', { error: eSelectVoice && (eSelectVoice.message || eSelectVoice.toString()) || '' }); }
-                      }
-                    }
-                  });
-                  stelsLog('veoveo-player-voice-filter-fallback', { count: playerVoiceItems.length, from_cache: !(Array.isArray(playerData.voiceovers) && playerData.voiceovers.length), labels: playerVoiceItems.map(function (v) { return v.title; }) });
-                  return;
-                }
-              } catch (ePlayerVoiceFallback) {
-                stelsLog('veoveo-player-voice-filter-fallback-error', { error: ePlayerVoiceFallback && (ePlayerVoiceFallback.message || ePlayerVoiceFallback.toString()) || '' });
+              // Показуємо аудіомови, отримані з HLS-manifest під час завантаження контенту.
+              // Це інформаційний список джерела: не залежить від playdata і не зберігається після зміни контенту.
+              if (stelsVeoVeoPageAudioLabels.length) {
+                var manifestVoiceItems = stelsVeoVeoPageAudioLabels.map(function (name, index) {
+                  return { title: String(name), index: index, selected: false };
+                });
+                Lampa.Select.show({
+                  title: title,
+                  items: manifestVoiceItems,
+                  onBack: function () { Lampa.Controller.toggle('content'); },
+                  onSelect: function () { Lampa.Controller.toggle('content'); }
+                });
+                stelsLog('veoveo-audio-manifest-list-open', { count: manifestVoiceItems.length, labels: manifestVoiceItems.map(function (v) { return v.title; }) });
+                return;
+              }
+              if (stelsVeoVeoPageAudioLoading) {
+                Lampa.Noty.show('Список озвучок VeoVeo ще завантажується');
+                return;
               }
             }
             if (!labels || !labels.length) {
@@ -33155,7 +33200,7 @@ var q = qualityMapFromAlloha(json);
       logApp();
       stelsInstallAndroidPlayerFixPatch();
       stelsInstallAdDiagnostics();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.197: кнопки напряму відкривають списки перекладів і сезонів; додано кнопку активного балансера з меню сортування. 1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`). 1.1.173: карта серії з превʼю — додано рейтинг (★) і тривалість (хв) з TMDB season/episode, великий номер серії поверх превʼю та % перегляду поруч з прогрес-баром (з ширини нативного time-line, який Lampa вже рахує сама). 1.1.180: сезон на картці серії тепер береться з точних даних джерела (element.season/episode), а не з регексу заголовка — усунуто випадки, коли показувалось S1 замість реального сезону; з "Налаштування інтерфейсу" прибрано показ версії плагіна і перейменовано опис на "Як відображати серії"; видалено розділ "Налаштування ZetflixNet" з меню налаштувань; з розширених налаштувань прибрано перемикачі проксі AniLibria, AniLibria.top і Kodik.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.203: список озвучок VeoVeo завантажується з HLS-manifest під час відкриття контенту; 1.1.197: кнопки напряму відкривають списки перекладів і сезонів; додано кнопку активного балансера з меню сортування. 1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`). 1.1.173: карта серії з превʼю — додано рейтинг (★) і тривалість (хв) з TMDB season/episode, великий номер серії поверх превʼю та % перегляду поруч з прогрес-баром (з ширини нативного time-line, який Lampa вже рахує сама). 1.1.180: сезон на картці серії тепер береться з точних даних джерела (element.season/episode), а не з регексу заголовка — усунуто випадки, коли показувалось S1 замість реального сезону; з "Налаштування інтерфейсу" прибрано показ версії плагіна і перейменовано опис на "Як відображати серії"; видалено розділ "Налаштування ZetflixNet" з меню налаштувань; з розширених налаштувань прибрано перемикачі проксі AniLibria, AniLibria.top і Kodik.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
