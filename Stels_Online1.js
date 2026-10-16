@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.204';
+    var STELS_ONLINE_VERSION = '1.1.205';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -25461,6 +25461,13 @@ var q = qualityMapFromAlloha(json);
           stelsLog('lampaua-parse', { source: sourceTitle, items_count: items.length, buttons_count: buttons.length, methods: items.slice(0, 20).map(function (i) { return { text: i.text, method: i.method, season: i.season, episode: i.episode, similar: !!i.similar, url: i.url }; }) });
           if (items.length == 1 && items[0].method == 'link' && !items[0].similar) {
             filter_find.season = items.map(function (s) { return { title: s.text, url: s.url }; });
+            try {
+              // 1.1.205: одразу повідомляємо precheck про кількість сезонів,
+              // ще до переходу всередину одного сезону (інакше badge лишався S1).
+              if (component && typeof component.filter === 'function' && filter_find.season.length) {
+                component.filter({ season: filter_find.season.map(function (s) { return s.title; }), _stels_season_probe: true });
+              }
+            } catch (eSeasonProbe1) {}
             choice.season = 0;
             request(items[0].url);
           } else {
@@ -25563,6 +25570,12 @@ var q = qualityMapFromAlloha(json);
                 component.loading(false);
               } else {
                 filter_find.season = items.map(function (s) { return { title: s.text, url: s.url }; });
+                try {
+                  // 1.1.205: precheck бачить повний список сезонів до drill-down в один сезон.
+                  if (component && typeof component.filter === 'function' && filter_find.season.length) {
+                    component.filter({ season: filter_find.season.map(function (s) { return s.title; }), _stels_season_probe: true });
+                  }
+                } catch (eSeasonProbe2) {}
                 var season = filter_find.season[choice.season] || filter_find.season[0];
                 if (season) request(season.url); else component.emptyForQuery(select_title);
               }
@@ -28545,18 +28558,31 @@ var q = qualityMapFromAlloha(json);
         if (depth > 6 || value == null) return out;
         try {
           if (typeof value == 'number') {
-            var n = parseInt(value, 10) || 0;
-            if (n > 0 && n < 80) out[n] = true;
+            // Голі числа без контексту не беремо — інакше якість 480/1080
+            // або id епізоду потраплять у лічильник сезонів.
             return out;
           }
           if (typeof value == 'string') {
             var text = String(value || '');
-            // "1 сезон", "Сезон 3", "S02", "season 2", "s=2"
-            text.replace(/(?:^|[^\d])(?:сезон|season|сезон[ауеів]?|s)\s*[:=\-]?\s*(\d{1,2})(?!\d)/ig, function (all, num) {
+            // URL-параметри: ?s=2, &season=3, /s/4/, s=1&
+            text.replace(/(?:[?&/]|^)(?:s|season|sezon)=?(\d{1,2})(?:[&#/]|$)/ig, function (all, num) {
               var sn = parseInt(num, 10) || 0;
               if (sn > 0 && sn < 80) out[sn] = true;
               return all;
             });
+            // "Сезон 3", "season 2", "s:1"
+            text.replace(/(?:^|[^\d\w])(?:сезон[ауеів]?|sezon|season|s)\s*[:=\-]?\s*(\d{1,2})(?!\d)/ig, function (all, num) {
+              var sn = parseInt(num, 10) || 0;
+              if (sn > 0 && sn < 80) out[sn] = true;
+              return all;
+            });
+            // "1 сезон", "2 season", "3 sezon" — номер ПЕРЕД словом
+            text.replace(/(?:^|[^\d])(\d{1,2})\s*(?:сезон[ауеів]?|sezon|season)(?![a-zа-яіїє])/ig, function (all, num) {
+              var sn = parseInt(num, 10) || 0;
+              if (sn > 0 && sn < 80) out[sn] = true;
+              return all;
+            });
+            // "S02", "S2E05"
             text.replace(/(?:^|[^\w])s(\d{1,2})(?:e\d{1,3})?(?!\w)/ig, function (all, num) {
               var sn = parseInt(num, 10) || 0;
               if (sn > 0 && sn < 80) out[sn] = true;
@@ -28565,7 +28591,62 @@ var q = qualityMapFromAlloha(json);
             return out;
           }
           if (Array.isArray(value) || (Lampa && Lampa.Arrays && Lampa.Arrays.isArray && Lampa.Arrays.isArray(value))) {
-            Array.prototype.slice.call(value).forEach(function (v) { stelsCollectSeasonNumbers(v, depth + 1, out); });
+            var arr = Array.prototype.slice.call(value);
+            // 1) Масив рядків filter.season: ["1","2","3"] / ["1 сезон","2 сезон"]
+            var seasonLabelHits = 0;
+            var allSeasonLabels = arr.length > 0;
+            arr.forEach(function (v) {
+              if (typeof v === 'number') {
+                var nn = parseInt(v, 10) || 0;
+                if (nn > 0 && nn < 80) { out[nn] = true; seasonLabelHits++; }
+                else allSeasonLabels = false;
+                return;
+              }
+              if (typeof v !== 'string') { allSeasonLabels = false; return; }
+              var tx = String(v).replace(/\s+/g, ' ').trim();
+              var tm = tx.match(/^(\d{1,2})$/) ||
+                tx.match(/^(\d{1,2})\s*(?:сезон[ауеів]?|sezon|season)$/i) ||
+                tx.match(/^(?:сезон[ауеів]?|sezon|season)\s*(\d{1,2})$/i) ||
+                tx.match(/^s(\d{1,2})$/i);
+              if (tm) {
+                var sn = parseInt(tm[1], 10) || 0;
+                if (sn > 0 && sn < 80) { out[sn] = true; seasonLabelHits++; }
+                else allSeasonLabels = false;
+              } else {
+                allSeasonLabels = false;
+              }
+            });
+            if (allSeasonLabels && seasonLabelHits >= 1) return out;
+
+            // 2) Список лінків сезонів: method=link, текст "1"/"2"/"1 сезон" без episode.
+            var seasonLinkHits = 0;
+            arr.forEach(function (v) {
+              if (!v || typeof v !== 'object') return;
+              var method = String(v.method || '').toLowerCase();
+              if (method && method !== 'link') return;
+              if (v.episode != null && parseInt(v.episode, 10) > 0) return;
+              if (v.method == 'play' || v.stream || v.file) return;
+              var vs = parseInt(v.season != null ? v.season : (v.s != null ? v.s : 0), 10) || 0;
+              if (!vs && v.url) {
+                var um = String(v.url).match(/(?:[?&/]|^)(?:s|season|sezon)=?(\d{1,2})(?:[&#/]|$)/i);
+                if (um) vs = parseInt(um[1], 10) || 0;
+              }
+              var tx2 = String(v.text || v.title || v.name || '').replace(/\s+/g, ' ').trim();
+              if (!vs && tx2) {
+                var tm2 = tx2.match(/^(\d{1,2})$/) ||
+                  tx2.match(/^(\d{1,2})\s*(?:сезон[ауеів]?|sezon|season)$/i) ||
+                  tx2.match(/^(?:сезон[ауеів]?|sezon|season)\s*(\d{1,2})$/i);
+                if (tm2) vs = parseInt(tm2[1], 10) || 0;
+              }
+              if (vs > 0 && vs < 80) {
+                out[vs] = true;
+                seasonLinkHits++;
+              }
+            });
+            // Якщо це не список сезонних лінків — звичайний обхід елементів.
+            if (seasonLinkHits < 2) {
+              arr.forEach(function (v) { stelsCollectSeasonNumbers(v, depth + 1, out); });
+            }
             return out;
           }
           if (typeof value == 'object') {
@@ -28575,7 +28656,7 @@ var q = qualityMapFromAlloha(json);
               : (value.season_number != null ? value.season_number
               : (value.season_num != null ? value.season_num
               : (value.season_id != null ? value.season_id : null))));
-            if (explicit != null) {
+            if (explicit != null && typeof explicit !== 'object') {
               var es = parseInt(explicit, 10) || 0;
               if (es > 0 && es < 80) out[es] = true;
             }
@@ -28591,13 +28672,25 @@ var q = qualityMapFromAlloha(json);
             if (Array.isArray(value.seasons)) {
               value.seasons.forEach(function (s) { stelsCollectSeasonNumbers(s, depth + 1, out); });
             }
-            // Назви пунктів меню: "1 сезон", "Сезон 2"
+            // Назви пунктів меню: "1 сезон", "Сезон 2", просто "3"
             var titleish = value.text || value.title || value.name || value.label || value.comment || '';
-            if (titleish) stelsCollectSeasonNumbers(String(titleish), depth + 1, out);
+            if (titleish) {
+              var t = String(titleish).replace(/\s+/g, ' ').trim();
+              // Голий номер "1"/"2" рахуємо лише для season-link (method=link, без episode).
+              if (/^\d{1,2}$/.test(t) && String(value.method || '').toLowerCase() === 'link' && !(parseInt(value.episode, 10) > 0)) {
+                var bare = parseInt(t, 10) || 0;
+                if (bare > 0 && bare < 80) out[bare] = true;
+              } else {
+                stelsCollectSeasonNumbers(t, depth + 1, out);
+              }
+            }
+            // URL елемента: ...&s=2&...
+            if (value.url) stelsCollectSeasonNumbers(String(value.url), depth + 1, out);
             // Не розгортаємо всі вкладені об'єкти глибоко — лише типові поля списків.
-            if (Array.isArray(value.items)) value.items.forEach(function (it) { stelsCollectSeasonNumbers(it, depth + 1, out); });
-            if (Array.isArray(value.playlist)) value.playlist.forEach(function (it) { stelsCollectSeasonNumbers(it, depth + 1, out); });
-            if (Array.isArray(value.results)) value.results.forEach(function (it) { stelsCollectSeasonNumbers(it, depth + 1, out); });
+            if (Array.isArray(value.items)) stelsCollectSeasonNumbers(value.items, depth + 1, out);
+            if (Array.isArray(value.playlist)) stelsCollectSeasonNumbers(value.playlist, depth + 1, out);
+            if (Array.isArray(value.results)) stelsCollectSeasonNumbers(value.results, depth + 1, out);
+            if (Array.isArray(value.videos)) stelsCollectSeasonNumbers(value.videos, depth + 1, out);
           }
         } catch (e) {}
         return out;
