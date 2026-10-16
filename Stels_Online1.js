@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.196';
+    var STELS_ONLINE_VERSION = '1.1.197';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -29207,29 +29207,55 @@ var q = qualityMapFromAlloha(json);
           var metaLine = year ? String(year) : '';
           if (seasonCount) metaLine += (metaLine ? ' · ' : '') + seasonCount + ' сезон' + (seasonCount === 1 ? '' : (seasonCount < 5 ? 'и' : 'ів'));
           if (episodeCount) metaLine += (metaLine ? ' · ' : '') + episodeCount + ' серій';
-          var pageHead = $('<div class="stels-online-page-head"><div class="stels-online-page-title"></div><div class="stels-online-page-meta"></div><div class="stels-online-page-actions"><div class="stels-online-page-action selector stels-online-page-voice">Озвучка</div><div class="stels-online-page-action selector stels-online-page-seasons">Список сезонів</div></div></div>');
+          var pageHead = $('<div class="stels-online-page-head"><div class="stels-online-page-title"></div><div class="stels-online-page-meta"></div><div class="stels-online-page-actions"><div class="stels-online-page-action selector stels-online-page-voice">Озвучка</div><div class="stels-online-page-action selector stels-online-page-seasons">Сезони</div><div class="stels-online-page-action selector stels-online-page-balanser"></div></div></div>');
           pageHead.find('.stels-online-page-title').text(displayTitle);
           pageHead.find('.stels-online-page-meta').text(metaLine);
           if (!seasonCount) pageHead.find('.stels-online-page-seasons').hide();
-          function clickFilterByWords(words) {
-            var candidates = filter.render().find('.selector, .filter__item, .simple-button, [class*="filter--"]');
-            var found = $();
-            candidates.each(function () {
-              if (found.length) return;
-              var el = $(this), txt = (el.text() || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-              if (txt && words.some(function (w) { return txt === w || txt.indexOf(w) === 0 || txt.indexOf(w + ':') === 0; })) found = el;
-            });
-            if (found.length) found.trigger('hover:enter').trigger('click');
-            else {
-              try { filter.show(Lampa.Lang.translate('title_filter'), 'filter'); } catch (e) {}
+          function refreshPageBalanserLabel() {
+            var active = obj_filter_sources.filter(function (entry) { return entry && entry.name === balanser; })[0];
+            pageHead.find('.stels-online-page-balanser').text(active ? (active.title || active.name) : (balanser || 'Балансер'));
+          }
+          refreshPageBalanserLabel();
+          function openFilterChoice(type, title) {
+            var raw = stels_last_filter_items && stels_last_filter_items[type] || [];
+            var display = stelsBuildDisplayFilterItems(stels_last_filter_items || {}, balanser, stelsVoiceFallbackQualityLabel());
+            var labels = display && display[type] && display[type].length ? display[type] : raw;
+            if (!labels || !labels.length) {
+              Lampa.Noty.show(type === 'voice' ? 'Переклади ще не завантажені' : 'Список сезонів ще не завантажений');
+              return;
             }
+            var stored = Lampa.Storage.get('stels_online_filter', '{}') || {};
+            var current = parseInt(stored[type] != null ? stored[type] : (stels_last_choice && stels_last_choice[type] || 0), 10) || 0;
+            Lampa.Select.show({
+              title: title,
+              items: labels.map(function (label, index) { return { title: String(label), index: index, selected: index === current }; }),
+              onBack: function () { Lampa.Controller.toggle('content'); },
+              onSelect: function (item) {
+                var idx = parseInt(item && item.index, 10) || 0;
+                try { filter.onSelect('filter', { stype: type, title: title }, { index: idx, title: labels[idx] }); }
+                catch (e) { try { if (sources[balanser] && sources[balanser].filter) sources[balanser].filter('filter', { stype: type }, { index: idx, title: labels[idx] }); } catch (e2) {} }
+              }
+            });
           }
           pageHead.find('.stels-online-page-voice').on('hover:enter click', function () {
-            clickFilterByWords(['озвучка', 'переклад', 'voice', 'озвучення']);
+            openFilterChoice('voice', 'Переклад');
             return false;
           });
           pageHead.find('.stels-online-page-seasons').on('hover:enter click', function () {
-            clickFilterByWords(['сезон', 'season']);
+            openFilterChoice('season', 'Сезон');
+            return false;
+          });
+          pageHead.find('.stels-online-page-balanser').on('hover:enter click', function () {
+            Lampa.Select.show({
+              title: 'Сортування балансерів',
+              items: obj_filter_sources.filter(function (entry) { return entry && !entry.disabled; }).map(function (entry) {
+                return { title: stelsSourceTitleWithStatus(entry), source: entry.name, selected: entry.name === balanser };
+              }),
+              onBack: function () { Lampa.Controller.toggle('content'); },
+              onSelect: function (item) {
+                if (item && item.source) { _this.changeBalanser(item.source); refreshPageBalanserLabel(); }
+              }
+            });
             return false;
           });
           if (!document.getElementById('stels-online-page-head-style')) {
@@ -29238,6 +29264,7 @@ var q = qualityMapFromAlloha(json);
               '.stels-online-page-title{font-size:2.05em;line-height:1.12;font-weight:800;letter-spacing:-.025em;white-space:normal;}' +
               '.stels-online-page-meta{font-size:1.05em;line-height:1.35;opacity:.65;margin-top:.25em;margin-bottom:.75em;}' +
               '.stels-online-page-actions{display:flex;align-items:center;gap:.55em;flex-wrap:wrap;}' +
+              '.stels-online-page-balanser{max-width:45vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(255,255,255,.18);}' +
               '.stels-online-page-action{display:inline-flex;align-items:center;justify-content:center;min-height:2.65em;padding:.45em 1em;border-radius:2em;background:rgba(255,255,255,.12);font-weight:600;box-sizing:border-box;}' +
               '.stels-online-page-action.focus,.stels-online-page-action:hover{background:#1680ff;color:#fff;}' +
               '@media screen and (max-width:700px){.stels-online-page-head{padding:.35em .25em .75em}.stels-online-page-title{font-size:1.75em}.stels-online-page-meta{font-size:.95em}.stels-online-page-action{min-height:2.45em;padding:.4em .85em}}' +
@@ -33037,7 +33064,7 @@ var q = qualityMapFromAlloha(json);
       logApp();
       stelsInstallAndroidPlayerFixPatch();
       stelsInstallAdDiagnostics();
-      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`). 1.1.173: карта серії з превʼю — додано рейтинг (★) і тривалість (хв) з TMDB season/episode, великий номер серії поверх превʼю та % перегляду поруч з прогрес-баром (з ширини нативного time-line, який Lampa вже рахує сама). 1.1.180: сезон на картці серії тепер береться з точних даних джерела (element.season/episode), а не з регексу заголовка — усунуто випадки, коли показувалось S1 замість реального сезону; з "Налаштування інтерфейсу" прибрано показ версії плагіна і перейменовано опис на "Як відображати серії"; видалено розділ "Налаштування ZetflixNet" з меню налаштувань; з розширених налаштувань прибрано перемикачі проксі AniLibria, AniLibria.top і Kodik.' });
+      stelsLog('plugin-start', { version: STELS_ONLINE_VERSION, location: (window.location && window.location.href) || '', user_agent: (navigator && navigator.userAgent) || '', uaflix_mobile_ua: Lampa.Storage.field('stels_online_uaflix_mobile_ua'), uaflix_forced_year: Lampa.Storage.field('stels_online_uaflix_forced_year') || '', note: '1.1.197: кнопки напряму відкривають списки перекладів і сезонів; додано кнопку активного балансера з меню сортування. 1.1.169: UASerials/Tortuga — виправлено парсинг рядка file (URL потоку більше не псувався хвостом "(subtitle:...)", субтитри тепер розбираються окремо); lampaua-джерела (Makhno/Midnight/UAKino/KlonFun/BatkoMakhno/UafilmMe/StreamData/Rezka720 тощо) — кількість серій (суфікс " E<n>") тепер показується для ВСІХ перекладів, а не лише для активного; глобальний механізм підрахунку серій — виправлено повторне порівняння рядків списку перекладів (раніше рядок, який уже мав старий суфікс " E<n>", не зіставлявся з мапою і не оновлювався новим значенням); Eneyida — виправлено визначення якості перекладу (раніше непорожній URL потоку завжди "перемагав" службову підказку якості через `||`). 1.1.173: карта серії з превʼю — додано рейтинг (★) і тривалість (хв) з TMDB season/episode, великий номер серії поверх превʼю та % перегляду поруч з прогрес-баром (з ширини нативного time-line, який Lampa вже рахує сама). 1.1.180: сезон на картці серії тепер береться з точних даних джерела (element.season/episode), а не з регексу заголовка — усунуто випадки, коли показувалось S1 замість реального сезону; з "Налаштування інтерфейсу" прибрано показ версії плагіна і перейменовано опис на "Як відображати серії"; видалено розділ "Налаштування ZetflixNet" з меню налаштувань; з розширених налаштувань прибрано перемикачі проксі AniLibria, AniLibria.top і Kodik.' });
       stelsInstallImageStyles();
       stelsInstallPluginIconPatcher();
       initStorage();
