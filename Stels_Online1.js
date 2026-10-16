@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.198';
+    var STELS_ONLINE_VERSION = '1.1.199';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -28786,7 +28786,7 @@ var q = qualityMapFromAlloha(json);
 
       function stelsIsDeepVoiceQualitySource(sourceName) {
         sourceName = stelsNormalizeSourceKey(sourceName || '');
-        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'vkmovie' || sourceName === 'getstv' || sourceName === 'hdvb';
+        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'vkmovie' || sourceName === 'getstv' || sourceName === 'hdvb' || sourceName === 'kinotochka' || sourceName === 'veoveo';
       }
 
       function stelsMakeProbeComponent(sourceName, token, done) {
@@ -28827,7 +28827,11 @@ var q = qualityMapFromAlloha(json);
             if (!qarr || !qarr.length) return;
             var max = 0;
             Array.prototype.slice.call(qarr).forEach(function (q) {
-              max = Math.max(max, stelsQualityToValue(q));
+              // Деякі джерела передають voice_quality не рядками, а об'єктами
+              // на кшталт {title:'1080p'} / {quality:1080}; читаємо обидва формати.
+              var qv = stelsQualityToValue(q);
+              if (!qv) qv = stelsExtractMaxQualityFromAny(q, 0, 'quality');
+              max = Math.max(max, qv || 0);
             });
             if (!max) return;
             probeVerifiedQuality = Math.max(probeVerifiedQuality || 0, stelsClampSourceQualityValue(sourceName, max));
@@ -28863,9 +28867,13 @@ var q = qualityMapFromAlloha(json);
           // 1.1.149: запасний шлях для Eneyida. Якщо precheck знайшов робочі серії,
           // але жодна DOM/element-підказка не встигла потрапити в probe, показуємо
           // безпечний максимум джерела 1080p замість порожнього badge.
-          if (!qvalue && status === 'ok' && stelsNormalizeSourceKey(sourceName) === 'eneyida') {
+          if (!qvalue && status === 'ok' && ['eneyida', 'hdvb', 'kinotochka', 'veoveo'].indexOf(stelsNormalizeSourceKey(sourceName)) !== -1) {
+            // Для цих джерел перевірка може підтвердити наявність контенту,
+            // але endpoint не повертає quality-map/voice_quality. Відображаємо
+            // консервативний 1080p badge замість порожнього місця; VeoVeo та
+            // Eneyida додатково мають жорстке обмеження 1080p у цьому плагіні.
             qvalue = stelsClampSourceQualityValue(sourceName, 1080);
-            stelsLog('source-precheck-quality-fallback', { source: sourceName, quality: stelsQualityLabel(qvalue), reason: 'eneyida-ok-no-quality' });
+            stelsLog('source-precheck-quality-fallback', { source: sourceName, quality: stelsQualityLabel(qvalue), reason: 'ok-no-quality-map' });
           }
           var qlabel = quality || (qvalue ? stelsQualityLabel(qvalue) : '');
           stelsMarkSourceStatus(sourceName, status, message || '', qlabel);
@@ -29247,7 +29255,7 @@ var q = qualityMapFromAlloha(json);
           });
           pageHead.find('.stels-online-page-balanser').on('hover:enter click', function () {
             Lampa.Select.show({
-              title: 'Сортування балансерів',
+              title: 'Вибір джерела',
               items: obj_filter_sources.filter(function (entry) { return entry && !entry.disabled; }).map(function (entry) {
                 return { title: stelsSourceTitleWithStatus(entry), source: entry.name, selected: entry.name === balanser };
               }),
