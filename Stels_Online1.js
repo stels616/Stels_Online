@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.199';
+    var STELS_ONLINE_VERSION = '1.1.200';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -25416,6 +25416,36 @@ var q = qualityMapFromAlloha(json);
                   choice.voice_url = saved_voice.url || choice.voice_url || '';
                   choice.voice_name = saved_voice.title || choice.voice_name || sourceTitle;
                 }
+              } else if (norm(sourceTitle || '') === norm('VeoVeo') && videos.length) {
+                // 1.1.200: VeoVeo іноді повертає playable items без .videos__button.
+                // У такій відповіді назва озвучки може бути записана безпосередньо
+                // в метаданих playable item. Використовуємо лише явні назви голосів,
+                // не підміняємо їх назвами серій і не вигадуємо варіанти перекладу.
+                var veoVoiceSeen = {};
+                var veoVoices = [];
+                videos.forEach(function (v) {
+                  var rawVoice = String(v && (v.translate_voice || v.voice_name || v.voice || v.translation_name || (v.translate && (v.translate.name || v.translate.title)) || (v.media && (v.media.voiceStudio || v.media.voiceType))) || '').trim();
+                  var voiceUrl = v && (v.url || v.stream || v.file) || '';
+                  if (!rawVoice || !voiceUrl) return;
+                  var key = norm(rawVoice);
+                  if (!key || veoVoiceSeen[key]) return;
+                  veoVoiceSeen[key] = true;
+                  veoVoices.push({ title: rawVoice, url: v.url || v.stream || v.file || '', active: false, item: v });
+                });
+                if (veoVoices.length > 1 || (veoVoices.length === 1 && videos.length === 1 && !parseInt(videos[0].season || 0, 10) && !parseInt(videos[0].episode || 0, 10))) {
+                  filter_find.voice = veoVoices;
+                  var veoActive = veoVoices[Math.min(Math.max(0, parseInt(choice.voice || 0, 10) || 0), veoVoices.length - 1)];
+                  choice.voice = veoVoices.indexOf(veoActive);
+                  choice.voice_name = veoActive.title;
+                  choice.voice_url = veoActive.url || '';
+                  stelsLog('veoveo-voice-filter-metadata-fallback', { count: veoVoices.length, voices: veoVoices.map(function (v) { return v.title; }) });
+                } else {
+                  filter_find.voice = [];
+                  choice.voice = 0;
+                  choice.voice_url = '';
+                  choice.voice_name = sourceTitle;
+                  stelsLog('veoveo-voice-filter-empty', { reason: 'no-buttons-or-explicit-voice-metadata', videos: videos.length, sample: videos.slice(0, 4).map(function (v) { return { title: v && (v.text || v.title || v.info) || '', season: v && v.season || 0, episode: v && v.episode || 0, keys: v ? Object.keys(v).slice(0, 20) : [] }; }) });
+                }
               } else if (lampauaIsUafilmMeSource()) {
                 // 1.1.158: у UafilmMe серіали часто мають один вбудований переклад
                 // без окремих buttons. Не залишаємо voice filter порожнім: це ламало
@@ -29228,6 +29258,36 @@ var q = qualityMapFromAlloha(json);
             var raw = stels_last_filter_items && stels_last_filter_items[type] || [];
             var display = stelsBuildDisplayFilterItems(stels_last_filter_items || {}, balanser, stelsVoiceFallbackQualityLabel());
             var labels = display && display[type] && display[type].length ? display[type] : raw;
+            if ((!labels || !labels.length) && type === 'voice' && stelsNormalizeSourceKey(balanser) === 'veoveo') {
+              // VeoVeo може віддати аудіодоріжки тільки в playdata після ініціалізації
+              // плеєра. Якщо Lampa зберегла ці voiceovers, дозволяємо відкрити їх тут
+              // замість помилкового повідомлення про незавантажені переклади.
+              try {
+                var playerData = Lampa.Player && Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
+                var playerVoices = Array.isArray(playerData.voiceovers) ? playerData.voiceovers : [];
+                if (playerVoices.length) {
+                  var playerVoiceItems = playerVoices.map(function (v, index) {
+                    var name = String(v && (v.language || v.name || v.title || v.voice) || ('Аудіодоріжка ' + (index + 1)));
+                    return { title: name, index: index, selected: !!(v && v.selected), voiceover: v };
+                  });
+                  Lampa.Select.show({
+                    title: title,
+                    items: playerVoiceItems,
+                    onBack: function () { Lampa.Controller.toggle('content'); },
+                    onSelect: function (item) {
+                      var selectedVoice = item && item.voiceover;
+                      if (selectedVoice && typeof selectedVoice.onSelect === 'function') {
+                        try { selectedVoice.onSelect(); } catch (eSelectVoice) { stelsLog('veoveo-player-voice-select-error', { error: eSelectVoice && (eSelectVoice.message || eSelectVoice.toString()) || '' }); }
+                      }
+                    }
+                  });
+                  stelsLog('veoveo-player-voice-filter-fallback', { count: playerVoiceItems.length, labels: playerVoiceItems.map(function (v) { return v.title; }) });
+                  return;
+                }
+              } catch (ePlayerVoiceFallback) {
+                stelsLog('veoveo-player-voice-filter-fallback-error', { error: ePlayerVoiceFallback && (ePlayerVoiceFallback.message || ePlayerVoiceFallback.toString()) || '' });
+              }
+            }
             if (!labels || !labels.length) {
               Lampa.Noty.show(type === 'voice' ? 'Переклади ще не завантажені' : 'Список сезонів ще не завантажений');
               return;
