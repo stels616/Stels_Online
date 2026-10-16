@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.195';
+    var STELS_ONLINE_VERSION = '1.1.196';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -29195,6 +29195,56 @@ var q = qualityMapFromAlloha(json);
         };
 
         filter.render().find('.filter--sort span').text(Lampa.Lang.translate('stels_online_balanser'));
+        // 1.1.196: компактний заголовок сторінки за зразком Lampa SeriesPage.
+        // Картки серій і їхня поточна розмітка не змінюються.
+        try {
+          var movieMeta = object.movie || {};
+          var displayTitle = movieMeta.title || movieMeta.name || movieMeta.original_title || movieMeta.original_name || object.title || '';
+          var release = movieMeta.release_date || movieMeta.first_air_date || '';
+          var year = (String(release).match(/^(\\d{4})/) || [])[1] || movieMeta.year || '';
+          var seasonCount = parseInt(movieMeta.number_of_seasons || 0, 10) || 0;
+          var episodeCount = parseInt(movieMeta.number_of_episodes || 0, 10) || 0;
+          var metaLine = year ? String(year) : '';
+          if (seasonCount) metaLine += (metaLine ? ' · ' : '') + seasonCount + ' сезон' + (seasonCount === 1 ? '' : (seasonCount < 5 ? 'и' : 'ів'));
+          if (episodeCount) metaLine += (metaLine ? ' · ' : '') + episodeCount + ' серій';
+          var pageHead = $('<div class="stels-online-page-head"><div class="stels-online-page-title"></div><div class="stels-online-page-meta"></div><div class="stels-online-page-actions"><div class="stels-online-page-action selector stels-online-page-voice">Озвучка</div><div class="stels-online-page-action selector stels-online-page-seasons">Список сезонів</div></div></div>');
+          pageHead.find('.stels-online-page-title').text(displayTitle);
+          pageHead.find('.stels-online-page-meta').text(metaLine);
+          if (!seasonCount) pageHead.find('.stels-online-page-seasons').hide();
+          function clickFilterByWords(words) {
+            var candidates = filter.render().find('.selector, .filter__item, .simple-button, [class*="filter--"]');
+            var found = $();
+            candidates.each(function () {
+              if (found.length) return;
+              var el = $(this), txt = (el.text() || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+              if (txt && words.some(function (w) { return txt === w || txt.indexOf(w) === 0 || txt.indexOf(w + ':') === 0; })) found = el;
+            });
+            if (found.length) found.trigger('hover:enter').trigger('click');
+            else {
+              try { filter.show(Lampa.Lang.translate('title_filter'), 'filter'); } catch (e) {}
+            }
+          }
+          pageHead.find('.stels-online-page-voice').on('hover:enter click', function () {
+            clickFilterByWords(['озвучка', 'переклад', 'voice', 'озвучення']);
+            return false;
+          });
+          pageHead.find('.stels-online-page-seasons').on('hover:enter click', function () {
+            clickFilterByWords(['сезон', 'season']);
+            return false;
+          });
+          if (!document.getElementById('stels-online-page-head-style')) {
+            $('<style id="stels-online-page-head-style">' +
+              '.stels-online-page-head{padding:.45em 1.1em .8em;box-sizing:border-box;width:100%;color:#fff;}' +
+              '.stels-online-page-title{font-size:2.05em;line-height:1.12;font-weight:800;letter-spacing:-.025em;white-space:normal;}' +
+              '.stels-online-page-meta{font-size:1.05em;line-height:1.35;opacity:.65;margin-top:.25em;margin-bottom:.75em;}' +
+              '.stels-online-page-actions{display:flex;align-items:center;gap:.55em;flex-wrap:wrap;}' +
+              '.stels-online-page-action{display:inline-flex;align-items:center;justify-content:center;min-height:2.65em;padding:.45em 1em;border-radius:2em;background:rgba(255,255,255,.12);font-weight:600;box-sizing:border-box;}' +
+              '.stels-online-page-action.focus,.stels-online-page-action:hover{background:#1680ff;color:#fff;}' +
+              '@media screen and (max-width:700px){.stels-online-page-head{padding:.35em .25em .75em}.stels-online-page-title{font-size:1.75em}.stels-online-page-meta{font-size:.95em}.stels-online-page-action{min-height:2.45em;padding:.4em .85em}}' +
+              '</style>').appendTo('head');
+          }
+          files.appendHead(pageHead);
+        } catch (headErr) { stelsLog('page-head-render-error', { error: headErr && (headErr.message || headErr.toString()) || '' }); }
         // 1.1.162: кнопку "Джерело" прибрано саме з верхнього горизонтального меню.
         // Вибір джерела лишається через штатний пункт "Балансер", а під час non-blocking
         // завантаження показуємо тільки індикатор-спінер без перекриття меню.
