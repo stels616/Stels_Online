@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.200';
+    var STELS_ONLINE_VERSION = '1.1.201';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -12,6 +12,9 @@
     var STELS_UA_FLAG_HTML = '<img class="stels-online-ua-flag" src="' + STELS_UA_FLAG_URL + '" alt="" aria-hidden="true">';
     var STELS_LOG_KEY = 'STELS_ONLINE_MOD_DEBUG_LOG';
     var STELS_LOG_MAX = 1200;
+    // Зберігаємо voiceovers VeoVeo у пам'яті: Lampa очищає playdata після виходу з плеєра,
+    // але кнопка «Озвучка» на сторінці джерела має показувати ті самі доріжки.
+    var stelsVeoVeoVoiceoverCache = [];
     var stelsPrecheckSilentNoty = 0;
     var stelsPrecheckSilentUntil = 0;
     var stelsOriginalNotyShow = null;
@@ -1296,6 +1299,15 @@
         var nativePlaylist = Lampa.Player.playlist;
         if (typeof nativePlay == 'function') {
           Lampa.Player.play = function (data) {
+            try {
+              var currentBalanser = String(Lampa.Storage && Lampa.Storage.get('stels_online_balanser') || '').toLowerCase();
+              if (currentBalanser === 'veoveo' && data && Array.isArray(data.voiceovers) && data.voiceovers.length) {
+                // Зберігаємо об'єкти у пам'яті разом з onSelect, а не лише назви:
+                // так кнопка на сторінці може відкрити список після очищення playdata.
+                stelsVeoVeoVoiceoverCache = data.voiceovers.slice(0);
+                stelsLog('veoveo-voiceovers-cache-save', { count: stelsVeoVeoVoiceoverCache.length, labels: stelsVeoVeoVoiceoverCache.map(function (v, i) { return String(v && (v.language || v.name || v.title || v.voice) || ('Аудіодоріжка ' + (i + 1))); }) });
+              }
+            } catch (eCacheVoiceovers) {}
             if (stelsAndroidPlayerFixEnabled()) data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
             return nativePlay.apply(this, arguments.length ? [data] : arguments);
           };
@@ -29264,7 +29276,7 @@ var q = qualityMapFromAlloha(json);
               // замість помилкового повідомлення про незавантажені переклади.
               try {
                 var playerData = Lampa.Player && Lampa.Player.playdata ? (Lampa.Player.playdata() || {}) : {};
-                var playerVoices = Array.isArray(playerData.voiceovers) ? playerData.voiceovers : [];
+                var playerVoices = Array.isArray(playerData.voiceovers) && playerData.voiceovers.length ? playerData.voiceovers : stelsVeoVeoVoiceoverCache;
                 if (playerVoices.length) {
                   var playerVoiceItems = playerVoices.map(function (v, index) {
                     var name = String(v && (v.language || v.name || v.title || v.voice) || ('Аудіодоріжка ' + (index + 1)));
@@ -29281,7 +29293,7 @@ var q = qualityMapFromAlloha(json);
                       }
                     }
                   });
-                  stelsLog('veoveo-player-voice-filter-fallback', { count: playerVoiceItems.length, labels: playerVoiceItems.map(function (v) { return v.title; }) });
+                  stelsLog('veoveo-player-voice-filter-fallback', { count: playerVoiceItems.length, from_cache: !(Array.isArray(playerData.voiceovers) && playerData.voiceovers.length), labels: playerVoiceItems.map(function (v) { return v.title; }) });
                   return;
                 }
               } catch (ePlayerVoiceFallback) {
