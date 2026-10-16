@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.207';
+    var STELS_ONLINE_VERSION = '1.1.208';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -21,6 +21,313 @@
     var stelsPrecheckSilentUntil = 0;
     var stelsOriginalNotyShow = null;
     var stelsPrecheckNotyGuardFn = null;
+    // 1.1.208: фоновий precheck на сторінці картки контенту (опис/актори),
+    // щоб при відкритті плагіна бейджі якості вже були готові.
+    var stelsBgPrecheck = {
+      key: '',
+      movie: null,
+      status: {},
+      running: false,
+      token: 0,
+      timer: null
+    };
+
+    function stelsContentPrecheckKey(movie) {
+      try {
+        if (!movie) return '';
+        var id = movie.tmdb_id || movie.id || '';
+        var imdb = movie.imdb_id || '';
+        var kp = movie.kinopoisk_id || movie.kp_id || '';
+        return String(id) + '|' + String(imdb) + '|' + String(kp);
+      } catch (e) { return ''; }
+    }
+
+    function stelsBgGetVisibleSourceNames() {
+      var order = [];
+      try { order = stelsGetSourceOrder(); } catch (e) { order = []; }
+      if (!order || !order.length) {
+        try { order = STELS_REQUESTED_SOURCE_NAMES.slice(); } catch (e2) { order = []; }
+      }
+      var hidden = [];
+      try {
+        hidden = Lampa.Storage.get(STELS_SOURCES_HIDE_KEY, []);
+        if (!Array.isArray(hidden)) hidden = [];
+        hidden = hidden.map(stelsNormalizeSourceKey);
+      } catch (e3) { hidden = []; }
+      return order.filter(function (n) {
+        n = stelsNormalizeSourceKey(n);
+        return n && hidden.indexOf(n) === -1;
+      });
+    }
+
+    function stelsBgSaveStatus(source, status, message, quality, seasons) {
+      try {
+        source = stelsNormalizeSourceKey(source);
+        if (!source) return;
+        var prev = stelsBgPrecheck.status[source] || {};
+        var q = quality || prev.quality || '';
+        var s = parseInt(seasons, 10) || prev.seasons || 0;
+        stelsBgPrecheck.status[source] = {
+          status: status || prev.status || '',
+          message: message || '',
+          quality: q,
+          seasons: s,
+          time: Date.now()
+        };
+      } catch (e) {}
+    }
+
+    function stelsBgHydrateInto(targetMap) {
+      try {
+        if (!targetMap || !stelsBgPrecheck.status) return 0;
+        var n = 0;
+        Object.keys(stelsBgPrecheck.status).forEach(function (name) {
+          var info = stelsBgPrecheck.status[name];
+          if (!info || !info.status) return;
+          // Не перетираємо свіжіші дані з активної сесії плагіна.
+          var prev = targetMap[name];
+          if (prev && prev.time && info.time && prev.time > info.time && prev.status === 'ok' && prev.quality) return;
+          targetMap[name] = {
+            status: info.status,
+            message: info.message || '',
+            quality: info.quality || '',
+            seasons: info.seasons || 0,
+            time: info.time || Date.now()
+          };
+          n++;
+        });
+        return n;
+      } catch (e) { return 0; }
+    }
+
+    function stelsBgMakeMinimalProbe(sourceName, object, token, done) {
+      var finished = false;
+      var maxQ = 0;
+      var seasonMap = {};
+      var okTimer = null;
+      var fileActive = 0;
+      function rememberQ(value) {
+        try { maxQ = Math.max(maxQ, stelsExtractMaxQualityFromAny(value, 0, 'bg')); } catch (e) {}
+        try {
+          if (object && object.movie && (object.movie.name || object.movie.number_of_seasons || object.movie.first_air_date)) {
+            stelsCollectSeasonNumbers(value, 0, seasonMap);
+          }
+        } catch (e2) {}
+      }
+      function finish(status, message) {
+        if (finished || token !== stelsBgPrecheck.token) return;
+        finished = true;
+        try { if (okTimer) clearTimeout(okTimer); } catch (e) {}
+        var seasons = Object.keys(seasonMap).length;
+        var qlabel = maxQ ? stelsQualityLabel(maxQ) : '';
+        stelsBgSaveStatus(sourceName, status, message || '', qlabel, seasons);
+        stelsLog('bg-precheck-result', {
+          source: sourceName,
+          status: status,
+          quality: qlabel,
+          seasons: seasons,
+          message: message || ''
+        });
+        try { done && done(); } catch (e3) {}
+      }
+      function scheduleOk() {
+        if (finished) return;
+        if (okTimer) clearTimeout(okTimer);
+        okTimer = setTimeout(function () {
+          if (fileActive > 0) return scheduleOk();
+          finish(maxQ || Object.keys(seasonMap).length ? 'ok' : 'empty', '');
+        }, 480);
+      }
+      var probe = {
+        _stelsPrecheck: true,
+        _stelsBgPrecheck: true,
+        loading: function () {},
+        empty: function () { finish('empty', 'empty'); },
+        emptyForQuery: function () { finish('empty', 'emptyForQuery'); },
+        similars: function () { scheduleOk(); },
+        filter: function (items) { rememberQ(items); scheduleOk(); },
+        append: function (item) { rememberQ(item); scheduleOk(); },
+        appendGlobalFutureEpisodeCards: function () {},
+        reset: function () {},
+        saveChoice: function () {},
+        getLastEpisode: function () { return 0; },
+        formatEpisodeTitle: function (s, e) { return 'S' + s + 'E' + e; },
+        drawfiles: function () { fileActive++; },
+        endfiles: function () { fileActive = Math.max(0, fileActive - 1); scheduleOk(); },
+        destroy: function () {},
+        activity: {
+          loader: function () {},
+          render: function () { return { find: function () { return { after: function () {}, length: 0 }; }, length: 0 }; },
+          toggle: function () {}
+        }
+      };
+      return { component: probe, finish: finish, scheduleOk: scheduleOk };
+    }
+
+    function stelsBgCreateSource(name, fake, object) {
+      name = stelsNormalizeSourceKey(name);
+      try {
+        if (name === 'uaflix') return new lampauaRemoteSource(fake, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix');
+        if (name === 'hdvb') return new lampauaRemoteSource(fake, object, ['hdvb', 'hdvb ua', 'hdvbua'], 'HDVB', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true });
+        if (name === 'kinotochka') return new lampauaRemoteSource(fake, object, ['kinotochka', 'kino tochka', 'kino-tochka'], 'KinoTochka', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinotochka', sourceQualityHint: true });
+        if (name === 'veoveo') return new lampauaRemoteSource(fake, object, ['veoveo', 'veo veo'], 'VeoVeo', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true });
+        if (name === 'uakinoax') return new uakinoax(fake, object);
+        if (name === 'eneyida') return new eneyida(fake, object);
+        if (name === 'filmix') return new filmix(fake, object);
+        if (name === 'collaps') return new collaps(fake, object, false);
+        if (name === 'phantom') return new collaps(fake, object, true);
+        if (name === 'makhno') return new cdnvideohub(fake, object, { sourceTitle: 'Makhno', movieVoiceFilter: true, precheckAllVoices: true });
+        if (name === 'starlight' || name === 'midnight') return new cdnvideohub(fake, object, { sourceTitle: 'Midnight', movieVoiceFilter: true, precheckAllVoices: true });
+        if (name === 'iremux') return new lampauaRemoteSource(fake, object, ['iremux', 'i remux'], 'iRemux', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', movieVoiceFilter: true, sourceQualityHint: true });
+        if (name === 'kinoukr') return new lampauaRemoteSource(fake, object, ['kinoukr', 'kino ukr'], 'KinoUkr', { host: 'https://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', directPath: 'kinoukr', sourceQualityHint: true });
+        if (name === 'uaserials') return new uaserials(fake, object);
+        if (name === 'rezka720') return new lampauaRemoteSource(fake, object, ['rezka720', 'rezka 720', 'rezka ~ 720'], 'Rezka ~ 720');
+        if (name === 'getstv') return new cdnvideohub(fake, object, { sourceTitle: 'GetsTV', movieVoiceFilter: true, precheckAllVoices: true });
+        if (name === 'vokino') return new cdnvideohub(fake, object, { sourceTitle: 'Vokino', movieVoiceFilter: true, precheckAllVoices: true });
+        if (name === 'iptvonline') return new cdnvideohub(fake, object, { sourceTitle: 'IPTVOnline', movieVoiceFilter: true, precheckAllVoices: true });
+        if (name === 'vkmovie') return new cdnvideohub(fake, object, { sourceTitle: 'VKMovie', movieVoiceFilter: true, precheckAllVoices: true });
+        if (name === 'cdnvideohub') return new cdnvideohub(fake, object, { sourceTitle: 'CDNVideoHub', movieVoiceFilter: true, precheckAllVoices: true });
+        if (name === 'zetflixnet') return new zetflixnet(fake, object, { precheckAllVoices: true });
+        if (name === 'zetflixdb') return new lampauaRemoteSource(fake, object, ['zetflixdb'], 'ZetflixDB', { host: 'https://lam.maxvol.pro/', token: false, headerKey: 'kit_aesgcmkey', directPath: 'zetflixdb', movieVoiceFilter: true, sourceQualityHint: true });
+        if (name === 'mirage') return new lampauaRemoteSource(fake, object, ['mirage'], 'Mirage', { host: 'http://rc.bwa.ad/', token: false, headerKey: 'bwaesgcmkey', voiceFromSimilar: true, sourceQualityHint: true });
+        if (name === 'tartuga') return new tartuga(fake, object);
+        if (name === 'alloha') return new alloha(fake, object);
+        if (name === 'fxapi') return new fxapi(fake, object);
+        if (name === 'filmixtv') return new filmixtv(fake, object);
+        if (name === 'fanserials') return new fanserials(fake, object);
+        if (name === 'pidtor') return new pidtor(fake, object);
+      } catch (e) {
+        stelsLog('bg-precheck-create-error', { source: name, error: e && (e.message || e.toString()) });
+      }
+      return null;
+    }
+
+    function stelsRunBackgroundPrecheck(token) {
+      if (token !== stelsBgPrecheck.token) return;
+      var movie = stelsBgPrecheck.movie;
+      if (!movie) { stelsBgPrecheck.running = false; return; }
+      var object = {
+        movie: movie,
+        search: movie.title || movie.name || '',
+        search_one: movie.title || movie.name || '',
+        search_two: movie.original_title || movie.original_name || '',
+        clarification: false
+      };
+      var names = stelsBgGetVisibleSourceNames();
+      if (!names.length) { stelsBgPrecheck.running = false; return; }
+      stelsPrecheckNotyMuteOn('bg-precheck');
+      stelsArmPrecheckNotyMute(25000);
+      var queue = names.slice();
+      var active = 0;
+      var limit = 3;
+      stelsLog('bg-precheck-start', {
+        key: stelsBgPrecheck.key,
+        count: queue.length,
+        sources: queue.slice(0, 20),
+        title: movie.title || movie.name || ''
+      });
+      function pump() {
+        if (token !== stelsBgPrecheck.token) {
+          stelsBgPrecheck.running = false;
+          stelsPrecheckNotyMuteOff('bg-precheck:cancelled');
+          return;
+        }
+        while (active < limit && queue.length) runOne(queue.shift());
+        if (!active && !queue.length) {
+          stelsBgPrecheck.running = false;
+          stelsPrecheckNotyMuteOff('bg-precheck:done');
+          stelsArmPrecheckNotyMute(8000);
+          stelsLog('bg-precheck-finish', {
+            key: stelsBgPrecheck.key,
+            checked: Object.keys(stelsBgPrecheck.status).length
+          });
+        }
+      }
+      function runOne(sourceName) {
+        active++;
+        stelsBgSaveStatus(sourceName, 'wait', '', '', 0);
+        var pack = stelsBgMakeMinimalProbe(sourceName, object, token, function () {
+          active--;
+          setTimeout(pump, 160);
+        });
+        var src = stelsBgCreateSource(sourceName, pack.component, object);
+        if (!src || typeof src.search !== 'function') {
+          pack.finish('error', 'unsupported');
+          return;
+        }
+        var timedOut = false;
+        var t = setTimeout(function () {
+          timedOut = true;
+          try { if (src.destroy) src.destroy(); } catch (e) {}
+          pack.finish('empty', 'timeout');
+        }, 7000);
+        var origFinish = pack.finish;
+        pack.finish = function (status, message) {
+          try { clearTimeout(t); } catch (e) {}
+          if (timedOut && status === 'ok') return;
+          origFinish(status, message);
+        };
+        // Передаємо finish у probe через замикання — джерела викликають empty/append.
+        // Підміняємо finish у pack, який уже в замиканні probe.
+        try {
+          src.search();
+        } catch (eSearch) {
+          pack.finish('error', eSearch && (eSearch.message || eSearch.toString()) || 'search-error');
+        }
+      }
+      pump();
+    }
+
+    function stelsScheduleBackgroundPrecheck(movie) {
+      try {
+        var key = stelsContentPrecheckKey(movie);
+        if (!key) return;
+        // Той самий контент уже перевіряється — не дублюємо.
+        if (stelsBgPrecheck.running && stelsBgPrecheck.key === key) return;
+        // Свіжий кеш (< 12 хв) з ≥1 ok — лишаємо, лише добираємо порожні.
+        if (stelsBgPrecheck.key === key && Object.keys(stelsBgPrecheck.status).length) {
+          var fresh = true;
+          var hasOk = false;
+          Object.keys(stelsBgPrecheck.status).forEach(function (n) {
+            var info = stelsBgPrecheck.status[n];
+            if (!info || !info.time || Date.now() - info.time > 12 * 60 * 1000) fresh = false;
+            if (info && info.status === 'ok') hasOk = true;
+          });
+          if (fresh && hasOk && stelsBgPrecheck.running === false) {
+            // Добираємо джерела без статусу.
+            var visible = stelsBgGetVisibleSourceNames();
+            var missing = visible.filter(function (n) { return !stelsBgPrecheck.status[n]; });
+            if (!missing.length) {
+              stelsLog('bg-precheck-skip-fresh', { key: key, cached: Object.keys(stelsBgPrecheck.status).length });
+              return;
+            }
+          }
+        }
+        if (stelsBgPrecheck.timer) {
+          try { clearTimeout(stelsBgPrecheck.timer); } catch (e) {}
+        }
+        // Якщо інший контент — скидаємо кеш статусів.
+        if (stelsBgPrecheck.key && stelsBgPrecheck.key !== key) {
+          stelsBgPrecheck.status = {};
+        }
+        stelsBgPrecheck.key = key;
+        stelsBgPrecheck.movie = movie;
+        stelsBgPrecheck.token++;
+        var token = stelsBgPrecheck.token;
+        stelsBgPrecheck.running = true;
+        // Невелика пауза, щоб UI картки встиг відмалюватись.
+        stelsBgPrecheck.timer = setTimeout(function () {
+          stelsRunBackgroundPrecheck(token);
+        }, 600);
+        stelsLog('bg-precheck-scheduled', {
+          key: key,
+          title: movie && (movie.title || movie.name) || '',
+          sources: stelsBgGetVisibleSourceNames().length
+        });
+      } catch (e) {
+        stelsLog('bg-precheck-schedule-error', { error: e && (e.message || e.toString()) });
+      }
+    }
 
     function stelsNotyMessageToText(msg) {
       try {
@@ -28484,6 +28791,22 @@ var q = qualityMapFromAlloha(json);
         return s.name;
       });
       var stelsSourceStatus = {};
+      // 1.1.208: підхоплюємо результати фонового precheck зі сторінки картки.
+      try {
+        var bgKey = stelsContentPrecheckKey(object && object.movie);
+        if (bgKey && stelsBgPrecheck.key === bgKey) {
+          var hydrated = stelsBgHydrateInto(stelsSourceStatus);
+          stelsLog('bg-precheck-hydrate', {
+            key: bgKey,
+            hydrated: hydrated,
+            running: !!stelsBgPrecheck.running,
+            sample: Object.keys(stelsSourceStatus).slice(0, 12).map(function (n) {
+              var i = stelsSourceStatus[n];
+              return n + ':' + (i && i.status || '') + ':' + (i && i.quality || '');
+            })
+          });
+        }
+      } catch (eHydrate) {}
       var stelsFloatingSourceButton = null;
       var stelsFloatingSourceVisible = false;
 
@@ -29926,7 +30249,35 @@ var q = qualityMapFromAlloha(json);
         stelsStopSafePrecheck();
         this.reset();
         this.find();
+        // 1.1.208: ще раз підхопити фонові результати (могли дорости після create).
+        try {
+          var bgKey2 = stelsContentPrecheckKey(object && object.movie);
+          if (bgKey2 && stelsBgPrecheck.key === bgKey2) {
+            stelsBgHydrateInto(stelsSourceStatus);
+            try { stelsRefreshSourceFilterTitles(); } catch (eRf) {}
+          }
+        } catch (eH2) {}
         stelsStartSafePrecheck.call(this);
+        // Поки фоновий precheck ще біжить — періодично підтягуємо нові бейджі.
+        try {
+          if (stelsBgPrecheck.running && stelsBgPrecheck.key === stelsContentPrecheckKey(object && object.movie)) {
+            var pollLeft = 20;
+            var pollTimer = setInterval(function () {
+              try {
+                pollLeft--;
+                if (pollLeft <= 0 || !stelsBgPrecheck.running) {
+                  clearInterval(pollTimer);
+                }
+                if (stelsBgPrecheck.key === stelsContentPrecheckKey(object && object.movie)) {
+                  stelsBgHydrateInto(stelsSourceStatus);
+                  try { stelsRefreshSourceFilterTitles(); } catch (eRf2) {}
+                }
+              } catch (ePoll) {
+                try { clearInterval(pollTimer); } catch (e3) {}
+              }
+            }, 900);
+          }
+        } catch (ePollStart) {}
       };
 
       this.cleanTitle = function (str) {
@@ -32390,6 +32741,13 @@ var q = qualityMapFromAlloha(json);
             loadOnline(e.data.movie);
           });
           e.object.activity.render().find('.view--torrent').after(btn);
+          // 1.1.208: поки користувач читає опис/акторів — вже перевіряємо джерела.
+          try {
+            var movie = e.data && e.data.movie || e.object && e.object.card || null;
+            if (movie) stelsScheduleBackgroundPrecheck(movie);
+          } catch (eBg) {
+            try { stelsLog('bg-precheck-hook-error', { error: eBg && (eBg.message || eBg.toString()) }); } catch (e2) {}
+          }
         }
       });
 
