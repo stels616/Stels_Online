@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.203';
+    var STELS_ONLINE_VERSION = '1.1.204';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1651,7 +1651,7 @@
           '.stels-online-source-status-ok{color:#00d36f!important;}' +
           '.stels-online-source-status-error{color:#ff3b30!important;}' +
           '.stels-online-source-status-wait{color:#ffd400!important;}' +
-          '.stels-online-source-quality-badge{margin-left:auto!important;padding-left:1.2em!important;min-width:4.2em!important;text-align:right!important;font-weight:900!important;color:#ffb300!important;-webkit-text-fill-color:#ffb300!important;font-size:.95em!important;letter-spacing:.02em!important;text-shadow:0 0 .2em rgba(0,0,0,.75)!important;white-space:nowrap!important;}' +
+          '.stels-online-source-quality-badge{margin-left:auto!important;padding-left:1.2em!important;min-width:5.6em!important;text-align:right!important;font-weight:900!important;color:#ffb300!important;-webkit-text-fill-color:#ffb300!important;font-size:.95em!important;letter-spacing:.02em!important;text-shadow:0 0 .2em rgba(0,0,0,.75)!important;white-space:nowrap!important;}' +
           '.stels-online-source-status-line{display:flex!important;align-items:center!important;width:100%!important;min-width:0!important;gap:.35em!important;}' +
           '.stels-online-source-status-name{display:inline-flex!important;align-items:center!important;min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}' +
           '.stels-online-source-status-name .stels-online-ua-flag{position:static!important;display:inline-block!important;vertical-align:middle!important;flex-shrink:0!important;margin-right:.45em!important;}' +
@@ -28522,6 +28522,103 @@ var q = qualityMapFromAlloha(json);
         return info.quality || '';
       }
 
+      function stelsSourceSeasons(source) {
+        var key = stelsNormalizeSourceKey(source && source.name || source);
+        var info = stelsSourceStatus[key] || {};
+        return parseInt(info.seasons, 10) || 0;
+      }
+
+      // 1.1.204: для серіалів у меню джерел показуємо кількість сезонів перед якістю
+      // (наприклад "S3 1080p"). Рахуємо унікальні номери сезонів із precheck.
+      function stelsIsSerialContent() {
+        try {
+          var movie = object && object.movie || {};
+          return !!(object && (object.method == 'tv' || object.type == 'tv' || object.media == 'tv') ||
+            movie.number_of_seasons || movie.name || movie.first_air_date || movie.original_name);
+        } catch (e) {}
+        return false;
+      }
+
+      function stelsCollectSeasonNumbers(value, depth, out) {
+        out = out || {};
+        if (depth == null) depth = 0;
+        if (depth > 6 || value == null) return out;
+        try {
+          if (typeof value == 'number') {
+            var n = parseInt(value, 10) || 0;
+            if (n > 0 && n < 80) out[n] = true;
+            return out;
+          }
+          if (typeof value == 'string') {
+            var text = String(value || '');
+            // "1 сезон", "Сезон 3", "S02", "season 2", "s=2"
+            text.replace(/(?:^|[^\d])(?:сезон|season|сезон[ауеів]?|s)\s*[:=\-]?\s*(\d{1,2})(?!\d)/ig, function (all, num) {
+              var sn = parseInt(num, 10) || 0;
+              if (sn > 0 && sn < 80) out[sn] = true;
+              return all;
+            });
+            text.replace(/(?:^|[^\w])s(\d{1,2})(?:e\d{1,3})?(?!\w)/ig, function (all, num) {
+              var sn = parseInt(num, 10) || 0;
+              if (sn > 0 && sn < 80) out[sn] = true;
+              return all;
+            });
+            return out;
+          }
+          if (Array.isArray(value) || (Lampa && Lampa.Arrays && Lampa.Arrays.isArray && Lampa.Arrays.isArray(value))) {
+            Array.prototype.slice.call(value).forEach(function (v) { stelsCollectSeasonNumbers(v, depth + 1, out); });
+            return out;
+          }
+          if (typeof value == 'object') {
+            if (value.jquery || value.nodeType === 1 || value.nodeType === 9) return out;
+            var explicit = value.season != null ? value.season
+              : (value.s != null ? value.s
+              : (value.season_number != null ? value.season_number
+              : (value.season_num != null ? value.season_num
+              : (value.season_id != null ? value.season_id : null))));
+            if (explicit != null) {
+              var es = parseInt(explicit, 10) || 0;
+              if (es > 0 && es < 80) out[es] = true;
+            }
+            if (Array.isArray(value.season_num)) {
+              value.season_num.forEach(function (sn) {
+                var n = parseInt(sn, 10) || 0;
+                if (n > 0 && n < 80) out[n] = true;
+              });
+            }
+            if (Array.isArray(value.season)) {
+              value.season.forEach(function (s) { stelsCollectSeasonNumbers(s, depth + 1, out); });
+            }
+            if (Array.isArray(value.seasons)) {
+              value.seasons.forEach(function (s) { stelsCollectSeasonNumbers(s, depth + 1, out); });
+            }
+            // Назви пунктів меню: "1 сезон", "Сезон 2"
+            var titleish = value.text || value.title || value.name || value.label || value.comment || '';
+            if (titleish) stelsCollectSeasonNumbers(String(titleish), depth + 1, out);
+            // Не розгортаємо всі вкладені об'єкти глибоко — лише типові поля списків.
+            if (Array.isArray(value.items)) value.items.forEach(function (it) { stelsCollectSeasonNumbers(it, depth + 1, out); });
+            if (Array.isArray(value.playlist)) value.playlist.forEach(function (it) { stelsCollectSeasonNumbers(it, depth + 1, out); });
+            if (Array.isArray(value.results)) value.results.forEach(function (it) { stelsCollectSeasonNumbers(it, depth + 1, out); });
+          }
+        } catch (e) {}
+        return out;
+      }
+
+      function stelsCountSeasonsFromAny(value) {
+        try {
+          var map = stelsCollectSeasonNumbers(value, 0, {});
+          return Object.keys(map).length;
+        } catch (e) {}
+        return 0;
+      }
+
+      function stelsSourceBadgeText(source) {
+        var quality = stelsSourceQuality(source);
+        var seasons = stelsIsSerialContent() ? stelsSourceSeasons(source) : 0;
+        if (seasons > 0 && quality) return 'S' + seasons + ' ' + quality;
+        if (seasons > 0) return 'S' + seasons;
+        return quality || '';
+      }
+
       var stelsRenderedSourceQuality = {};
       var stelsRenderedSourceQualityTimer = null;
       function stelsCurrentQualityKey(source) {
@@ -28549,13 +28646,14 @@ var q = qualityMapFromAlloha(json);
           if (!qlabel) return;
           var status = stelsSourceStatus[source] && stelsSourceStatus[source].status || 'ok';
           if (status !== 'ok' && status !== 'wait') status = 'ok';
-          stelsSourceStatus[source] = { status: status, message: stelsSourceStatus[source] && stelsSourceStatus[source].message || '', quality: qlabel, time: Date.now() };
+          var prevSeasons = stelsSourceStatus[source] && stelsSourceStatus[source].seasons || 0;
+          stelsSourceStatus[source] = { status: status, message: stelsSourceStatus[source] && stelsSourceStatus[source].message || '', quality: qlabel, seasons: prevSeasons, time: Date.now() };
           if (stelsRenderedSourceQualityTimer) clearTimeout(stelsRenderedSourceQualityTimer);
           stelsRenderedSourceQualityTimer = setTimeout(function () { stelsRefreshSourceFilterTitles(); }, 120);
         } catch (e) {}
       }
 
-      function stelsMarkSourceStatus(source, status, message, quality) {
+      function stelsMarkSourceStatus(source, status, message, quality, seasons) {
         source = stelsNormalizeSourceKey(source || balanser);
         if (!source) return;
         message = message || '';
@@ -28569,6 +28667,13 @@ var q = qualityMapFromAlloha(json);
           qvalue = stelsClampSourceQualityValue(source, Math.max(incomingQ || 0, prevQ || 0, renderedQ || 0));
         } catch (e) {}
 
+        var seasonCount = parseInt(seasons, 10) || 0;
+        if (!seasonCount) seasonCount = parseInt(prev.seasons, 10) || 0;
+        // Для empty/error без timeout скидаємо сезони разом із якістю.
+        if ((status === 'empty' || status === 'error') && !/timeout/i.test(message)) {
+          if (arguments.length >= 5 && (seasons === 0 || seasons === '0')) seasonCount = 0;
+        }
+
         // 1.1.121: timeout у precheck — це невизначений стан, а не доказ що джерело мертве.
         // Через це UafilmMe показувався з хрестиком, хоча при відкритті працював.
         if ((status === 'empty' || status === 'error') && /timeout/i.test(message)) {
@@ -28578,12 +28683,17 @@ var q = qualityMapFromAlloha(json);
         // 1.1.121: для ok/wait ніколи не знижуємо badge якості джерела в межах поточного фільму.
         else if (status === 'ok' || status === 'wait') {
           quality = qvalue ? stelsQualityLabel(qvalue) : (quality || '');
+          // Не зменшуємо вже відому кількість сезонів у межах того самого контенту.
+          if (seasonCount < (parseInt(prev.seasons, 10) || 0) && (status === 'ok' || status === 'wait')) {
+            seasonCount = parseInt(prev.seasons, 10) || seasonCount;
+          }
         }
         // Для реального empty/error без timeout стару якість чистимо, щоб не лишався badge від іншого контенту.
         else if (status === 'empty' || status === 'error') {
           quality = quality || '';
+          seasonCount = 0;
         }
-        stelsSourceStatus[source] = { status: status, message: message, quality: quality || '', time: Date.now() };
+        stelsSourceStatus[source] = { status: status, message: message, quality: quality || '', seasons: seasonCount || 0, time: Date.now() };
         stelsSaveSourceStatus();
       }
       function stelsSourceTitleWithStatus(source) {
@@ -28591,14 +28701,14 @@ var q = qualityMapFromAlloha(json);
         var title = source && source.title || stelsSourceTitle(key);
         var info = stelsSourceStatus[key] || {};
         var status = info.status;
-        var quality = info.quality || '';
+        var badge = stelsSourceBadgeText(source);
         try {
           var watch = stelsGetWatchHistory(object && object.movie);
           if (watch && watch.source === key) title += ' • останнє' + (watch.season && watch.episode ? ' S' + watch.season + 'E' + watch.episode : '');
         } catch (e) {}
-        if (status === 'ok') return title + ' ✓' + (quality ? ' ' + quality : '');
+        if (status === 'ok') return title + ' ✓' + (badge ? ' ' + badge : '');
         if (status === 'empty' || status === 'error') return title + ' ✕';
-        if (status === 'wait') return title + ' ⏳' + (quality ? ' ' + quality : '');
+        if (status === 'wait') return title + ' ⏳' + (badge ? ' ' + badge : '');
         return title;
       }
 
@@ -28613,8 +28723,11 @@ var q = qualityMapFromAlloha(json);
 
       function stelsStripSourceStatusTitle(title) {
         var text = String(title || '').replace(/\s+/g, ' ').trim();
-        text = text.replace(/\s*[✅❌⏳✓✔✕✖]\s*(?:[•·-]?\s*(?:8K|4K|2K|[1-9][0-9]{2,3}p?))?\s*$/ig, '').trim();
-        text = text.replace(/\s+(?:8K|4K|2K|[1-9][0-9]{2,3}p)\s*[✅❌⏳✓✔✕✖]\s*$/ig, '').trim();
+        // 1.1.204: також знімаємо "S3 1080p" / "s3" з кінця рядка статусу.
+        text = text.replace(/\s*[✅❌⏳✓✔✕✖]\s*(?:[•·-]?\s*(?:S\d{1,2}\s+)?(?:8K|4K|2K|[1-9][0-9]{2,3}p?))?\s*$/ig, '').trim();
+        text = text.replace(/\s+(?:S\d{1,2}\s+)?(?:8K|4K|2K|[1-9][0-9]{2,3}p)\s*[✅❌⏳✓✔✕✖]\s*$/ig, '').trim();
+        text = text.replace(/\s+S\d{1,2}(?:\s+(?:8K|4K|2K|[1-9][0-9]{2,3}p))?\s*$/ig, '').trim();
+        text = text.replace(/\s*[•·]\s*останнє(?:\s+S\d+E\d+)?\s*$/ig, '').trim();
         return text;
       }
 
@@ -28636,10 +28749,10 @@ var q = qualityMapFromAlloha(json);
         var key = stelsNormalizeSourceKey(source && source.name || source);
         var title = source && source.title || stelsSourceTitle(key);
         var kind = stelsSourceStatusKind(source);
-        var quality = stelsSourceQuality(source);
+        var badge = stelsSourceBadgeText(source);
         var icon = stelsSourceStatusIconHtml(kind);
         var name = stelsNeedsUaFlag(title, key) ? STELS_UA_FLAG_HTML + '<span>' + stelsEscapeHtml(title) + '</span>' : '<span>' + stelsEscapeHtml(title) + '</span>';
-        var qhtml = quality && kind === 'ok' ? '<span class="stels-online-source-quality-badge" style="color:#ffb300!important;-webkit-text-fill-color:#ffb300!important">' + stelsEscapeHtml(quality) + '</span>' : '';
+        var qhtml = badge && kind === 'ok' ? '<span class="stels-online-source-quality-badge" style="color:#ffb300!important;-webkit-text-fill-color:#ffb300!important">' + stelsEscapeHtml(badge) + '</span>' : '';
         if (!kind && !qhtml) return '<span class="stels-online-source-status-line"><span class="stels-online-source-status-name">' + name + '</span></span>';
         return '<span class="stels-online-source-status-line"><span class="stels-online-source-status-name">' + name + (icon ? ' ' + icon : '') + '</span>' + qhtml + '</span>';
       }
@@ -28898,6 +29011,7 @@ var q = qualityMapFromAlloha(json);
         }
         var probeMaxQuality = 0;
         var probeVerifiedQuality = 0;
+        var probeSeasonMap = {};
         var probeOkTimer = null;
         var probeFileCount = 0;
         var probeFileActive = 0;
@@ -28910,6 +29024,22 @@ var q = qualityMapFromAlloha(json);
             probeMaxQuality = Math.max(probeMaxQuality, stelsExtractMaxQualityFromAny(value, 0, keyHint || ''));
             if (probeMaxQuality > before && ['kinotochka', 'iremux', 'eneyida'].indexOf(stelsNormalizeSourceKey(sourceName)) !== -1) {
               stelsLog('source-precheck-quality-captured', { source: sourceName, reason: keyHint || '', quality: stelsQualityLabel(probeMaxQuality) });
+            }
+          } catch (e) {}
+          try { rememberSeasons(value); } catch (es) {}
+        }
+        function rememberSeasons(value) {
+          try {
+            if (!stelsIsSerialContent()) return;
+            var before = Object.keys(probeSeasonMap).length;
+            stelsCollectSeasonNumbers(value, 0, probeSeasonMap);
+            var after = Object.keys(probeSeasonMap).length;
+            if (after > before) {
+              stelsLog('source-precheck-seasons-captured', {
+                source: sourceName,
+                seasons: after,
+                list: Object.keys(probeSeasonMap).map(function (k) { return parseInt(k, 10); }).sort(function (a, b) { return a - b; }).slice(0, 20)
+              });
             }
           } catch (e) {}
         }
@@ -28938,6 +29068,7 @@ var q = qualityMapFromAlloha(json);
               voice_quality: Array.prototype.slice.call(qarr).slice(0, 12)
             });
           } catch (e) {}
+          try { rememberSeasons(filterItems); } catch (es2) {}
         }
         function finish(status, message, quality) {
           if (finished || token !== stelsPrecheckToken) return;
@@ -28972,8 +29103,17 @@ var q = qualityMapFromAlloha(json);
             stelsLog('source-precheck-quality-fallback', { source: sourceName, quality: stelsQualityLabel(qvalue), reason: 'ok-no-quality-map' });
           }
           var qlabel = quality || (qvalue ? stelsQualityLabel(qvalue) : '');
-          stelsMarkSourceStatus(sourceName, status, message || '', qlabel);
-          stelsLog('source-precheck-result', { source: sourceName, status: status, message: message || '', quality: qlabel || '', verified_quality: probeVerifiedQuality ? stelsQualityLabel(probeVerifiedQuality) : '' });
+          var seasonCount = 0;
+          try { seasonCount = Object.keys(probeSeasonMap || {}).length; } catch (esc) {}
+          stelsMarkSourceStatus(sourceName, status, message || '', qlabel, seasonCount);
+          stelsLog('source-precheck-result', {
+            source: sourceName,
+            status: status,
+            message: message || '',
+            quality: qlabel || '',
+            seasons: seasonCount || 0,
+            verified_quality: probeVerifiedQuality ? stelsQualityLabel(probeVerifiedQuality) : ''
+          });
           stelsRefreshSourceFilterTitles();
           if (done) done();
         }
