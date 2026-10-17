@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.201';
+    var STELS_ONLINE_VERSION = '1.1.202';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1255,6 +1255,76 @@
     }
 
 
+
+    // 1.1.202: жорсткий lock відтворення — під час Lift ігноруємо будь-які інші Player.play
+    // (precheck VeoVeo/collaps, CUB preroll підміна, сторонні балансери).
+    var stelsPlayLock = {
+      active: false,
+      source: '',
+      url: '',
+      host: '',
+      started: 0,
+      timer: null
+    };
+
+    function stelsUrlHost(u) {
+      try {
+        var s = String(u || '');
+        var m = s.match(/^https?:\/\/([^\/\?#]+)/i);
+        return m ? m[1].toLowerCase() : '';
+      } catch (e) { return ''; }
+    }
+
+    function stelsPlayLockAcquire(source, url) {
+      try {
+        stelsPlayLock.active = true;
+        stelsPlayLock.source = source || '';
+        stelsPlayLock.url = String(url || '');
+        stelsPlayLock.host = stelsUrlHost(url);
+        stelsPlayLock.started = Date.now();
+        if (stelsPlayLock.timer) { clearTimeout(stelsPlayLock.timer); stelsPlayLock.timer = null; }
+        // авто-зняття через 4 години (серія)
+        stelsPlayLock.timer = setTimeout(function () { stelsPlayLockRelease('timeout'); }, 4 * 60 * 60 * 1000);
+        try { stelsLog('play-lock-on', { source: stelsPlayLock.source, host: stelsPlayLock.host, url: (stelsPlayLock.url || '').slice(0, 120) }); } catch (e) {}
+      } catch (e2) {}
+    }
+
+    function stelsPlayLockRelease(reason) {
+      try {
+        if (!stelsPlayLock.active) return;
+        try { stelsLog('play-lock-off', { reason: reason || '', source: stelsPlayLock.source, ms: Date.now() - (stelsPlayLock.started || 0) }); } catch (e) {}
+        stelsPlayLock.active = false;
+        stelsPlayLock.source = '';
+        stelsPlayLock.url = '';
+        stelsPlayLock.host = '';
+        stelsPlayLock.started = 0;
+        if (stelsPlayLock.timer) { clearTimeout(stelsPlayLock.timer); stelsPlayLock.timer = null; }
+      } catch (e2) {}
+    }
+
+    function stelsPlayLockShouldBlock(data) {
+      if (!stelsPlayLock.active || !data || typeof data !== 'object') return false;
+      try {
+        // дозволяємо той самий source
+        if (data._stels_source && data._stels_source === stelsPlayLock.source) return false;
+        if (data._stels_no_ad && stelsPlayLock.source === 'lift') return false;
+        var u = String(data.url || data.file || '');
+        if (!u) return false;
+        // дозволяємо той самий host (interkh CDN може міняти субдомен)
+        var h = stelsUrlHost(u);
+        if (stelsPlayLock.host && h) {
+          // interkh.com / будь-який *.interkh.com
+          var lockRoot = stelsPlayLock.host.split('.').slice(-2).join('.');
+          var newRoot = h.split('.').slice(-2).join('.');
+          if (lockRoot && lockRoot === newRoot) return false;
+          if (h === stelsPlayLock.host) return false;
+        }
+        // блокуємо все інше (rstprgapipt, mvapspdmpg, veoveo, bwa.ad, інші балансери)
+        try { stelsLog('play-lock-block', { source: data._stels_source || '', host: h, url: u.slice(0, 120), lock_host: stelsPlayLock.host }); } catch (e) {}
+        return true;
+      } catch (e2) { return false; }
+    }
+
     function stelsSuppressCubPreroll(enable) {
       try {
         if (!Lampa) return;
@@ -1284,35 +1354,42 @@
             }
             Lampa.Storage.set('region', JSON.stringify({ code: SPOOF, time: Date.now() }));
           } catch (eReg) {}
-          // 4) Lampa.VPN.region / code через defineProperty (read-only у Android WebView)
+          // 4) Lampa.VPN — defineProperty, fallback: повна підміна об'єкта
           try {
             var V = Lampa.VPN;
-            if (V && !V.__stels_vpn_spoofed) {
+            if (V && !Lampa.__stels_vpn_object_backup) {
               var origRegion = V.region;
               var origCode = V.code;
-              V.__stels_vpn_orig = { region: origRegion, code: origCode };
+              var applied = false;
               try {
                 Object.defineProperty(V, 'code', {
-                  configurable: true,
-                  enumerable: true,
-                  writable: true,
+                  configurable: true, enumerable: true, writable: true,
                   value: function () { return SPOOF; }
                 });
-              } catch (eC) {
-                try { V.code = function () { return SPOOF; }; } catch (eC2) {}
-              }
-              try {
                 Object.defineProperty(V, 'region', {
-                  configurable: true,
-                  enumerable: true,
-                  writable: true,
+                  configurable: true, enumerable: true, writable: true,
                   value: function (call) { if (typeof call === 'function') call(SPOOF); return SPOOF; }
                 });
-              } catch (eR) {
-                try { V.region = function (call) { if (typeof call === 'function') call(SPOOF); return SPOOF; }; } catch (eR2) {}
+                applied = (typeof V.code === 'function' && V.code() === SPOOF);
+              } catch (eDef) { applied = false; }
+              if (!applied) {
+                // Повна підміна Lampa.VPN
+                Lampa.__stels_vpn_object_backup = V;
+                var proxy = {};
+                try {
+                  for (var k in V) {
+                    try { proxy[k] = V[k]; } catch (eK) {}
+                  }
+                } catch (eCopy) {}
+                proxy.code = function () { return SPOOF; };
+                proxy.region = function (call) { if (typeof call === 'function') call(SPOOF); return SPOOF; };
+                proxy.__stels_vpn_spoofed = true;
+                try { Lampa.VPN = proxy; applied = true; } catch (eRep) { applied = false; }
+              } else {
+                V.__stels_vpn_spoofed = true;
+                V.__stels_vpn_orig = { region: origRegion, code: origCode };
               }
-              V.__stels_vpn_spoofed = true;
-              try { stelsLog('lift-vpn-spoof', { applied: true, code: SPOOF }); } catch (eL) {}
+              try { stelsLog('lift-vpn-spoof', { applied: applied, code: SPOOF, method: Lampa.__stels_vpn_object_backup ? 'replace' : 'defineProperty' }); } catch (eL) {}
             }
           } catch (eVpn) {
             try { stelsLog('lift-vpn-spoof', { applied: false, error: String(eVpn && eVpn.message || eVpn) }); } catch (eL2) {}
@@ -1335,21 +1412,26 @@
             }
           } catch (eReg2) {}
           try {
-            var V2 = Lampa.VPN;
-            if (V2 && V2.__stels_vpn_spoofed && V2.__stels_vpn_orig) {
-              var o = V2.__stels_vpn_orig;
-              try {
-                if (o.code !== undefined) {
-                  Object.defineProperty(V2, 'code', { configurable: true, enumerable: true, writable: true, value: o.code });
-                }
-              } catch (eRc) {}
-              try {
-                if (o.region !== undefined) {
-                  Object.defineProperty(V2, 'region', { configurable: true, enumerable: true, writable: true, value: o.region });
-                }
-              } catch (eRr) {}
-              delete V2.__stels_vpn_orig;
-              delete V2.__stels_vpn_spoofed;
+            if (Lampa.__stels_vpn_object_backup) {
+              Lampa.VPN = Lampa.__stels_vpn_object_backup;
+              Lampa.__stels_vpn_object_backup = null;
+            } else {
+              var V2 = Lampa.VPN;
+              if (V2 && V2.__stels_vpn_spoofed && V2.__stels_vpn_orig) {
+                var o = V2.__stels_vpn_orig;
+                try {
+                  if (o.code !== undefined) {
+                    Object.defineProperty(V2, 'code', { configurable: true, enumerable: true, writable: true, value: o.code });
+                  }
+                } catch (eRc) {}
+                try {
+                  if (o.region !== undefined) {
+                    Object.defineProperty(V2, 'region', { configurable: true, enumerable: true, writable: true, value: o.region });
+                  }
+                } catch (eRr) {}
+                delete V2.__stels_vpn_orig;
+                delete V2.__stels_vpn_spoofed;
+              }
             }
           } catch (eVpn2) {}
         }
@@ -1435,9 +1517,13 @@
         if (typeof nativePlay == 'function') {
           Lampa.Player.play = function (data) {
             if (data && typeof data === 'object') {
+              try {
+                if (stelsPlayLockShouldBlock(data)) {
+                  return; // ігноруємо чужий play під час lock
+                }
+              } catch (eLock) {}
               try { stelsStripPlayAds(data); } catch (e1) {}
               if (stelsAndroidPlayerFixEnabled()) data = stelsSanitizeAndroidPlayable(data, 'Lampa.Player.play');
-              // Для Lift / interkh — додатково блокуємо підміну URL рекламою (CUB preroll / VAST)
               try {
                 var u0 = (data.url || data.file || '') + '';
                 if (data._stels_no_ad || data._stels_source === 'lift' || /interkh\.com/i.test(u0)) {
@@ -1459,6 +1545,9 @@
               list.forEach(function (item) {
                 if (!item) return;
                 if (typeof item.url === 'function') return;
+                try {
+                  if (stelsPlayLockShouldBlock(item)) return; // skip foreign items
+                } catch (eBlk) {}
                 try { stelsStripPlayAds(item); } catch (eS) {}
                 if (stelsAndroidPlayerFixEnabled()) item = stelsSanitizeAndroidPlayable(item, 'Lampa.Player.playlist');
                 try {
@@ -29082,13 +29171,15 @@ var q = qualityMapFromAlloha(json);
             };
             try { stelsStripPlayAds(play); } catch (eAd) {}
 
-            // ВАЖЛИВО: suppress ДО playlist/play — CUB preroll стартує за ~30 мс
+            // ВАЖЛИВО: lock + suppress ДО playlist/play
+            try { stelsPlayLockAcquire('lift', url); } catch (eLockOn) {}
             try { stelsSuppressCubPreroll(true); } catch (eSup) {}
             try {
               if (Lampa.Player && Lampa.Player.listener && Lampa.Player.listener.follow) {
                 var once = function (e) {
                   var t = e && e.type;
                   if (t === 'destroy' || t === 'ended' || t === 'error') {
+                    try { stelsPlayLockRelease(t || 'player-event'); } catch (eLk) {}
                     try { stelsSuppressCubPreroll(false); } catch (eOff) {}
                     try { Lampa.Player.listener.remove('destroy,ended,error', once); } catch (eRm) {}
                   }
