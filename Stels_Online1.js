@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.197';
+    var STELS_ONLINE_VERSION = '1.1.198';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -28834,32 +28834,45 @@ var q = qualityMapFromAlloha(json);
       var collapsBlocked = (!startsWith(window.location.protocol, 'http') || window.location.hostname.indexOf('lampa') !== -1) && disable_dbg;
 
     /**
-     * Lift (liftw.ws / api.liftw.ws / embed.liftw.ws)
+     * Lift (liftw.ws / api.liftw.ws / embed.liftw.ws) — 1.1.198
      * Пошук: GET https://api.liftw.ws/search?q=
      * Картка: GET https://api.liftw.ws/info/{id}  (info.id ≈ KP)
-     * Плеєр: GET https://embed.liftw.ws/embed/movie/{id}?host=liftw.ws&season=&episode=
-     * У HTML makePlayer({ playlist: { seasons:[{season,episodes:[{hls,audio.names,cc,...}]}] } })
-     * CDN: *.interkh.com (HLS master.m3u8), Origin/Referer: embed.liftw.ws
+     * Плеєр: GET https://embed.liftw.ws/embed/movie/{id}?host=liftw.ws&season=1&episode=1
+     * У HTML: makePlayer({ playlist: { seasons:[{season,episodes:[{hls,dash,audio.names,cc}]}] } })
+     * CDN: *.interkh.com — Origin/Referer: embed.liftw.ws
      */
     function lift(component, _object) {
       var network = new Lampa.Reguest();
       var object = _object || {};
       var select_title = '';
-      var extract = { seasons: [], is_serial: false, title: '', quality: '' };
-      var filter_items = { season: [], voice: [] };
+      var extract = { seasons: [], is_serial: false, title: '', quality: '', lift_id: 0 };
+      var filter_items = { season: [], season_num: [], voice: [] };
       var choice = { season: 0, voice: 0, voice_name: '' };
       var destroyed = false;
+      var self_ref = this;
       var api_host = 'https://api.liftw.ws';
       var embed_host = 'https://embed.liftw.ws';
       var site_host = 'https://liftw.ws';
       var user_agent = Utils.baseUserAgent();
+      this.wait_similars = false;
+
+      function uidCookie() {
+        var uid = '';
+        try { uid = Lampa.Storage.get('stels_lift_uid', '') + ''; } catch (e) {}
+        if (!uid || uid.length < 8) {
+          uid = (Lampa.Utils.guid && Lampa.Utils.guid()) || (Date.now().toString(16) + Math.random().toString(16).slice(2, 10));
+          try { Lampa.Storage.set('stels_lift_uid', uid); } catch (e2) {}
+        }
+        return '_uid=' + uid;
+      }
 
       function apiHeaders() {
         return {
           'User-Agent': user_agent,
           'Accept': 'application/json',
           'Origin': site_host,
-          'Referer': site_host + '/'
+          'Referer': site_host + '/',
+          'Cookie': uidCookie()
         };
       }
 
@@ -28868,7 +28881,8 @@ var q = qualityMapFromAlloha(json);
           'User-Agent': user_agent,
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Referer': site_host + '/',
-          'Origin': site_host
+          'Origin': site_host,
+          'Cookie': uidCookie()
         };
       }
 
@@ -28882,16 +28896,14 @@ var q = qualityMapFromAlloha(json);
       }
 
       function norm(s) {
-        return String(s || '').toLowerCase().replace(/[ё]/g, 'е').replace(/[^a-z0-9а-яіїєґ\s]/gi, ' ').replace(/\s+/g, ' ').trim();
+        return String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^\wа-яіїєґ\s]/gi, ' ').replace(/\s+/g, ' ').trim();
       }
 
       function yearOf(movie) {
-        var y = 0;
         try {
-          var d = movie.release_date || movie.first_air_date || movie.year || '';
-          y = parseInt(String(d).slice(0, 4), 10) || 0;
-        } catch (e) {}
-        return y;
+          var d = (movie && (movie.release_date || movie.first_air_date || movie.year)) || '';
+          return parseInt(String(d).slice(0, 4), 10) || 0;
+        } catch (e) { return 0; }
       }
 
       function isSerialMovie(movie) {
@@ -28907,27 +28919,35 @@ var q = qualityMapFromAlloha(json);
         var ot = norm(movie.original_title || movie.original_name || '');
         var n = norm(item.name || '');
         var on = norm(item.origin_name || '');
-        if (t && n === t) score += 50;
-        else if (t && n.indexOf(t) !== -1) score += 30;
-        else if (t && t.indexOf(n) !== -1 && n.length > 3) score += 20;
-        if (ot && on && ot === on) score += 40;
-        else if (ot && on && on.indexOf(ot) !== -1) score += 20;
+        if (t && n === t) score += 55;
+        else if (t && n.indexOf(t) !== -1) score += 28;
+        else if (t && t.indexOf(n) !== -1 && n.length > 3) score += 18;
+        if (ot && on && ot === on) score += 50;
+        else if (ot && on && (on.indexOf(ot) !== -1 || ot.indexOf(on) !== -1)) score += 25;
+        // токенне перекриття для кирилиці/латиниці
+        if (t && n) {
+          var tt = t.split(' ').filter(function (w) { return w.length > 2; });
+          var nn = n.split(' ').filter(function (w) { return w.length > 2; });
+          var hit = 0;
+          tt.forEach(function (w) { if (nn.indexOf(w) !== -1) hit++; });
+          if (tt.length && hit === tt.length) score += 20;
+        }
         var my = yearOf(movie);
         var iy = parseInt(item.year, 10) || 0;
-        if (my && iy && my === iy) score += 25;
-        else if (my && iy && Math.abs(my - iy) <= 1) score += 10;
+        if (my && iy && my === iy) score += 30;
+        else if (my && iy && Math.abs(my - iy) <= 1) score += 12;
+        else if (my && iy && Math.abs(my - iy) > 3) score -= 25;
         var wantSerial = isSerialMovie(movie);
-        if (wantSerial && item.type === 3) score += 15;
-        if (!wantSerial && item.type === 1) score += 15;
+        if (wantSerial && item.type === 3) score += 18;
+        if (!wantSerial && item.type === 1) score += 18;
+        if (wantSerial && item.type === 1) score -= 10;
+        if (!wantSerial && item.type === 3) score -= 10;
         return score;
       }
 
       function extractBalancedArray(str, startIdx) {
         if (startIdx < 0 || startIdx >= str.length || str[startIdx] !== '[') return null;
-        var depth = 0;
-        var inStr = false;
-        var esc = false;
-        var quote = '';
+        var depth = 0, inStr = false, esc = false, quote = '';
         for (var i = startIdx; i < str.length; i++) {
           var c = str[i];
           if (inStr) {
@@ -28947,32 +28967,86 @@ var q = qualityMapFromAlloha(json);
       }
 
       function parseSeasonsFromEmbed(html) {
-        var marker = html.indexOf('seasons:');
-        if (marker < 0) marker = html.indexOf('seasons :');
-        if (marker < 0) return [];
-        var bracket = html.indexOf('[', marker);
-        if (bracket < 0) return [];
-        var raw = extractBalancedArray(html, bracket);
-        if (!raw) return [];
-        try {
-          return JSON.parse(raw);
-        } catch (e) {
-          try {
-            // іноді без лапок у ключах — не очікуємо; fallback
-            return JSON.parse(raw.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":'));
-          } catch (e2) {
-            return [];
+        html = String(html || '');
+        var seasons = [];
+        // 1) seasons:[...]
+        var markers = ['seasons:', 'seasons :', '"seasons":', 'seasons='];
+        for (var mi = 0; mi < markers.length && !seasons.length; mi++) {
+          var marker = html.indexOf(markers[mi]);
+          if (marker < 0) continue;
+          var bracket = html.indexOf('[', marker);
+          if (bracket < 0) continue;
+          var raw = extractBalancedArray(html, bracket);
+          if (!raw) continue;
+          try { seasons = JSON.parse(raw); } catch (e1) {
+            try {
+              seasons = JSON.parse(raw.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":'));
+            } catch (e2) { seasons = []; }
           }
         }
+        // 2) fallback: збираємо епізоди з окремих об'єктів, де є "hls"
+        if (!seasons.length) {
+          try {
+            var bySeason = {};
+            var re = /\{\s*"episode"\s*:\s*"?(\d+)"?\s*,\s*"id"\s*:\s*(\d+)\s*,\s*"videoKey"\s*:\s*(\d+)\s*,\s*"dash"\s*:\s*"([^"]*)"\s*,\s*"hls"\s*:\s*"([^"]+)"/g;
+            var m;
+            // спробуємо знайти season поруч
+            var seasonBlocks = html.split(/"season"\s*:\s*/);
+            for (var bi = 1; bi < seasonBlocks.length; bi++) {
+              var sn = parseInt(seasonBlocks[bi], 10);
+              if (!sn) continue;
+              var chunk = seasonBlocks[bi].slice(0, 500000);
+              var re2 = /"episode"\s*:\s*"?(\d+)"?[\s\S]{0,400}?"hls"\s*:\s*"([^"]+)"/g;
+              var m2;
+              while ((m2 = re2.exec(chunk))) {
+                if (!bySeason[sn]) bySeason[sn] = { season: sn, blocked: false, episodes: [] };
+                var epn = m2[1];
+                var hls = m2[2].replace(/\\\//g, '/');
+                var exists = bySeason[sn].episodes.some(function (e) { return String(e.episode) === String(epn); });
+                if (!exists) {
+                  // audio names nearby
+                  var names = [];
+                  var around = chunk.slice(Math.max(0, m2.index), m2.index + 800);
+                  var an = around.match(/"names"\s*:\s*\[([^\]]+)\]/);
+                  if (an) {
+                    try { names = JSON.parse('[' + an[1] + ']'); } catch (eN) {
+                      names = an[1].split(',').map(function (x) { return x.replace(/["']/g, '').trim(); }).filter(Boolean);
+                    }
+                  }
+                  bySeason[sn].episodes.push({
+                    episode: String(epn),
+                    hls: hls,
+                    audio: names.length ? { names: names } : { names: [] }
+                  });
+                }
+              }
+            }
+            seasons = Object.keys(bySeason).map(function (k) { return bySeason[k]; });
+          } catch (eFb) { seasons = []; }
+        }
+        if (!Array.isArray(seasons)) seasons = [];
+        // нормалізація
+        seasons = seasons.filter(function (s) { return s && (s.episodes || []).length; });
+        seasons.forEach(function (s) {
+          (s.episodes || []).forEach(function (ep) {
+            if (ep.hls) ep.hls = String(ep.hls).replace(/\\\//g, '/');
+            if (ep.dash) ep.dash = String(ep.dash).replace(/\\\//g, '/');
+          });
+        });
+        seasons.sort(function (a, b) { return (parseInt(a.season, 10) || 0) - (parseInt(b.season, 10) || 0); });
+        seasons.forEach(function (s) {
+          (s.episodes || []).sort(function (a, b) {
+            return (parseInt(a.episode, 10) || 0) - (parseInt(b.episode, 10) || 0);
+          });
+        });
+        return seasons;
       }
 
       function pickVoices(seasons) {
-        var voices = [];
-        var seen = {};
+        var voices = [], seen = {};
         (seasons || []).forEach(function (s) {
           (s.episodes || []).forEach(function (ep) {
-            var names = (ep.audio && ep.audio.names) || [];
-            names.forEach(function (n) {
+            ((ep.audio && ep.audio.names) || []).forEach(function (n) {
               n = String(n || '').trim();
               if (n && !seen[n]) { seen[n] = true; voices.push(n); }
             });
@@ -28985,17 +29059,22 @@ var q = qualityMapFromAlloha(json);
         if (!(cc && cc.length)) return false;
         var subs = [];
         cc.forEach(function (c) {
-          if (c && c.url) subs.push({ label: c.name || c.label || '', url: c.url });
+          if (c && c.url) subs.push({ label: c.name || c.label || '', url: String(c.url).replace(/\\\//g, '/') });
         });
         return subs.length ? subs : false;
+      }
+
+      function streamUrl(ep) {
+        if (!ep) return '';
+        return ep.hls || ep.dash || ep.file || ep.url || '';
       }
 
       this.search = function (_object, kinopoisk_id, data) {
         object = _object || object;
         select_title = (object.search || (object.movie && (object.movie.title || object.movie.name)) || '') + '';
         destroyed = false;
+        this.wait_similars = false;
 
-        // similars callback
         if (data && data[0] && (data[0].is_lift || data[0].lift_id)) {
           return loadEmbed(data[0].lift_id, data[0].title || select_title, data[0].quality || '');
         }
@@ -29006,13 +29085,19 @@ var q = qualityMapFromAlloha(json);
         var t2 = (movie.original_title || movie.original_name || '').trim();
         if (t1) queries.push(t1);
         if (t2 && norm(t2) !== norm(t1)) queries.push(t2);
-
         if (!queries.length) {
           component.emptyForQuery(select_title);
           return;
         }
 
-        try { stelsLog('lift-search', { q: queries[0], year: yearOf(movie), kp: kinopoisk_id || movie.kinopoisk_id }); } catch (e) {}
+        try {
+          stelsLog('lift-search', {
+            q: queries[0],
+            year: yearOf(movie),
+            kp: kinopoisk_id || movie.kinopoisk_id,
+            queries: queries
+          });
+        } catch (e) {}
 
         searchQuery(queries, 0, kinopoisk_id || movie.kinopoisk_id);
       };
@@ -29027,42 +29112,62 @@ var q = qualityMapFromAlloha(json);
         var url = api_host + '/search?q=' + encodeURIComponent(q);
         network.clear();
         network.timeout(15000);
-        network.native(url, function (json) {
-          if (destroyed) return;
-          var items = (json && json.items) || [];
-          if (!items.length) {
+        var go = function (method) {
+          network[method](url, function (json) {
+            if (destroyed) return;
+            var items = (json && json.items) || [];
+            if (!items.length) {
+              searchQuery(queries, idx + 1, kp);
+              return;
+            }
+            var ranked = items.map(function (it) {
+              return { item: it, score: scoreItem(it, object.movie || {}) };
+            }).sort(function (a, b) { return b.score - a.score; });
+
+            try {
+              stelsLog('lift-search-results', {
+                q: q,
+                count: items.length,
+                top: ranked.slice(0, 6).map(function (r) {
+                  return { id: r.item.id, name: r.item.name, origin: r.item.origin_name, year: r.item.year, type: r.item.type, score: r.score };
+                })
+              });
+            } catch (e) {}
+
+            // відсікаємо відверто слабкі
+            ranked = ranked.filter(function (r) { return r.score >= 35; });
+            if (!ranked.length) {
+              searchQuery(queries, idx + 1, kp);
+              return;
+            }
+
+            if (kp) {
+              verifyKp(ranked, String(kp), 0, function (matched) {
+                if (matched) loadEmbed(matched.item.id, matched.item.name, matched.item.quality);
+                else presentOrLoad(ranked);
+              });
+            } else {
+              presentOrLoad(ranked);
+            }
+          }, function (a, c) {
+            try { stelsLog('lift-search-fail', { q: q, err: network.errorDecode(a, c) }); } catch (e) {}
             searchQuery(queries, idx + 1, kp);
-            return;
-          }
-          // score and optionally verify KP via info
-          var ranked = items.map(function (it) {
-            return { item: it, score: scoreItem(it, object.movie || {}) };
-          }).sort(function (a, b) { return b.score - a.score; });
-
-          try { stelsLog('lift-search-results', { q: q, count: items.length, top: ranked.slice(0, 5).map(function (r) { return { id: r.item.id, name: r.item.name, year: r.item.year, score: r.score }; }) }); } catch (e) {}
-
-          if (kp && ranked.length) {
-            // перевірити топ-кандидатів на KP
-            verifyKp(ranked, String(kp), 0, function (matched) {
-              if (matched) loadEmbed(matched.item.id, matched.item.name, matched.item.quality);
-              else presentOrLoad(ranked);
-            });
-          } else {
-            presentOrLoad(ranked);
-          }
-        }, function (a, c) {
-          try { stelsLog('lift-search-fail', { q: q, err: network.errorDecode(a, c) }); } catch (e) {}
-          searchQuery(queries, idx + 1, kp);
-        }, false, { headers: apiHeaders() });
+          }, false, { headers: apiHeaders() });
+        };
+        try {
+          if (typeof network.silent === 'function') go('silent');
+          else go('native');
+        } catch (eGo) { go('native'); }
       }
 
       function verifyKp(ranked, kp, index, done) {
-        if (index >= ranked.length || index >= 5) return done(null);
+        if (index >= ranked.length || index >= 6) return done(null);
         var id = ranked[index].item.id;
         network.clear();
         network.timeout(12000);
         network.native(api_host + '/info/' + encodeURIComponent(id), function (json) {
           var kid = json && json.info && json.info.id != null ? String(json.info.id) : '';
+          try { stelsLog('lift-kp-check', { id: id, kp_info: kid, want: kp }); } catch (e) {}
           if (kid && kid === String(kp)) return done(ranked[index]);
           verifyKp(ranked, kp, index + 1, done);
         }, function () {
@@ -29076,12 +29181,12 @@ var q = qualityMapFromAlloha(json);
           return;
         }
         var best = ranked[0];
-        // якщо кілька близьких — similars
-        var close = ranked.filter(function (r) { return r.score >= best.score - 15 && r.score >= 30; });
-        if (close.length > 1 && best.score < 90) {
+        var close = ranked.filter(function (r) { return r.score >= best.score - 12 && r.score >= 45; });
+        if (close.length > 1 && best.score < 100) {
           var sim = close.map(function (r) {
             return {
               is_lift: true,
+              is_similars: true,
               lift_id: r.item.id,
               title: r.item.name,
               quality: r.item.quality || '',
@@ -29092,7 +29197,6 @@ var q = qualityMapFromAlloha(json);
           });
           try {
             self_ref.wait_similars = true;
-            sim.forEach(function (c) { c.is_similars = true; });
             component.similars(sim);
           } catch (e) {
             loadEmbed(best.item.id, best.item.name, best.item.quality);
@@ -29102,65 +29206,97 @@ var q = qualityMapFromAlloha(json);
         loadEmbed(best.item.id, best.item.name, best.item.quality);
       }
 
-      var self_ref = this;
-      this.wait_similars = false;
-
       function loadEmbed(liftId, title, qualityHint) {
         if (destroyed) return;
-        var url = embed_host + '/embed/movie/' + encodeURIComponent(liftId) + '?host=liftw.ws&season=1&episode=1';
-        try { stelsLog('lift-embed', { id: liftId, url: url }); } catch (e) {}
-        network.clear();
-        network.timeout(20000);
-        network.native(url, function (html) {
-          if (destroyed) return;
-          if (typeof html !== 'string') {
-            try { html = String(html || ''); } catch (e) { html = ''; }
-          }
-          var seasons = parseSeasonsFromEmbed(html);
-          if (!seasons.length) {
-            try { stelsLog('lift-embed-empty', { id: liftId, html_len: html.length }); } catch (e) {}
+        var urls = [
+          embed_host + '/embed/movie/' + encodeURIComponent(liftId) + '?host=liftw.ws&season=1&episode=1',
+          embed_host + '/embed/movie/' + encodeURIComponent(liftId) + '?host=liftw.ws'
+        ];
+        try { stelsLog('lift-embed', { id: liftId, url: urls[0] }); } catch (e) {}
+
+        function tryUrl(i) {
+          if (i >= urls.length) {
             component.emptyForQuery(select_title);
             return;
           }
-          // normalize seasons sort
-          seasons.sort(function (a, b) { return (parseInt(a.season, 10) || 0) - (parseInt(b.season, 10) || 0); });
-          seasons.forEach(function (s) {
-            (s.episodes || []).sort(function (a, b) {
-              return (parseInt(a.episode, 10) || 0) - (parseInt(b.episode, 10) || 0);
-            });
-          });
+          network.clear();
+          network.timeout(20000);
+          var doReq = function (method) {
+            network[method](urls[i], function (html) {
+              if (destroyed) return;
+              if (typeof html !== 'string') {
+                try { html = String(html || ''); } catch (e) { html = ''; }
+              }
+              var seasons = parseSeasonsFromEmbed(html);
+              var epTotal = 0;
+              seasons.forEach(function (s) { epTotal += (s.episodes || []).length; });
+              try {
+                stelsLog('lift-embed-parsed', {
+                  id: liftId,
+                  html_len: html.length,
+                  seasons: seasons.length,
+                  episodes: epTotal,
+                  season_nums: seasons.map(function (s) { return s.season; }),
+                  sample_hls: seasons[0] && seasons[0].episodes && seasons[0].episodes[0] ? (streamUrl(seasons[0].episodes[0]) || '').slice(0, 80) : ''
+                });
+              } catch (eL) {}
 
-          var voices = pickVoices(seasons);
-          var is_serial = seasons.length > 1 || (seasons[0] && (seasons[0].episodes || []).length > 1);
+              if (!seasons.length || !epTotal) {
+                try { stelsLog('lift-embed-empty', { id: liftId, html_len: html.length, try: i }); } catch (e) {}
+                tryUrl(i + 1);
+                return;
+              }
 
-          extract = {
-            seasons: seasons,
-            is_serial: is_serial,
-            title: title || select_title,
-            quality: qualityHint || '',
-            lift_id: liftId
+              var voices = pickVoices(seasons);
+              var is_serial = seasons.length > 1 || ((seasons[0].episodes || []).length > 1);
+
+              extract = {
+                seasons: seasons,
+                is_serial: is_serial,
+                title: title || select_title,
+                quality: qualityHint || '',
+                lift_id: liftId
+              };
+
+              filter_items = {
+                season: is_serial ? seasons.map(function (s) {
+                  var n = (s.episodes || []).length;
+                  return Lampa.Lang.translate('torrent_serial_season') + ' ' + s.season + (n ? ' (' + n + ')' : '');
+                }) : [],
+                season_num: is_serial ? seasons.map(function (s) { return parseInt(s.season, 10) || 0; }) : [],
+                voice: voices.slice()
+              };
+
+              choice = {
+                season: 0,
+                voice: 0,
+                voice_name: voices[0] || ''
+              };
+              if (choice.voice_name) {
+                var ix = filter_items.voice.indexOf(choice.voice_name);
+                if (ix >= 0) choice.voice = ix;
+              }
+
+              component.loading(false);
+              filter();
+              var items = filtred();
+              try { stelsLog('lift-append', { items: items.length, is_serial: is_serial, voices: voices.length }); } catch (eA) {}
+              if (!items.length) {
+                component.emptyForQuery(select_title);
+                return;
+              }
+              append(items);
+            }, function (a, c) {
+              try { stelsLog('lift-embed-fail', { id: liftId, try: i, err: network.errorDecode(a, c) }); } catch (e) {}
+              tryUrl(i + 1);
+            }, false, { headers: embedHeaders(), dataType: 'text' });
           };
-
-          filter_items = {
-            season: is_serial ? seasons.map(function (s) {
-              return Lampa.Lang.translate('torrent_serial_season') + ' ' + s.season;
-            }) : [],
-            voice: voices.slice()
-          };
-
-          choice = { season: 0, voice: 0, voice_name: voices[0] || '' };
-          if (choice.voice_name) {
-            var ix = filter_items.voice.indexOf(choice.voice_name);
-            if (ix >= 0) choice.voice = ix;
-          }
-
-          component.loading(false);
-          filter();
-          append(filtred());
-        }, function (a, c) {
-          try { stelsLog('lift-embed-fail', { id: liftId, err: network.errorDecode(a, c) }); } catch (e) {}
-          component.emptyForQuery(select_title);
-        }, false, { headers: embedHeaders(), dataType: 'text' });
+          try {
+            if (typeof network.silent === 'function') doReq('silent');
+            else doReq('native');
+          } catch (eR) { doReq('native'); }
+        }
+        tryUrl(0);
       }
 
       this.extendChoice = function (saved) {
@@ -29188,7 +29324,7 @@ var q = qualityMapFromAlloha(json);
         destroyed = true;
         try { stelsStopSafePrecheck(); } catch (e) {}
         network.clear();
-        extract = { seasons: [], is_serial: false, title: '', quality: '' };
+        extract = { seasons: [], is_serial: false, title: '', quality: '', lift_id: 0 };
       };
 
       function filter() {
@@ -29199,26 +29335,28 @@ var q = qualityMapFromAlloha(json);
           if (inx === -1) choice.voice = 0;
           else if (inx !== choice.voice) choice.voice = inx;
         }
-        component.filter(filter_items, choice, extract);
+        try { component.filter(filter_items, choice, extract); } catch (e) {
+          try { component.filter(filter_items, choice); } catch (e2) {}
+        }
       }
 
       function filtred() {
         var out = [];
         var seasons = extract.seasons || [];
         if (!seasons.length) return out;
-
         var voice_name = filter_items.voice[choice.voice] || choice.voice_name || '';
 
         if (extract.is_serial) {
           var season = seasons[choice.season] || seasons[0];
           if (!season) return out;
           (season.episodes || []).forEach(function (ep) {
-            if (!ep || !ep.hls) return;
-            var names = (ep.audio && ep.audio.names) || [];
-            // якщо обрана озвучка і її немає в епізоді — все одно показуємо (multi-audio HLS)
+            var url = streamUrl(ep);
+            if (!url) return;
             var q = extract.quality || 'FHD';
             out.push({
-              title: component.formatEpisodeTitle ? component.formatEpisodeTitle(season.season, ep.episode) : ('S' + season.season + 'E' + ep.episode),
+              title: component.formatEpisodeTitle
+                ? component.formatEpisodeTitle(season.season, ep.episode)
+                : (Lampa.Lang.translate('torrent_serial_season') + ' ' + season.season + ' - ' + ep.episode + ' ' + Lampa.Lang.translate('torrent_serial_episode')),
               quality: q,
               info: voice_name ? (' / ' + voice_name) : '',
               season: String(season.season),
@@ -29230,10 +29368,10 @@ var q = qualityMapFromAlloha(json);
             });
           });
         } else {
-          // фільм — перший епізод першого сезону
           var s0 = seasons[0];
           var ep0 = s0 && s0.episodes && s0.episodes[0];
-          if (ep0 && ep0.hls) {
+          var url0 = streamUrl(ep0);
+          if (url0) {
             out.push({
               title: extract.title || select_title,
               quality: extract.quality || 'FHD',
@@ -29259,6 +29397,11 @@ var q = qualityMapFromAlloha(json);
           var view = Lampa.Timeline.view(hash_file);
           var item = Lampa.Template.get('online', element);
           element.timeline = view;
+          // для global-future-episodes / resume
+          try {
+            if (element.season) item.attr('data-stels-season', element.season);
+            if (element.episode) item.attr('data-stels-episode', element.episode);
+          } catch (eAttr) {}
           item.append(Lampa.Timeline.render(view));
           if (Lampa.Timeline.details) item.find('.online__quality').append(Lampa.Timeline.details(view, ' / '));
           if (viewed.indexOf(hash_file) !== -1) {
@@ -29269,7 +29412,8 @@ var q = qualityMapFromAlloha(json);
             if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
             if (element.loading) return;
             var media = element.media || {};
-            if (!media.hls) {
+            var url = streamUrl(media);
+            if (!url) {
               Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
               return;
             }
@@ -29278,7 +29422,7 @@ var q = qualityMapFromAlloha(json);
               title: element.season
                 ? element.title
                 : ((extract.title || select_title) + (element.quality ? ' / ' + element.quality : '')),
-              url: media.hls,
+              url: url,
               quality: false,
               timeline: view,
               subtitles: element.subtitles,
@@ -29292,16 +29436,18 @@ var q = qualityMapFromAlloha(json);
               }
             };
 
-            // playlist для серіалу
             if (extract.is_serial) {
               var season = extract.seasons[choice.season] || extract.seasons[0];
               var playlist = [];
               (season.episodes || []).forEach(function (ep) {
-                if (!ep || !ep.hls) return;
+                var u = streamUrl(ep);
+                if (!u) return;
                 var h = Lampa.Utils.hash([season.season, ep.episode, object.movie.original_title || object.movie.original_name || object.movie.title].join(''));
                 playlist.push({
-                  title: component.formatEpisodeTitle ? component.formatEpisodeTitle(season.season, ep.episode) : ('S' + season.season + 'E' + ep.episode),
-                  url: ep.hls,
+                  title: component.formatEpisodeTitle
+                    ? component.formatEpisodeTitle(season.season, ep.episode)
+                    : ('S' + season.season + 'E' + ep.episode),
+                  url: u,
                   quality: false,
                   timeline: Lampa.Timeline.view(h),
                   subtitles: parseSubs(ep.cc),
@@ -29312,6 +29458,7 @@ var q = qualityMapFromAlloha(json);
             }
 
             element.loading = false;
+            try { stelsLog('lift-play', { url: url.slice(0, 100), season: element.season, episode: element.episode }); } catch (eP) {}
             Lampa.Player.play(play);
           });
 
@@ -29323,8 +29470,8 @@ var q = qualityMapFromAlloha(json);
             hash_file: hash_file,
             element: element,
             file: function (call) {
-              var media = element.media || {};
-              if (media.hls) call({ file: media.hls, quality: false });
+              var u = streamUrl(element.media || {});
+              if (u) call({ file: u, quality: false });
               else Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
             }
           });
@@ -29332,7 +29479,6 @@ var q = qualityMapFromAlloha(json);
         component.start(true);
       }
     }
-
 
       var all_sources = [
 {
