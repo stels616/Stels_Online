@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.200';
+    var STELS_ONLINE_VERSION = '1.1.201';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1258,15 +1258,65 @@
     function stelsSuppressCubPreroll(enable) {
       try {
         if (!Lampa) return;
+        var SPOOF = 'de';
         if (enable) {
+          // 1) Premium spoof — CUB preroll для non-premium
           if (!Lampa.__stels_premium_backup && Lampa.Account && typeof Lampa.Account.hasPremium === 'function') {
             Lampa.__stels_premium_backup = Lampa.Account.hasPremium;
             Lampa.Account.hasPremium = function () { return true; };
           }
           try {
-            Lampa.__stels_segments_ad_backup = Lampa.Storage.get('player_segments_ad', 'auto');
+            if (Lampa.Account && typeof Lampa.Account.Protocol === 'function') {
+              /* noop */
+            }
+          } catch (eAcc) {}
+          // 2) player_segments_ad = none
+          try {
+            if (Lampa.__stels_segments_ad_backup === undefined) {
+              Lampa.__stels_segments_ad_backup = Lampa.Storage.get('player_segments_ad', 'auto');
+            }
             Lampa.Storage.set('player_segments_ad', 'none');
           } catch (eSeg) {}
+          // 3) Storage region → de (CUB читає region.code)
+          try {
+            if (Lampa.__stels_region_backup === undefined) {
+              Lampa.__stels_region_backup = Lampa.Storage.get('region', '');
+            }
+            Lampa.Storage.set('region', JSON.stringify({ code: SPOOF, time: Date.now() }));
+          } catch (eReg) {}
+          // 4) Lampa.VPN.region / code через defineProperty (read-only у Android WebView)
+          try {
+            var V = Lampa.VPN;
+            if (V && !V.__stels_vpn_spoofed) {
+              var origRegion = V.region;
+              var origCode = V.code;
+              V.__stels_vpn_orig = { region: origRegion, code: origCode };
+              try {
+                Object.defineProperty(V, 'code', {
+                  configurable: true,
+                  enumerable: true,
+                  writable: true,
+                  value: function () { return SPOOF; }
+                });
+              } catch (eC) {
+                try { V.code = function () { return SPOOF; }; } catch (eC2) {}
+              }
+              try {
+                Object.defineProperty(V, 'region', {
+                  configurable: true,
+                  enumerable: true,
+                  writable: true,
+                  value: function (call) { if (typeof call === 'function') call(SPOOF); return SPOOF; }
+                });
+              } catch (eR) {
+                try { V.region = function (call) { if (typeof call === 'function') call(SPOOF); return SPOOF; }; } catch (eR2) {}
+              }
+              V.__stels_vpn_spoofed = true;
+              try { stelsLog('lift-vpn-spoof', { applied: true, code: SPOOF }); } catch (eL) {}
+            }
+          } catch (eVpn) {
+            try { stelsLog('lift-vpn-spoof', { applied: false, error: String(eVpn && eVpn.message || eVpn) }); } catch (eL2) {}
+          }
         } else {
           if (Lampa.__stels_premium_backup && Lampa.Account) {
             Lampa.Account.hasPremium = Lampa.__stels_premium_backup;
@@ -1278,6 +1328,30 @@
               Lampa.__stels_segments_ad_backup = undefined;
             }
           } catch (eSeg2) {}
+          try {
+            if (Lampa.__stels_region_backup !== undefined) {
+              Lampa.Storage.set('region', Lampa.__stels_region_backup);
+              Lampa.__stels_region_backup = undefined;
+            }
+          } catch (eReg2) {}
+          try {
+            var V2 = Lampa.VPN;
+            if (V2 && V2.__stels_vpn_spoofed && V2.__stels_vpn_orig) {
+              var o = V2.__stels_vpn_orig;
+              try {
+                if (o.code !== undefined) {
+                  Object.defineProperty(V2, 'code', { configurable: true, enumerable: true, writable: true, value: o.code });
+                }
+              } catch (eRc) {}
+              try {
+                if (o.region !== undefined) {
+                  Object.defineProperty(V2, 'region', { configurable: true, enumerable: true, writable: true, value: o.region });
+                }
+              } catch (eRr) {}
+              delete V2.__stels_vpn_orig;
+              delete V2.__stels_vpn_spoofed;
+            }
+          } catch (eVpn2) {}
         }
       } catch (e) {}
     }
@@ -29008,6 +29082,21 @@ var q = qualityMapFromAlloha(json);
             };
             try { stelsStripPlayAds(play); } catch (eAd) {}
 
+            // ВАЖЛИВО: suppress ДО playlist/play — CUB preroll стартує за ~30 мс
+            try { stelsSuppressCubPreroll(true); } catch (eSup) {}
+            try {
+              if (Lampa.Player && Lampa.Player.listener && Lampa.Player.listener.follow) {
+                var once = function (e) {
+                  var t = e && e.type;
+                  if (t === 'destroy' || t === 'ended' || t === 'error') {
+                    try { stelsSuppressCubPreroll(false); } catch (eOff) {}
+                    try { Lampa.Player.listener.remove('destroy,ended,error', once); } catch (eRm) {}
+                  }
+                };
+                Lampa.Player.listener.follow('destroy,ended,error', once);
+              }
+            } catch (eList) {}
+
             if (extract.is_serial) {
               var season = extract.seasons[choice.season] || extract.seasons[0];
               var playlist = [];
@@ -29038,19 +29127,6 @@ var q = qualityMapFromAlloha(json);
 
             element.loading = false;
             try { stelsLog('lift-play', { url: url.slice(0, 100), season: element.season, episode: element.episode, no_ad: true }); } catch (eP) {}
-            try { stelsSuppressCubPreroll(true); } catch (eSup) {}
-            try {
-              if (Lampa.Player && Lampa.Player.listener && Lampa.Player.listener.follow) {
-                var once = function (e) {
-                  var t = e && e.type;
-                  if (t === 'destroy' || t === 'ended' || t === 'error') {
-                    try { stelsSuppressCubPreroll(false); } catch (eOff) {}
-                    try { Lampa.Player.listener.remove('destroy,ended,error', once); } catch (eRm) {}
-                  }
-                };
-                Lampa.Player.listener.follow('destroy,ended,error', once);
-              }
-            } catch (eList) {}
             Lampa.Player.play(play);
             // страховка: повернути premium-флаг через 3 хв якщо listener не спрацював
             try { setTimeout(function () { stelsSuppressCubPreroll(false); }, 180000); } catch (eT) {}
@@ -34296,11 +34372,35 @@ var q = qualityMapFromAlloha(json);
         else {
           var origRegion = V.region, origCode = V.code;
           try {
-            if (typeof origRegion === 'function') V.region = function (call) { if (call) call(SPOOF_CODE); };
-            if (typeof origCode === 'function') V.code = function () { return SPOOF_CODE; };
+            Object.defineProperty(V, 'code', {
+              configurable: true, enumerable: true, writable: true,
+              value: function () { return SPOOF_CODE; }
+            });
+            Object.defineProperty(V, 'region', {
+              configurable: true, enumerable: true, writable: true,
+              value: function (call) { if (typeof call === 'function') call(SPOOF_CODE); return SPOOF_CODE; }
+            });
             info.applied = true;
-          } catch (e) { info.applied = false; info.error = String(e && e.message || e); }
+            info.method = 'defineProperty';
+          } catch (e) {
+            try {
+              if (typeof origRegion === 'function') V.region = function (call) { if (call) call(SPOOF_CODE); };
+              if (typeof origCode === 'function') V.code = function () { return SPOOF_CODE; };
+              info.applied = true;
+              info.method = 'assign';
+            } catch (e2) {
+              info.applied = false;
+              info.error = String(e2 && e2.message || e2);
+            }
+          }
           V.__stels_orig = { region: origRegion, code: origCode };
+          // також Storage region
+          try {
+            if (V.__stels_region_storage_backup === undefined) {
+              V.__stels_region_storage_backup = Lampa.Storage.get('region', '');
+            }
+            Lampa.Storage.set('region', JSON.stringify({ code: SPOOF_CODE, time: Date.now() }));
+          } catch (eS) {}
         }
         spoof_timer = setTimeout(function () {
           safe(function () {
@@ -34398,7 +34498,7 @@ var q = qualityMapFromAlloha(json);
       // перед відео було ~24 с "Реклама". Тут такі запити відразу завершуються помилкою
       // (як у рекламному блокувальнику), і прероллер одразу переходить до відео.
       // Вимкнути блокування: Lampa.Storage.set('stels_online_block_ads', false).
-      var AD_BLOCK_RE = /(^|[/.])ctv\.house([/:?]|$)/i;
+      var AD_BLOCK_RE = /(^|[/.])(ctv\.house|bid\.ctv\.house|ads?\.lampa\.|vast\.|imasdk\.googleapis|doubleclick\.net|googlesyndication\.com)([/:?]|$)/i;
       function adBlockOn() { return safe(function () { return Lampa.Storage.get('stels_online_block_ads', true) !== false; }, true); }
       safe(function () {
         var xo = XMLHttpRequest.prototype.open;
