@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.203';
+    var STELS_ONLINE_VERSION = '1.1.204';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -4961,36 +4961,38 @@
         html = String(html || '');
         var seasons = [];
         try {
-          var m = html.match(/seasons\s*:\s*(\[[\s\S]*?\])\s*(?:,\s*current|\}\s*,\s*ui|\}\s*\))/);
-          if (!m) m = html.match(/"seasons"\s*:\s*(\[[\s\S]*?\])\s*(?:,|\})/);
-          if (!m) {
-            var idx = html.indexOf('seasons:[');
-            if (idx < 0) idx = html.indexOf('seasons: [');
-            if (idx < 0) idx = html.indexOf('"seasons":[');
-            if (idx >= 0) {
-              var start = html.indexOf('[', idx);
-              var depth = 0, end = -1;
-              for (var i = start; i < html.length && i < start + 900000; i++) {
-                var ch = html[i];
-                if (ch === '[') depth++;
-                else if (ch === ']') {
-                  depth--;
-                  if (depth === 0) { end = i + 1; break; }
-                }
+          // 1) Надійний bracket-match (нежадібний regex ламається на вкладених [])
+          var m = null;
+          var idx = html.indexOf('seasons:[');
+          if (idx < 0) idx = html.indexOf('seasons: [');
+          if (idx < 0) idx = html.indexOf('"seasons":[');
+          if (idx < 0) idx = html.indexOf('"seasons": [');
+          if (idx >= 0) {
+            var start = html.indexOf('[', idx);
+            var depth = 0, end = -1;
+            for (var i = start; i < html.length && i < start + 900000; i++) {
+              var ch = html[i];
+              if (ch === '[') depth++;
+              else if (ch === ']') {
+                depth--;
+                if (depth === 0) { end = i + 1; break; }
               }
-              if (end > start) m = [null, html.slice(start, end)];
             }
+            if (end > start) m = [null, html.slice(start, end)];
+          }
+          if (!m) {
+            m = html.match(/seasons\s*:\s*(\[[\s\S]*?\])\s*(?:,\s*current|\}\s*,\s*ui|\}\s*\))/);
           }
           if (m && m[1]) {
-            var jsonStr = m[1]
-              .replace(/(\{|,)\s*(\w+)\s*:/g, '$1"$2":')
-              .replace(/'/g, '"')
-              .replace(/,\s*]/g, ']')
-              .replace(/,\s*\}/g, '}');
-            try { seasons = JSON.parse(jsonStr); } catch (eParse) {
+            // У nextembed/lift ключі вже в лапках — спочатку raw JSON
+            try { seasons = JSON.parse(m[1]); } catch (eParse) {
               try {
-                var fixed = m[1].replace(/(\w+)\s*:/g, '"$1":').replace(/'/g, '"');
-                seasons = JSON.parse(fixed);
+                var jsonStr = m[1]
+                  .replace(/(\{|,)\s*(\w+)\s*:/g, '$1"$2":')
+                  .replace(/'/g, '"')
+                  .replace(/,\s*]/g, ']')
+                  .replace(/,\s*\}/g, '}');
+                seasons = JSON.parse(jsonStr);
               } catch (e2) { seasons = []; }
             }
           }
@@ -5266,55 +5268,81 @@
       }
 
       function loadEmbed(zerxId, title, qualityHint) {
+        // 1.1.204: nextembed часто віддає 410/порожньо з WebView — пробуємо lift embed
+        // (ті самі id каталогу), потім nextembed. silent → native fallback.
         var urls = [
-          embed_host + '/embed/movie/' + encodeURIComponent(zerxId),
-          embed_host + '/embed/movie/' + encodeURIComponent(zerxId) + '?host=zerx.tv'
+          'https://embed.liftw.ws/embed/movie/' + encodeURIComponent(zerxId) + '?host=liftw.ws&season=1&episode=1',
+          'https://embed.liftw.ws/embed/movie/' + encodeURIComponent(zerxId) + '?host=zerx.tv&season=1&episode=1',
+          'https://embed.liftw.ws/embed/movie/' + encodeURIComponent(zerxId),
+          embed_host + '/embed/movie/' + encodeURIComponent(zerxId) + '?host=zerx.tv',
+          embed_host + '/embed/movie/' + encodeURIComponent(zerxId)
         ];
-        try { stelsLog('zerx-embed', { id: zerxId, url: urls[0] }); } catch (e) {}
+        try { stelsLog('zerx-embed', { id: zerxId, url: urls[0], mirrors: urls.length }); } catch (e) {}
+
+        function handleHtml(html, url, idx) {
+          if (destroyed) return;
+          html = String(html || '');
+          var seasons = parseSeasonsFromEmbed(html);
+          var epCount = 0;
+          seasons.forEach(function (s) { epCount += (s.episodes || []).length; });
+          try {
+            stelsLog('zerx-embed-parsed', {
+              id: zerxId,
+              url: String(url || '').slice(0, 120),
+              html_len: html.length,
+              seasons: seasons.length,
+              episodes: epCount,
+              season_nums: seasons.map(function (s) { return s.season; }),
+              sample_hls: seasons[0] && seasons[0].episodes && seasons[0].episodes[0] ? String(seasons[0].episodes[0].hls || '').slice(0, 80) : ''
+            });
+          } catch (eL) {}
+          if (!seasons.length || !epCount) {
+            tryUrl(idx + 1);
+            return;
+          }
+          buildExtract(seasons, title, qualityHint, zerxId);
+          doneShow();
+        }
 
         function tryUrl(idx) {
           if (destroyed) return;
           if (idx >= urls.length) {
-            try { stelsLog('zerx-embed-empty', { id: zerxId }); } catch (e) {}
+            try { stelsLog('zerx-embed-empty', { id: zerxId, tried: urls.length }); } catch (e) {}
             component.loading(false);
             component.emptyForQuery(select_title);
             return;
           }
-          network.silent(urls[idx], function (html) {
-            if (destroyed) return;
-            html = String(html || '');
-            var seasons = parseSeasonsFromEmbed(html);
-            var epCount = 0;
-            seasons.forEach(function (s) { epCount += (s.episodes || []).length; });
-            try {
-              stelsLog('zerx-embed-parsed', {
-                id: zerxId,
-                html_len: html.length,
-                seasons: seasons.length,
-                episodes: epCount,
-                season_nums: seasons.map(function (s) { return s.season; }),
-                sample_hls: seasons[0] && seasons[0].episodes && seasons[0].episodes[0] ? String(seasons[0].episodes[0].hls || '').slice(0, 80) : ''
-              });
-            } catch (eL) {}
-            if (!seasons.length || !epCount) {
-              tryUrl(idx + 1);
-              return;
-            }
-            buildExtract(seasons, title, qualityHint, zerxId);
-            doneShow();
-          }, function () {
-            tryUrl(idx + 1);
-          }, false, {
+          var url = urls[idx];
+          var opts = {
             dataType: 'text',
             timeout: 15000,
             headers: {
               'User-Agent': user_agent,
               'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,en;q=0.7',
               'Referer': site_host + '/',
               'Origin': site_host,
               'Cookie': '_uid=' + getUid()
             }
-          });
+          };
+          // спочатку silent, при помилці — native
+          network.silent(url, function (html) {
+            handleHtml(html, url, idx);
+          }, function (a, c) {
+            try { stelsLog('zerx-embed-fail', { id: zerxId, url: url.slice(0, 100), status: a && a.status, msg: network.errorDecode(a, c) }); } catch (e) {}
+            try {
+              if (network.native) {
+                network.native(url, function (html2) {
+                  handleHtml(html2, url + '#native', idx);
+                }, function (a2, c2) {
+                  try { stelsLog('zerx-embed-fail-native', { id: zerxId, status: a2 && a2.status }); } catch (e2) {}
+                  tryUrl(idx + 1);
+                }, false, opts);
+                return;
+              }
+            } catch (eN) {}
+            tryUrl(idx + 1);
+          }, false, opts);
         }
         tryUrl(0);
       }
