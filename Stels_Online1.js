@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.198';
+    var STELS_ONLINE_VERSION = '1.1.199';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -29277,10 +29277,11 @@ var q = qualityMapFromAlloha(json);
                 if (ix >= 0) choice.voice = ix;
               }
 
-              component.loading(false);
+              try { component.loading(false); } catch (eLd) {}
+              try { if (component.activity && component.activity.loader) component.activity.loader(false); } catch (eLd2) {}
               filter();
               var items = filtred();
-              try { stelsLog('lift-append', { items: items.length, is_serial: is_serial, voices: voices.length }); } catch (eA) {}
+              try { stelsLog('lift-append', { items: items.length, is_serial: is_serial, voices: voices.length, template: 'stels_online' }); } catch (eA) {}
               if (!items.length) {
                 component.emptyForQuery(select_title);
                 return;
@@ -29389,13 +29390,24 @@ var q = qualityMapFromAlloha(json);
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
+        var last_episode = 0;
+        try {
+          items.forEach(function (it) {
+            var e = parseInt(it.episode, 10) || 0;
+            if (e > last_episode) last_episode = e;
+          });
+        } catch (eLast) {}
         items.forEach(function (element) {
+          if (element.season) {
+            element.translate_episode_end = last_episode;
+            element.translate_voice = element.voice_name || filter_items.voice[choice.voice] || '';
+          }
           var hash_src = element.season
             ? [element.season, element.episode, object.movie.original_title || object.movie.original_name || object.movie.title].join('')
             : (object.movie.original_title || object.movie.original_name || object.movie.title);
           var hash_file = Lampa.Utils.hash(hash_src);
           var view = Lampa.Timeline.view(hash_file);
-          var item = Lampa.Template.get('online', element);
+          var item = Lampa.Template.get('stels_online', element);
           element.timeline = view;
           // для global-future-episodes / resume
           try {
