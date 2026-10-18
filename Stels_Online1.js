@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.218';
+    var STELS_ONLINE_VERSION = '1.1.219';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -4694,6 +4694,7 @@
       var selectedEpisode = 0; // 0 = список серій; >0 = озвучки вибраної серії
       var all_items = [];
       var player_token = '';
+      var player_token_movie = '';
       var player_referer = 'https://synthezoid-as.stloadi.live/';
       var player_origin = 'https://synthezoid-as.stloadi.live';
 
@@ -4974,57 +4975,56 @@
         function add(v) {
           v = clean(v || '');
           if (!v) return;
-          // прибрати зайві символи, що ламають DLE-пошук
           v = v.replace(/\s+/g, ' ').trim();
-          if (v && arr.indexOf(v) == -1) arr.push(v);
+          // лише кирилиця (російські назви на Zerx)
+          if (!/[а-яёіїєґ]/i.test(v)) return;
+          if (arr.indexOf(v) == -1) arr.push(v);
         }
         function addCore(v) {
           v = clean(v || '');
           if (!v) return;
           add(v);
-          // без підзаголовка після «:»
           var head = v.split(':')[0].trim();
-          if (head && head.length >= 4) add(head);
-          // без року
+          if (head && head.length >= 3) add(head);
           var noYear = v.replace(/\s*[\(\[]?(?:19|20)\d{2}[\)\]]?\s*/g, ' ').replace(/\s+/g, ' ').trim();
           if (noYear && noYear !== v) add(noYear);
         }
         var movie = object && object.movie || {};
-        var originalNorm = norm(movie.original_title || movie.original_name || '');
         var year = yearOf();
-
-        if (originalNorm === 'from') {
-          add('Извне');
-          if (year) add('Извне ' + year);
-          add('From');
-          add('Ззовні');
-          return arr.filter(Boolean).slice(0, 6);
-        }
-
-        // 1) відомі російські alias-и (найважливіше для Zerx)
-        var known = zerxKnownAliases();
-        known.forEach(addCore);
-        // 2) оригінальна англійська назва
-        addCore(movie.original_title || movie.original_name || '');
-        // 3) локальні назви / search
-        addCore(movie.title || movie.name || '');
-        addCore(object && object.search || '');
-        // 4) translations (ru першими)
+        zerxKnownAliases().forEach(addCore);
         try {
           var trs = movie.translations && (movie.translations.translations || movie.translations.results) || [];
           if (Array.isArray(trs)) {
             trs.forEach(function (tr) {
-              var code = String(tr && (tr.iso_639_1 || tr.iso_3166_1) || '').toLowerCase();
+              var code = String(tr && (tr.iso_639_1 || '') || '').toLowerCase();
+              if (code !== 'ru') return;
               var d = tr && (tr.data || tr) || {};
-              var tt = d.title || d.name || '';
-              if (code === 'ru' || code === 'uk' || code === 'en') addCore(tt);
+              addCore(d.title || d.name || '');
             });
           }
         } catch (eTr) {}
-        // 5) з роком — лише для коротких alias
-        known.forEach(function (t) {
-          if (year && String(t || '').length <= 40 && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year);
+        try {
+          var alts = movie.alternative_titles && movie.alternative_titles.results || [];
+          if (Array.isArray(alts)) {
+            alts.forEach(function (a) {
+              var iso = String(a && (a.iso_3166_1 || a.iso_639_1) || '').toUpperCase();
+              if (iso === 'RU' || iso === 'SU') addCore(a.title || a.name || '');
+            });
+          }
+        } catch (eA) {}
+        // кириличні title без українських літер (ймовірно російська локаль)
+        [movie.title, movie.name, object && object.search].forEach(function (v) {
+          if (v && /[а-яё]/i.test(String(v)) && !/[іїєґ]/i.test(String(v))) addCore(v);
         });
+        arr.slice().forEach(function (t0) {
+          if (year && String(t0).length <= 40 && !/\b(19|20)\d{2}\b/.test(String(t0))) add(t0 + ' ' + year);
+        });
+        if (!arr.length) {
+          zerxKnownAliases().forEach(function (v) {
+            v = clean(v || '');
+            if (v && arr.indexOf(v) == -1) arr.push(v);
+          });
+        }
         return arr.filter(Boolean).slice(0, 8);
       }
       function mergeResultList(acc, list) {
@@ -5411,6 +5411,8 @@
         var tokenInfo = zerxTokenInfo(iframeUrl || '');
         var mtoken = String(html || '').match(/token:\s*['"]([^'"]+)/i) || String(iframeUrl || '').match(/[?&]token=([^&]+)/i);
         player_token = mtoken ? decodeURIComponent(mtoken[1]) : (tokenInfo.token || '');
+          player_token_movie = tokenInfo.token_movie || player_token_movie || '';
+          if (!player_origin && tokenInfo.origin) player_origin = tokenInfo.origin;
         stelsLog('zerx-player-token-info', { iframe: iframeUrl, origin: tokenInfo.origin, token_movie_len: tokenInfo.token_movie.length, token_len: player_token.length, html_len: String(html || '').length, has_fileList_text: String(html || '').indexOf('fileList') >= 0, has_userParam_text: String(html || '').indexOf('userParam') >= 0, title: clean((String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '') });
         var fileList = parseJsonParseVariable(html, 'fileList');
         if (!fileList) {
@@ -5464,10 +5466,39 @@
             }
           });
         } else {
+          // movie: fileList.all = { theatrical: { t66: { "WEB-DL": {id, translation,...} } }, directors: [...] }
           var active = fileList.active || {};
-          addItem(0, 0, active.translation || 'Zerx', active.id, active.quality || '');
+          if (active && active.id) addItem(0, 0, active.translation || (fileList.type == 'movie' ? 'Default' : 'Default'), active.id, active.quality || '');
+          function walkVoiceNode(node) {
+            if (!node || typeof node != 'object') return;
+            if (node.id) {
+              addItem(0, 0, node.translation || node.name || '', node.id, node.quality || '');
+              return;
+            }
+            Object.keys(node).forEach(function (k) {
+              var ch = node[k];
+              if (!ch || typeof ch != 'object') return;
+              if (ch.id) addItem(0, 0, ch.translation || ch.name || k, ch.id, ch.quality || k);
+              else walkVoiceNode(ch);
+            });
+          }
           if (fileList.all && typeof fileList.all == 'object') {
-            Object.keys(fileList.all).forEach(function (k) { var v = fileList.all[k] || {}; addItem(0, 0, v.translation || k, v.id, v.quality || ''); });
+            Object.keys(fileList.all).forEach(function (groupKey) {
+              var group = fileList.all[groupKey];
+              if (!group) return;
+              if (Array.isArray(group)) {
+                group.forEach(function (v) { if (v && v.id) addItem(0, 0, v.translation || '', v.id, v.quality || ''); });
+              } else if (typeof group == 'object') {
+                walkVoiceNode(group);
+              }
+            });
+          }
+          // translationList fallback
+          if (fileList.translationList && typeof fileList.translationList == 'object') {
+            Object.keys(fileList.translationList).forEach(function (k) {
+              var v = fileList.translationList[k] || {};
+              addItem(0, 0, v.translation || v.name || k, v.id || v.file_id || k, v.quality || '');
+            });
           }
         }
         if (forcedSeason) {
@@ -5547,55 +5578,125 @@
         if (element.stream) {
           element.stream = zerxProxyPlayableUrl(element.stream);
           if (!element.headers) {
+            var isVk = /vkvideo\.cloud|interkh\.com/i.test(element.stream || '');
             element.headers = {
               'User-Agent': player_browser_ua,
-              'Referer': 'https://api.nextembed.ws/',
-              'Origin': 'https://api.nextembed.ws'
+              'Referer': isVk ? (player_origin ? player_origin + '/' : 'https://synthezoid-as.stravers.live/') : 'https://api.nextembed.ws/',
+              'Origin': isVk ? (player_origin || 'https://synthezoid-as.stravers.live') : 'https://api.nextembed.ws'
             };
           }
-          stelsLog('zerx-stream-ready', { voice: element.voice, s: element.season, e: element.episode, stream: preview(element.stream, 120) });
+          stelsLog('zerx-stream-ready', { voice: element.voice, s: element.season, e: element.episode, stream: preview(element.stream, 140) });
           return call(element);
         }
-        if (!element.file_id || !player_token) return error && error();
-        var preferred = player_origin || 'https://synthezoid-as.stloadi.live';
-        // Zerx rotates player backend domains. A stale mirror may serve the page but 404 the stream API.
-        var origins = [preferred, 'https://synthezoid-as.stravers.live', 'https://blink.stloadi.live', 'https://synthezoid-as.stloadi.live', 'https://synthezoid-as.allarknow.online'];
+        if (!element.file_id || !player_token) {
+          stelsLog('zerx-stream-no-token', { file_id: element.file_id, has_token: !!player_token });
+          return error && error();
+        }
+        var origin = player_origin || 'https://synthezoid-as.stravers.live';
+        var referer = player_referer || (origin + '/?token_movie=' + encodeURIComponent(player_token_movie || '') + '&token=' + encodeURIComponent(player_token));
+        var origins = [origin, 'https://synthezoid-as.stravers.live', 'https://synthezoid-as.stloadi.live', 'https://blink.stloadi.live', 'https://synthezoid-as.allarknow.online'];
         var uniqueOrigins = [];
-        origins.forEach(function (origin) { if (origin && uniqueOrigins.indexOf(origin) < 0) uniqueOrigins.push(origin); });
-        var post = 'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=0&audio=&subtitle=';
-        function tryOrigin(index) {
-          if (index >= uniqueOrigins.length) { error && error(); return; }
-          var origin = uniqueOrigins[index];
-          var url = origin + '/bnsi/movies/' + encodeURIComponent(element.file_id);
-          var headers = {
+        origins.forEach(function (o) { if (o && uniqueOrigins.indexOf(o) < 0) uniqueOrigins.push(o); });
+
+        function xhrHeaders(o) {
+          return {
             'User-Agent': player_browser_ua,
             'Accept': '*/*',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Origin': origin,
-            'Referer': player_referer,
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Origin': o,
+            'Referer': referer.indexOf(o) === 0 ? referer : (o + '/?token_movie=' + encodeURIComponent(player_token_movie || '') + '&token=' + encodeURIComponent(player_token)),
+            'X-Requested-With': 'XMLHttpRequest',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin'
           };
-          requestText(url, function (json) {
-            var parsed = parseHlsJson(json, element.voice);
-            if (!parsed.file) {
-              stelsLog('zerx-stream-empty', { origin: origin, file_id: element.file_id, voice: element.voice, attempt: index });
-              tryOrigin(index + 1);
-              return;
-            }
-            element.stream = parsed.file;
-            element.qualitys = parsed.quality;
-            element.subtitles = parsed.subtitles || [];
-            element.headers = { 'User-Agent': player_browser_ua, 'Referer': player_referer, 'Origin': origin };
-            call(element);
-          }, function (message) {
-            stelsLog('zerx-stream-mirror-retry', { origin: origin, file_id: element.file_id, attempt: index, message: preview(message, 180) });
-            tryOrigin(index + 1);
-          }, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 18000 });
         }
-        tryOrigin(0);
+
+        // Як у HAR: спочатку /events і /stat, потім /bnsi/movies/{id}
+        function warmup(o, done) {
+          var left = 2;
+          function step() { left--; if (left <= 0) done(); }
+          try {
+            var payload = JSON.stringify({
+              token: player_token,
+              domain: 'https%3A%2F%2Fzerx.tv%2F',
+              isTrailer: false,
+              dropped: 0,
+              playerInitAt: Date.now(),
+              clientSessionId: String(Date.now()) + Math.random().toString(16).slice(2),
+              clientRequestId: Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)
+            });
+            var evBody = 'token=' + encodeURIComponent(player_token) + '&payload=' + encodeURIComponent(payload);
+            requestText(o + '/events', function () { step(); }, function () { step(); }, {
+              kind: 'events', post: evBody, headers: xhrHeaders(o), raw: true, timeout: 8000
+            });
+          } catch (e1) { step(); }
+          try {
+            var stBody = 'id=' + encodeURIComponent(element.file_id) +
+              '&token=' + encodeURIComponent(player_token) +
+              '&domain=' + encodeURIComponent('https%3A%2F%2Fzerx.tv%2F') +
+              '&url=' + encodeURIComponent(referer) +
+              '&type=mgpo&ab=false';
+            requestText(o + '/stat', function () { step(); }, function () { step(); }, {
+              kind: 'stat', post: stBody, headers: xhrHeaders(o), raw: true, timeout: 8000
+            });
+          } catch (e2) { step(); }
+        }
+
+        var postBodies = [
+          'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=1',
+          'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=0&audio=&subtitle=',
+          'token=' + encodeURIComponent(player_token) + '&av1=false&autoplay=1'
+        ];
+        var pathFns = [
+          function (o, id) { return o + '/bnsi/movies/' + encodeURIComponent(id); },
+          function (o, id) { return o + '/bnsi/movie/' + encodeURIComponent(id); }
+        ];
+
+        function tryCombo(oi, pi, bi) {
+          if (oi >= uniqueOrigins.length) {
+            stelsLog('zerx-stream-all-failed', { file_id: element.file_id, voice: element.voice });
+            return error && error();
+          }
+          if (pi >= pathFns.length) return tryCombo(oi + 1, 0, 0);
+          if (bi >= postBodies.length) return tryCombo(oi, pi + 1, 0);
+          var o = uniqueOrigins[oi];
+          var url = pathFns[pi](o, element.file_id);
+          var post = postBodies[bi];
+          var headers = xhrHeaders(o);
+          function doRequest() {
+            requestText(url, function (json) {
+              var parsed = parseHlsJson(json, element.voice);
+              if (!parsed.file) {
+                stelsLog('zerx-stream-empty', { origin: o, path: pi, body: bi, file_id: element.file_id });
+                return tryCombo(oi, pi, bi + 1);
+              }
+              element.stream = parsed.file;
+              element.qualitys = parsed.quality;
+              element.subtitles = parsed.subtitles || [];
+              element.headers = { 'User-Agent': player_browser_ua, 'Referer': headers.Referer, 'Origin': o };
+              stelsLog('zerx-stream-ready', {
+                origin: o, path: pi, body: bi, voice: element.voice,
+                stream: preview(element.stream, 140),
+                qualities: element.qualitys ? Object.keys(element.qualitys) : []
+              });
+              call(element);
+            }, function (message) {
+              stelsLog('zerx-stream-mirror-retry', { origin: o, path: pi, body: bi, file_id: element.file_id, message: preview(message, 160) });
+              tryCombo(oi, pi, bi + 1);
+            }, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 15000 });
+          }
+          // warmup лише на першій спробі origin
+          if (pi === 0 && bi === 0) {
+            warmup(o, doRequest);
+          } else {
+            doRequest();
+          }
+        }
+        tryCombo(0, 0, 0);
       }
+
       function appendEpisodeCards(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
@@ -5966,6 +6067,7 @@
       var selectedEpisode = 0; // 0 = список серій; >0 = озвучки вибраної серії
       var all_items = [];
       var player_token = '';
+      var player_token_movie = '';
       var player_referer = 'https://synthezoid-as.stloadi.live/';
       var player_origin = 'https://synthezoid-as.stloadi.live';
 
@@ -6246,57 +6348,56 @@
         function add(v) {
           v = clean(v || '');
           if (!v) return;
-          // прибрати зайві символи, що ламають DLE-пошук
           v = v.replace(/\s+/g, ' ').trim();
-          if (v && arr.indexOf(v) == -1) arr.push(v);
+          // лише кирилиця (російські назви на Zerx)
+          if (!/[а-яёіїєґ]/i.test(v)) return;
+          if (arr.indexOf(v) == -1) arr.push(v);
         }
         function addCore(v) {
           v = clean(v || '');
           if (!v) return;
           add(v);
-          // без підзаголовка після «:»
           var head = v.split(':')[0].trim();
-          if (head && head.length >= 4) add(head);
-          // без року
+          if (head && head.length >= 3) add(head);
           var noYear = v.replace(/\s*[\(\[]?(?:19|20)\d{2}[\)\]]?\s*/g, ' ').replace(/\s+/g, ' ').trim();
           if (noYear && noYear !== v) add(noYear);
         }
         var movie = object && object.movie || {};
-        var originalNorm = norm(movie.original_title || movie.original_name || '');
         var year = yearOf();
-
-        if (originalNorm === 'from') {
-          add('Извне');
-          if (year) add('Извне ' + year);
-          add('From');
-          add('Ззовні');
-          return arr.filter(Boolean).slice(0, 6);
-        }
-
-        // 1) відомі російські alias-и (найважливіше для Zerx)
-        var known = zerxKnownAliases();
-        known.forEach(addCore);
-        // 2) оригінальна англійська назва
-        addCore(movie.original_title || movie.original_name || '');
-        // 3) локальні назви / search
-        addCore(movie.title || movie.name || '');
-        addCore(object && object.search || '');
-        // 4) translations (ru першими)
+        zerxKnownAliases().forEach(addCore);
         try {
           var trs = movie.translations && (movie.translations.translations || movie.translations.results) || [];
           if (Array.isArray(trs)) {
             trs.forEach(function (tr) {
-              var code = String(tr && (tr.iso_639_1 || tr.iso_3166_1) || '').toLowerCase();
+              var code = String(tr && (tr.iso_639_1 || '') || '').toLowerCase();
+              if (code !== 'ru') return;
               var d = tr && (tr.data || tr) || {};
-              var tt = d.title || d.name || '';
-              if (code === 'ru' || code === 'uk' || code === 'en') addCore(tt);
+              addCore(d.title || d.name || '');
             });
           }
         } catch (eTr) {}
-        // 5) з роком — лише для коротких alias
-        known.forEach(function (t) {
-          if (year && String(t || '').length <= 40 && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year);
+        try {
+          var alts = movie.alternative_titles && movie.alternative_titles.results || [];
+          if (Array.isArray(alts)) {
+            alts.forEach(function (a) {
+              var iso = String(a && (a.iso_3166_1 || a.iso_639_1) || '').toUpperCase();
+              if (iso === 'RU' || iso === 'SU') addCore(a.title || a.name || '');
+            });
+          }
+        } catch (eA) {}
+        // кириличні title без українських літер (ймовірно російська локаль)
+        [movie.title, movie.name, object && object.search].forEach(function (v) {
+          if (v && /[а-яё]/i.test(String(v)) && !/[іїєґ]/i.test(String(v))) addCore(v);
         });
+        arr.slice().forEach(function (t0) {
+          if (year && String(t0).length <= 40 && !/\b(19|20)\d{2}\b/.test(String(t0))) add(t0 + ' ' + year);
+        });
+        if (!arr.length) {
+          zerxKnownAliases().forEach(function (v) {
+            v = clean(v || '');
+            if (v && arr.indexOf(v) == -1) arr.push(v);
+          });
+        }
         return arr.filter(Boolean).slice(0, 8);
       }
       function mergeResultList(acc, list) {
@@ -6684,6 +6785,8 @@
         var tokenInfo = zerxTokenInfo(iframeUrl || '');
         var mtoken = String(html || '').match(/token:\s*['"]([^'"]+)/i) || String(iframeUrl || '').match(/[?&]token=([^&]+)/i);
         player_token = mtoken ? decodeURIComponent(mtoken[1]) : (tokenInfo.token || '');
+          player_token_movie = tokenInfo.token_movie || player_token_movie || '';
+          if (!player_origin && tokenInfo.origin) player_origin = tokenInfo.origin;
         stelsLog('zerx4k-player-token-info', { iframe: iframeUrl, origin: tokenInfo.origin, token_movie_len: tokenInfo.token_movie.length, token_len: player_token.length, html_len: String(html || '').length, has_fileList_text: String(html || '').indexOf('fileList') >= 0, has_userParam_text: String(html || '').indexOf('userParam') >= 0, title: clean((String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '') });
         var fileList = parseJsonParseVariable(html, 'fileList');
         if (!fileList) {
@@ -6737,10 +6840,39 @@
             }
           });
         } else {
+          // movie: fileList.all = { theatrical: { t66: { "WEB-DL": {id, translation,...} } }, directors: [...] }
           var active = fileList.active || {};
-          addItem(0, 0, active.translation || 'Zerx 4k', active.id, active.quality || '');
+          if (active && active.id) addItem(0, 0, active.translation || (fileList.type == 'movie' ? 'Default' : 'Default'), active.id, active.quality || '');
+          function walkVoiceNode(node) {
+            if (!node || typeof node != 'object') return;
+            if (node.id) {
+              addItem(0, 0, node.translation || node.name || '', node.id, node.quality || '');
+              return;
+            }
+            Object.keys(node).forEach(function (k) {
+              var ch = node[k];
+              if (!ch || typeof ch != 'object') return;
+              if (ch.id) addItem(0, 0, ch.translation || ch.name || k, ch.id, ch.quality || k);
+              else walkVoiceNode(ch);
+            });
+          }
           if (fileList.all && typeof fileList.all == 'object') {
-            Object.keys(fileList.all).forEach(function (k) { var v = fileList.all[k] || {}; addItem(0, 0, v.translation || k, v.id, v.quality || ''); });
+            Object.keys(fileList.all).forEach(function (groupKey) {
+              var group = fileList.all[groupKey];
+              if (!group) return;
+              if (Array.isArray(group)) {
+                group.forEach(function (v) { if (v && v.id) addItem(0, 0, v.translation || '', v.id, v.quality || ''); });
+              } else if (typeof group == 'object') {
+                walkVoiceNode(group);
+              }
+            });
+          }
+          // translationList fallback
+          if (fileList.translationList && typeof fileList.translationList == 'object') {
+            Object.keys(fileList.translationList).forEach(function (k) {
+              var v = fileList.translationList[k] || {};
+              addItem(0, 0, v.translation || v.name || k, v.id || v.file_id || k, v.quality || '');
+            });
           }
         }
         if (forcedSeason) {
@@ -6843,46 +6975,115 @@
           stelsLog('zerx4k-stream-ready', { voice: element.voice, s: element.season, e: element.episode, stream: preview(element.stream, 140) });
           return call(element);
         }
-        if (!element.file_id || !player_token) return error && error();
-        var preferred = player_origin || 'https://synthezoid-as.stravers.live';
-        // Zerx 4k HAR: робочий stream на synthezoid-as.stravers.live + av1=true
-        var origins = [preferred, 'https://synthezoid-as.stravers.live', 'https://synthezoid-as.stloadi.live', 'https://blink.stloadi.live', 'https://synthezoid-as.allarknow.online'];
+        if (!element.file_id || !player_token) {
+          stelsLog('zerx4k-stream-no-token', { file_id: element.file_id, has_token: !!player_token });
+          return error && error();
+        }
+        var origin = player_origin || 'https://synthezoid-as.stravers.live';
+        var referer = player_referer || (origin + '/?token_movie=' + encodeURIComponent(player_token_movie || '') + '&token=' + encodeURIComponent(player_token));
+        var origins = [origin, 'https://synthezoid-as.stravers.live', 'https://synthezoid-as.stloadi.live', 'https://blink.stloadi.live', 'https://synthezoid-as.allarknow.online'];
         var uniqueOrigins = [];
-        origins.forEach(function (origin) { if (origin && uniqueOrigins.indexOf(origin) < 0) uniqueOrigins.push(origin); });
-        var post = 'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=0&audio=&subtitle=';
-        function tryOrigin(index) {
-          if (index >= uniqueOrigins.length) { error && error(); return; }
-          var origin = uniqueOrigins[index];
-          var url = origin + '/bnsi/movies/' + encodeURIComponent(element.file_id);
-          var headers = {
+        origins.forEach(function (o) { if (o && uniqueOrigins.indexOf(o) < 0) uniqueOrigins.push(o); });
+
+        function xhrHeaders(o) {
+          return {
             'User-Agent': player_browser_ua,
             'Accept': '*/*',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Origin': origin,
-            'Referer': player_referer,
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Origin': o,
+            'Referer': referer.indexOf(o) === 0 ? referer : (o + '/?token_movie=' + encodeURIComponent(player_token_movie || '') + '&token=' + encodeURIComponent(player_token)),
+            'X-Requested-With': 'XMLHttpRequest',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin'
           };
-          requestText(url, function (json) {
-            var parsed = parseHlsJson(json, element.voice);
-            if (!parsed.file) {
-              stelsLog('zerx4k-stream-empty', { origin: origin, file_id: element.file_id, voice: element.voice, attempt: index });
-              tryOrigin(index + 1);
-              return;
-            }
-            element.stream = parsed.file;
-            element.qualitys = parsed.quality;
-            element.subtitles = parsed.subtitles || [];
-            element.headers = { 'User-Agent': player_browser_ua, 'Referer': player_referer, 'Origin': origin };
-            call(element);
-          }, function (message) {
-            stelsLog('zerx4k-stream-mirror-retry', { origin: origin, file_id: element.file_id, attempt: index, message: preview(message, 180) });
-            tryOrigin(index + 1);
-          }, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 18000 });
         }
-        tryOrigin(0);
+
+        // Як у HAR: спочатку /events і /stat, потім /bnsi/movies/{id}
+        function warmup(o, done) {
+          var left = 2;
+          function step() { left--; if (left <= 0) done(); }
+          try {
+            var payload = JSON.stringify({
+              token: player_token,
+              domain: 'https%3A%2F%2Fzerx.tv%2F',
+              isTrailer: false,
+              dropped: 0,
+              playerInitAt: Date.now(),
+              clientSessionId: String(Date.now()) + Math.random().toString(16).slice(2),
+              clientRequestId: Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)
+            });
+            var evBody = 'token=' + encodeURIComponent(player_token) + '&payload=' + encodeURIComponent(payload);
+            requestText(o + '/events', function () { step(); }, function () { step(); }, {
+              kind: 'events', post: evBody, headers: xhrHeaders(o), raw: true, timeout: 8000
+            });
+          } catch (e1) { step(); }
+          try {
+            var stBody = 'id=' + encodeURIComponent(element.file_id) +
+              '&token=' + encodeURIComponent(player_token) +
+              '&domain=' + encodeURIComponent('https%3A%2F%2Fzerx.tv%2F') +
+              '&url=' + encodeURIComponent(referer) +
+              '&type=mgpo&ab=false';
+            requestText(o + '/stat', function () { step(); }, function () { step(); }, {
+              kind: 'stat', post: stBody, headers: xhrHeaders(o), raw: true, timeout: 8000
+            });
+          } catch (e2) { step(); }
+        }
+
+        var postBodies = [
+          'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=1',
+          'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=0&audio=&subtitle=',
+          'token=' + encodeURIComponent(player_token) + '&av1=false&autoplay=1'
+        ];
+        var pathFns = [
+          function (o, id) { return o + '/bnsi/movies/' + encodeURIComponent(id); },
+          function (o, id) { return o + '/bnsi/movie/' + encodeURIComponent(id); }
+        ];
+
+        function tryCombo(oi, pi, bi) {
+          if (oi >= uniqueOrigins.length) {
+            stelsLog('zerx4k-stream-all-failed', { file_id: element.file_id, voice: element.voice });
+            return error && error();
+          }
+          if (pi >= pathFns.length) return tryCombo(oi + 1, 0, 0);
+          if (bi >= postBodies.length) return tryCombo(oi, pi + 1, 0);
+          var o = uniqueOrigins[oi];
+          var url = pathFns[pi](o, element.file_id);
+          var post = postBodies[bi];
+          var headers = xhrHeaders(o);
+          function doRequest() {
+            requestText(url, function (json) {
+              var parsed = parseHlsJson(json, element.voice);
+              if (!parsed.file) {
+                stelsLog('zerx4k-stream-empty', { origin: o, path: pi, body: bi, file_id: element.file_id });
+                return tryCombo(oi, pi, bi + 1);
+              }
+              element.stream = parsed.file;
+              element.qualitys = parsed.quality;
+              element.subtitles = parsed.subtitles || [];
+              element.headers = { 'User-Agent': player_browser_ua, 'Referer': headers.Referer, 'Origin': o };
+              stelsLog('zerx4k-stream-ready', {
+                origin: o, path: pi, body: bi, voice: element.voice,
+                stream: preview(element.stream, 140),
+                qualities: element.qualitys ? Object.keys(element.qualitys) : []
+              });
+              call(element);
+            }, function (message) {
+              stelsLog('zerx4k-stream-mirror-retry', { origin: o, path: pi, body: bi, file_id: element.file_id, message: preview(message, 160) });
+              tryCombo(oi, pi, bi + 1);
+            }, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 15000 });
+          }
+          // warmup лише на першій спробі origin
+          if (pi === 0 && bi === 0) {
+            warmup(o, doRequest);
+          } else {
+            doRequest();
+          }
+        }
+        tryCombo(0, 0, 0);
       }
+
       function appendEpisodeCards(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
