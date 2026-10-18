@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.221';
+    var STELS_ONLINE_VERSION = '1.1.222';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -6344,29 +6344,7 @@
           callback(list);
         }, fail, { kind: 'search_dle', headers: page_headers, timeout: 15000 });
       }
-      function loadTmdbRuTitle(done) {
-        var movie = object && object.movie || {};
-        // вже є translations
-        try {
-          var trs = movie.translations && (movie.translations.translations || movie.translations.results);
-          if (trs && trs.length) return done();
-        } catch (e0) {}
-        var id = movie.id || movie.tmdb_id || (object && object.id);
-        var media = (movie.name || movie.first_air_date || object.media == 'tv') ? 'tv' : 'movie';
-        if (!id || !Lampa.TMDB || typeof Lampa.TMDB.api !== 'function') return done();
-        var url = media + '/' + id + '/translations';
-        try {
-          Lampa.TMDB.api(url, function (data) {
-            try {
-              if (data && (data.translations || data.results)) {
-                if (!movie.translations) movie.translations = {};
-                movie.translations.translations = data.translations || data.results || [];
-              }
-            } catch (e1) {}
-            done();
-          }, function () { done(); });
-        } catch (e2) { done(); }
-      }
+      function loadTmdbRuTitle(done) { try { done && done(); } catch (e) {} }
 
       function queryVariants() {
         var arr = [];
@@ -6374,7 +6352,6 @@
           v = clean(v || '');
           if (!v) return;
           v = v.replace(/\s+/g, ' ').trim();
-          if (!/[а-яёіїєґ]/i.test(v)) return;
           if (arr.indexOf(v) == -1) arr.push(v);
         }
         function addCore(v) {
@@ -6388,7 +6365,7 @@
         }
         var movie = object && object.movie || {};
         var year = yearOf();
-        // 1) TMDB translations RU (офіційна російська назва)
+        // 1) TMDB RU
         try {
           var trs = movie.translations && (movie.translations.translations || movie.translations.results) || [];
           if (Array.isArray(trs)) {
@@ -6401,7 +6378,6 @@
             });
           }
         } catch (eTr) {}
-        // 2) alternative_titles RU
         try {
           var alts = movie.alternative_titles && movie.alternative_titles.results || [];
           if (Array.isArray(alts)) {
@@ -6411,16 +6387,19 @@
             });
           }
         } catch (eA) {}
-        // 3) відомі alias
+        // 2) known aliases (російські)
         zerxKnownAliases().forEach(addCore);
-        // 4) кириличний title без українських літер
-        [movie.title, movie.name, object && object.search].forEach(function (v) {
-          if (v && /[а-яё]/i.test(String(v)) && !/[іїєґ]/i.test(String(v))) addCore(v);
+        // 3) кириличні назви (ru/uk) — Zerx індексує російською, але інколи title вже російський
+        [movie.title, movie.name, object && object.search, select_title].forEach(function (v) {
+          if (v && /[а-яёіїєґ]/i.test(String(v))) addCore(v);
         });
+        // 4) якщо досі порожньо — original / english
+        if (!arr.length) {
+          [movie.original_title, movie.original_name, movie.title, movie.name, select_title].forEach(addCore);
+        }
         arr.slice().forEach(function (t0) {
           if (year && String(t0).length <= 48 && !/\b(19|20)\d{2}\b/.test(String(t0))) add(t0 + ' ' + year);
         });
-        if (!arr.length) zerxKnownAliases().forEach(function (v) { v = clean(v || ''); if (v && arr.indexOf(v) == -1) arr.push(v); });
         stelsLog('zerx4k-query-ru', { variants: arr.slice(0, 8) });
         return arr.filter(Boolean).slice(0, 8);
       }
@@ -7494,8 +7473,15 @@
         }
         if (data && data[0] && (data[0].url || data[0].link)) { finishOnce(function () { loadPlayerPage(data[0].url || data[0].link); }); return; }
         getHash(function (hash) {
-          loadTmdbRuTitle(function () {
           var vars = queryVariants();
+          // якщо порожньо (немає кирилиці) — додати title/original як fallback
+          if (!vars.length) {
+            var movie = object && object.movie || {};
+            [movie.title, movie.name, movie.original_title, movie.original_name, select_title, object && object.search].forEach(function (v) {
+              v = clean(v || '');
+              if (v && vars.indexOf(v) == -1) vars.push(v);
+            });
+          }
           stelsLog('zerx4k-search-start', { title: select_title, variants: vars, serial: isSerial(), year: yearOf() });
           searchAll(hash, vars, 0, [], function (results) {
             finishOnce(function () {
@@ -7504,10 +7490,10 @@
               if (sameSeasonSeriesResults(results) && best && !seasonOfResult(best)) loadPlayerPage(best.url, 0, results);
               else if (sameSeasonSeriesResults(results)) loadSeasonPages(results);
               else if (results.length > 1 && !object.clarification) { component.similars(results); component.loading(false); }
-              else loadPlayerPage((best || results[0]).url, seasonOfResult(best || results[0]) || 0);
+              else if (results.length) loadPlayerPage((best || results[0]).url, seasonOfResult(best || results[0]) || 0);
+              else { component.loading(false); component.emptyForQuery(select_title); }
             });
           }, function () { finishOnce(function () { component.loading(false); component.emptyForQuery(select_title); }); });
-          }); // loadTmdbRuTitle
         }, function () { finishOnce(function () { component.loading(false); component.emptyForQuery(select_title); }); });
       };
       this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
