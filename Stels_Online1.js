@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.217';
+    var STELS_ONLINE_VERSION = '1.1.218';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -4722,11 +4722,22 @@
       function zerxKnownAliases() {
         var movie = object && object.movie || {};
         var original = norm(movie.original_title || movie.original_name || '');
+        var titleAll = norm([
+          movie.original_title, movie.original_name, movie.title, movie.name, select_title
+        ].join(' '));
         var out = [];
         if (original === 'from') ['Извне', 'Ззовні', 'From'].forEach(function (t) { pushUnique(out, t); });
         if (original === 'the boys') ['Пацаны', 'Хлопаки', 'The Boys'].forEach(function (t) { pushUnique(out, t); });
         if (original === 'friends') ['Друзья', 'Друзі', 'Friends'].forEach(function (t) { pushUnique(out, t); });
         if (original === 'rick and morty') ['Рик и Морти', 'Рік та Морті', 'Rick and Morty'].forEach(function (t) { pushUnique(out, t); });
+        // Spider-Man: Brand New Day → на Zerx як «Человек Паук 4: Совершенно новый день»
+        if (/spider\s*man/.test(original) || /spider\s*man/.test(titleAll) || /людина\s*павук|человек\s*паук/.test(titleAll)) {
+          if (/brand\s*new\s*day|абсолютно\s*новий|совершенно\s*новый/.test(titleAll) || /2026/.test(String(yearOf() || ''))) {
+            ['Человек Паук 4: Совершенно новый день', 'Человек Паук 4', 'Совершенно новый день', 'Spider-Man Brand New Day'].forEach(function (t) { pushUnique(out, t); });
+          }
+          pushUnique(out, 'Человек-паук');
+          pushUnique(out, 'Человек Паук');
+        }
         return out;
       }
       function collectTitleAliases() {
@@ -4790,6 +4801,24 @@
           else if (title.indexOf(a) >= 0 || (a.indexOf(title) >= 0 && title.length > 2)) score = Math.max(score, 105);
           var slug = aliasSlug(alias);
           if (slug && url.indexOf(slug) >= 0) score = Math.max(score, 105);
+          // спільні значущі слова (Человек Паук ↔ Spider-Man / Людина-павук)
+          try {
+            var stop = { the:1, and:1, or:1, of:1, a:1, an:1, season:1, episode:1, сериал:1, сезон:1, фильм:1, film:1, movie:1 };
+            var tw = title.split(/[\s\-:;,_/]+/).filter(function (w) { return w && w.length > 2 && !stop[w]; });
+            var aw = a.split(/[\s\-:;,_/]+/).filter(function (w) { return w && w.length > 2 && !stop[w]; });
+            var shared = 0;
+            tw.forEach(function (w) {
+              aw.forEach(function (x) {
+                if (w === x || (w.length > 3 && x.indexOf(w) >= 0) || (x.length > 3 && w.indexOf(x) >= 0)) shared++;
+              });
+            });
+            // spider↔паук / man↔человек heuristic
+            var blob = title + ' ' + a;
+            if (/spider/.test(blob) && /паук|pauk/.test(blob)) shared += 2;
+            if (/man/.test(blob) && /человек|людина|chelovek/.test(blob)) shared += 1;
+            if (shared >= 2) score = Math.max(score, 95);
+            else if (shared >= 1 && tw.length <= 4) score = Math.max(score, 85);
+          } catch (eW) {}
         });
         var allText = titleRaw + ' ' + url;
         var seasonNum = extractSeasonFromText(allText);
@@ -4816,7 +4845,7 @@
         return list[0];
       }
       function filterGoodResults(list) {
-        return (list || []).filter(function (item) { return scoreResult(item) >= 80; });
+        return (list || []).filter(function (item) { return scoreResult(item) >= 70; });
       }
       function requestText(url, success, fail, opts) {
         opts = opts || {};
@@ -4942,31 +4971,61 @@
       }
       function queryVariants() {
         var arr = [];
-        function add(v) { v = clean(v || ''); if (v && arr.indexOf(v) == -1) arr.push(v); }
+        function add(v) {
+          v = clean(v || '');
+          if (!v) return;
+          // прибрати зайві символи, що ламають DLE-пошук
+          v = v.replace(/\s+/g, ' ').trim();
+          if (v && arr.indexOf(v) == -1) arr.push(v);
+        }
+        function addCore(v) {
+          v = clean(v || '');
+          if (!v) return;
+          add(v);
+          // без підзаголовка після «:»
+          var head = v.split(':')[0].trim();
+          if (head && head.length >= 4) add(head);
+          // без року
+          var noYear = v.replace(/\s*[\(\[]?(?:19|20)\d{2}[\)\]]?\s*/g, ' ').replace(/\s+/g, ' ').trim();
+          if (noYear && noYear !== v) add(noYear);
+        }
         var movie = object && object.movie || {};
         var originalNorm = norm(movie.original_title || movie.original_name || '');
         var year = yearOf();
 
-        // Zerx переважно індексує назви російською. Тому для цього джерела
-        // спочатку пробуємо російські alias-и без року, потім з роком, і тільки
-        // після цього англійську/українську та інші варіанти з TMDB.
         if (originalNorm === 'from') {
           add('Извне');
           if (year) add('Извне ' + year);
           add('From');
-          add('FROM');
-          if (year) add('FROM ' + year);
           add('Ззовні');
-          if (year) add('Ззовні ' + year);
-          return arr.filter(Boolean).slice(0, 8);
+          return arr.filter(Boolean).slice(0, 6);
         }
 
+        // 1) відомі російські alias-и (найважливіше для Zerx)
         var known = zerxKnownAliases();
-        known.forEach(add);
-        known.forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
-        collectTitleAliases().forEach(add);
-        collectTitleAliases().forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
-        return arr.filter(Boolean).slice(0, 10);
+        known.forEach(addCore);
+        // 2) оригінальна англійська назва
+        addCore(movie.original_title || movie.original_name || '');
+        // 3) локальні назви / search
+        addCore(movie.title || movie.name || '');
+        addCore(object && object.search || '');
+        // 4) translations (ru першими)
+        try {
+          var trs = movie.translations && (movie.translations.translations || movie.translations.results) || [];
+          if (Array.isArray(trs)) {
+            trs.forEach(function (tr) {
+              var code = String(tr && (tr.iso_639_1 || tr.iso_3166_1) || '').toLowerCase();
+              var d = tr && (tr.data || tr) || {};
+              var tt = d.title || d.name || '';
+              if (code === 'ru' || code === 'uk' || code === 'en') addCore(tt);
+            });
+          }
+        } catch (eTr) {}
+        // 5) з роком — лише для коротких alias
+        known.forEach(function (t) {
+          if (year && String(t || '').length <= 40 && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year);
+        });
+        return arr.filter(Boolean).slice(0, 8);
       }
       function mergeResultList(acc, list) {
         var seen = {};
@@ -5935,11 +5994,22 @@
       function zerxKnownAliases() {
         var movie = object && object.movie || {};
         var original = norm(movie.original_title || movie.original_name || '');
+        var titleAll = norm([
+          movie.original_title, movie.original_name, movie.title, movie.name, select_title
+        ].join(' '));
         var out = [];
         if (original === 'from') ['Извне', 'Ззовні', 'From'].forEach(function (t) { pushUnique(out, t); });
         if (original === 'the boys') ['Пацаны', 'Хлопаки', 'The Boys'].forEach(function (t) { pushUnique(out, t); });
         if (original === 'friends') ['Друзья', 'Друзі', 'Friends'].forEach(function (t) { pushUnique(out, t); });
         if (original === 'rick and morty') ['Рик и Морти', 'Рік та Морті', 'Rick and Morty'].forEach(function (t) { pushUnique(out, t); });
+        // Spider-Man: Brand New Day → на Zerx як «Человек Паук 4: Совершенно новый день»
+        if (/spider\s*man/.test(original) || /spider\s*man/.test(titleAll) || /людина\s*павук|человек\s*паук/.test(titleAll)) {
+          if (/brand\s*new\s*day|абсолютно\s*новий|совершенно\s*новый/.test(titleAll) || /2026/.test(String(yearOf() || ''))) {
+            ['Человек Паук 4: Совершенно новый день', 'Человек Паук 4', 'Совершенно новый день', 'Spider-Man Brand New Day'].forEach(function (t) { pushUnique(out, t); });
+          }
+          pushUnique(out, 'Человек-паук');
+          pushUnique(out, 'Человек Паук');
+        }
         return out;
       }
       function collectTitleAliases() {
@@ -6003,6 +6073,24 @@
           else if (title.indexOf(a) >= 0 || (a.indexOf(title) >= 0 && title.length > 2)) score = Math.max(score, 105);
           var slug = aliasSlug(alias);
           if (slug && url.indexOf(slug) >= 0) score = Math.max(score, 105);
+          // спільні значущі слова (Человек Паук ↔ Spider-Man / Людина-павук)
+          try {
+            var stop = { the:1, and:1, or:1, of:1, a:1, an:1, season:1, episode:1, сериал:1, сезон:1, фильм:1, film:1, movie:1 };
+            var tw = title.split(/[\s\-:;,_/]+/).filter(function (w) { return w && w.length > 2 && !stop[w]; });
+            var aw = a.split(/[\s\-:;,_/]+/).filter(function (w) { return w && w.length > 2 && !stop[w]; });
+            var shared = 0;
+            tw.forEach(function (w) {
+              aw.forEach(function (x) {
+                if (w === x || (w.length > 3 && x.indexOf(w) >= 0) || (x.length > 3 && w.indexOf(x) >= 0)) shared++;
+              });
+            });
+            // spider↔паук / man↔человек heuristic
+            var blob = title + ' ' + a;
+            if (/spider/.test(blob) && /паук|pauk/.test(blob)) shared += 2;
+            if (/man/.test(blob) && /человек|людина|chelovek/.test(blob)) shared += 1;
+            if (shared >= 2) score = Math.max(score, 95);
+            else if (shared >= 1 && tw.length <= 4) score = Math.max(score, 85);
+          } catch (eW) {}
         });
         var allText = titleRaw + ' ' + url;
         var seasonNum = extractSeasonFromText(allText);
@@ -6029,7 +6117,7 @@
         return list[0];
       }
       function filterGoodResults(list) {
-        return (list || []).filter(function (item) { return scoreResult(item) >= 80; });
+        return (list || []).filter(function (item) { return scoreResult(item) >= 70; });
       }
       function requestText(url, success, fail, opts) {
         opts = opts || {};
@@ -6155,31 +6243,61 @@
       }
       function queryVariants() {
         var arr = [];
-        function add(v) { v = clean(v || ''); if (v && arr.indexOf(v) == -1) arr.push(v); }
+        function add(v) {
+          v = clean(v || '');
+          if (!v) return;
+          // прибрати зайві символи, що ламають DLE-пошук
+          v = v.replace(/\s+/g, ' ').trim();
+          if (v && arr.indexOf(v) == -1) arr.push(v);
+        }
+        function addCore(v) {
+          v = clean(v || '');
+          if (!v) return;
+          add(v);
+          // без підзаголовка після «:»
+          var head = v.split(':')[0].trim();
+          if (head && head.length >= 4) add(head);
+          // без року
+          var noYear = v.replace(/\s*[\(\[]?(?:19|20)\d{2}[\)\]]?\s*/g, ' ').replace(/\s+/g, ' ').trim();
+          if (noYear && noYear !== v) add(noYear);
+        }
         var movie = object && object.movie || {};
         var originalNorm = norm(movie.original_title || movie.original_name || '');
         var year = yearOf();
 
-        // Zerx переважно індексує назви російською. Тому для цього джерела
-        // спочатку пробуємо російські alias-и без року, потім з роком, і тільки
-        // після цього англійську/українську та інші варіанти з TMDB.
         if (originalNorm === 'from') {
           add('Извне');
           if (year) add('Извне ' + year);
           add('From');
-          add('FROM');
-          if (year) add('FROM ' + year);
           add('Ззовні');
-          if (year) add('Ззовні ' + year);
-          return arr.filter(Boolean).slice(0, 8);
+          return arr.filter(Boolean).slice(0, 6);
         }
 
+        // 1) відомі російські alias-и (найважливіше для Zerx)
         var known = zerxKnownAliases();
-        known.forEach(add);
-        known.forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
-        collectTitleAliases().forEach(add);
-        collectTitleAliases().forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
-        return arr.filter(Boolean).slice(0, 10);
+        known.forEach(addCore);
+        // 2) оригінальна англійська назва
+        addCore(movie.original_title || movie.original_name || '');
+        // 3) локальні назви / search
+        addCore(movie.title || movie.name || '');
+        addCore(object && object.search || '');
+        // 4) translations (ru першими)
+        try {
+          var trs = movie.translations && (movie.translations.translations || movie.translations.results) || [];
+          if (Array.isArray(trs)) {
+            trs.forEach(function (tr) {
+              var code = String(tr && (tr.iso_639_1 || tr.iso_3166_1) || '').toLowerCase();
+              var d = tr && (tr.data || tr) || {};
+              var tt = d.title || d.name || '';
+              if (code === 'ru' || code === 'uk' || code === 'en') addCore(tt);
+            });
+          }
+        } catch (eTr) {}
+        // 5) з роком — лише для коротких alias
+        known.forEach(function (t) {
+          if (year && String(t || '').length <= 40 && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year);
+        });
+        return arr.filter(Boolean).slice(0, 8);
       }
       function mergeResultList(acc, list) {
         var seen = {};
