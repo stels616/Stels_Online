@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.205';
+    var STELS_ONLINE_VERSION = '1.1.206';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -4950,33 +4950,49 @@
         var list = [];
         var seen = {};
         html = String(html || '');
-        // o-card блоки
-        var re = /<div[^>]*class="[^"]*o-card[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
         var m;
-        var chunks = html.split(/class="o-card[^"]*"/i);
+
+        // 1) o-card chunks
+        var chunks = html.split(/class="[^"]*o-card[^"]*"/i);
         for (var i = 1; i < chunks.length; i++) {
-          var block = chunks[i].slice(0, 2500);
-          var href = (block.match(/href="(https?:\/\/zerx\.tv\/[^"]+)"/i) || block.match(/href="(\/[^"]+\.html)"/i) || [])[1] || '';
-          var title = (block.match(/itemprop="name"[^>]*>([\s\S]*?)<\//i) || block.match(/o-card__title[^>]*>[\s\S]*?<span[^>]*>([\s\S]*?)<\//i) || [])[1] || '';
+          var block = chunks[i].slice(0, 3000);
+          var href = (block.match(/href="(https?:\/\/zerx\.tv\/\d+-[^"]+\.html)"/i)
+            || block.match(/href="(\/\d+-[^"]+\.html)"/i)
+            || block.match(/href="(https?:\/\/zerx\.tv\/[^"]+)"/i)
+            || [])[1] || '';
+          var title = (block.match(/itemprop="name"[^>]*>([\s\S]*?)<\//i)
+            || block.match(/o-card__title[^>]*>[\s\S]*?<span[^>]*>([\s\S]*?)<\//i)
+            || block.match(/<span[^>]*itemprop="name"[^>]*>([\s\S]*?)<\/span>/i)
+            || [])[1] || '';
           title = clean(title);
           href = absUrl(href);
-          if (!href || !title) continue;
-          if (seen[href]) continue;
+          if (!href || !/\/\d+-/.test(href)) continue;
+          if (!title) {
+            var slug = (href.match(/\/\d+-([^./]+)/) || [])[1] || '';
+            title = decodeURIComponent(slug).replace(/-/g, ' ');
+          }
+          if (!title || seen[href]) continue;
           seen[href] = 1;
           var year = 0;
-          var ym = title.match(/\b(19|20)\d{2}\b/);
-          if (ym) year = parseInt(ym[0], 10);
+          var ym = title.match(/\b((?:19|20)\d{2})\b/);
+          if (ym) year = parseInt(ym[1], 10);
           var idm = href.match(/\/(\d+)-/);
-          var page_id = idm ? idm[1] : '';
-          list.push({ title: title, link: href, year: year, page_id: page_id });
+          list.push({ title: title, link: href, year: year, page_id: idm ? idm[1] : '' });
         }
-        // fallback: прямі посилання на *.html з назвою
-        if (!list.length) {
-          var re2 = /href="((?:https?:\/\/zerx\.tv)?\/\d+-[^"]+\.html)"[^>]*>[\s\S]*?<span[^>]*itemprop="name"[^>]*>([\s\S]*?)<\/span>/gi;
+
+        // 2) будь-які посилання /\d+-name.html поруч із назвою
+        if (list.length < 2) {
+          var re2 = /href="((?:https?:\/\/zerx\.tv)?\/\d+-[a-z0-9\-]+\.html)"/gi;
           while ((m = re2.exec(html))) {
             var h2 = absUrl(m[1]);
-            var t2 = clean(m[2]);
-            if (!h2 || !t2 || seen[h2]) continue;
+            if (seen[h2]) continue;
+            var around = html.slice(Math.max(0, m.index - 100), m.index + 400);
+            var t2 = clean((around.match(/itemprop="name"[^>]*>([\s\S]*?)<\//i) || around.match(/o-card__title[^>]*>([\s\S]*?)<\//i) || [])[1] || '');
+            if (!t2) {
+              var slug2 = (h2.match(/\/\d+-([^./]+)/) || [])[1] || '';
+              t2 = decodeURIComponent(slug2).replace(/-/g, ' ');
+            }
+            if (!t2) continue;
             seen[h2] = 1;
             var idm2 = h2.match(/\/(\d+)-/);
             list.push({ title: t2, link: h2, year: 0, page_id: idm2 ? idm2[1] : '' });
@@ -5390,12 +5406,28 @@
       function openPage(pageUrl, title) {
         try { stelsLog('zerx-page', { url: pageUrl, title: title }); } catch (e) {}
         extract.page_url = pageUrl;
-        network.silent(pageUrl, function (html) {
+        var opts = {
+          dataType: 'text',
+          timeout: 18000,
+          headers: {
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,*/*',
+            'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8',
+            'Referer': site_host + '/',
+            'Cookie': '_uid=' + getUid()
+          }
+        };
+
+        function handlePage(html, via) {
           if (destroyed) return;
           html = String(html || '');
+          try { stelsLog('zerx-page-html', { via: via, html_len: html.length, url: pageUrl.slice(0, 120) }); } catch (e) {}
+          if (/attention required|cf-browser-verification|just a moment/i.test(html) && html.length < 20000) {
+            try { stelsLog('zerx-page-cf', { via: via, html_len: html.length }); } catch (e2) {}
+            return false;
+          }
           var extracted = extractEmbedIdsFromPage(html, pageUrl);
           var ids = extracted.ids.slice();
-          // якщо на сторінці лише трейлер — спробувати data-movie-id як candidate (іноді збігається)
           var pageIds = [];
           var pm;
           var rePage = /data-movie-id=["'](\d+)["']/gi;
@@ -5406,26 +5438,49 @@
             if (ids.indexOf(pid) === -1) ids.push(pid);
           });
           if (!ids.length) {
-            try { stelsLog('zerx-page-no-embed', { url: pageUrl, html_len: html.length }); } catch (e2) {}
-            component.loading(false);
-            component.emptyForQuery(select_title);
-            return;
+            try { stelsLog('zerx-page-no-embed', { url: pageUrl, html_len: html.length, via: via }); } catch (e3) {}
+            return false;
           }
           loadNextembed(ids, title);
-        }, function (a, c) {
-          try { stelsLog('zerx-page-fail', { url: pageUrl, status: a && a.status, msg: network.errorDecode(a, c) }); } catch (e) {}
+          return true;
+        }
+
+        network.silent(pageUrl, function (html) {
+          if (handlePage(html, 'silent')) return;
+          try {
+            if (network.native) {
+              network.native(pageUrl, function (html2) {
+                if (handlePage(html2, 'native')) return;
+                component.loading(false);
+                component.emptyForQuery(select_title);
+              }, function (a2, c2) {
+                try { stelsLog('zerx-page-fail', { url: pageUrl, via: 'native', status: a2 && a2.status }); } catch (e) {}
+                component.loading(false);
+                component.emptyForQuery(select_title);
+              }, false, opts);
+              return;
+            }
+          } catch (eN) {}
           component.loading(false);
           component.emptyForQuery(select_title);
-        }, false, {
-          dataType: 'text',
-          timeout: 15000,
-          headers: {
-            'User-Agent': user_agent,
-            'Accept': 'text/html,application/xhtml+xml,*/*',
-            'Referer': site_host + '/',
-            'Cookie': '_uid=' + getUid()
-          }
-        });
+        }, function (a, c) {
+          try { stelsLog('zerx-page-fail', { url: pageUrl, via: 'silent', status: a && a.status, msg: network.errorDecode(a, c) }); } catch (e) {}
+          try {
+            if (network.native) {
+              network.native(pageUrl, function (html2) {
+                if (handlePage(html2, 'native-err')) return;
+                component.loading(false);
+                component.emptyForQuery(select_title);
+              }, function () {
+                component.loading(false);
+                component.emptyForQuery(select_title);
+              }, false, opts);
+              return;
+            }
+          } catch (eN2) {}
+          component.loading(false);
+          component.emptyForQuery(select_title);
+        }, false, opts);
       }
 
       function searchSite(cb) {
@@ -5442,10 +5497,13 @@
         try { stelsLog('zerx-search', { q: title, year: year, queries: queries }); } catch (e) {}
 
         var combined = [];
-        var left = queries.length || 1;
+        var pending = 0;
+        var finished = false;
         if (!queries.length) { cb([], year); return; }
 
         function finish() {
+          if (finished) return;
+          finished = true;
           var map = {};
           combined.forEach(function (it) {
             if (!it || !it.link) return;
@@ -5454,30 +5512,111 @@
           });
           var ranked = Object.keys(map).map(function (k) { return map[k]; });
           ranked.sort(function (a, b) { return b.score - a.score; });
+          try { stelsLog('zerx-search-finish', { total: ranked.length, best: ranked[0] ? ranked[0].score : 0, sample: ranked.slice(0, 3).map(function (r) { return { title: r.item.title, score: r.score, link: r.item.link }; }) }); } catch (e) {}
           cb(ranked, year);
         }
 
-        queries.forEach(function (q) {
-          var url = site_host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
-          network.silent(url, function (html) {
-            var list = parseSearchHtml(html);
-            try { stelsLog('zerx-search-results', { q: q, count: list.length, sample: list.slice(0, 3) }); } catch (e) {}
-            list.forEach(function (it) { combined.push(it); });
-            left--;
-            if (left <= 0) finish();
-          }, function () {
-            left--;
-            if (left <= 0) finish();
-          }, false, {
+        function doneOne() {
+          pending--;
+          if (pending <= 0) finish();
+        }
+
+        function handleHtml(html, q, via) {
+          html = String(html || '');
+          // Cloudflare challenge page
+          if (/attention required|cf-browser-verification|just a moment/i.test(html) && html.length < 20000) {
+            try { stelsLog('zerx-search-cf', { q: q, via: via, html_len: html.length }); } catch (e) {}
+            return;
+          }
+          var list = parseSearchHtml(html);
+          try { stelsLog('zerx-search-results', { q: q, via: via, html_len: html.length, count: list.length, sample: list.slice(0, 3) }); } catch (e) {}
+          list.forEach(function (it) { combined.push(it); });
+        }
+
+        function fetchSearch(q) {
+          var getUrl = site_host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
+          var getUrl2 = site_host + '/?do=search&subaction=search&search_start=0&full_search=0&result_from=1&story=' + encodeURIComponent(q);
+          var opts = {
             dataType: 'text',
-            timeout: 15000,
+            timeout: 18000,
             headers: {
               'User-Agent': user_agent,
-              'Accept': 'text/html,*/*',
-              'Referer': site_host + '/'
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,en;q=0.7',
+              'Referer': site_host + '/',
+              'Origin': site_host
             }
-          });
-        });
+          };
+
+          pending++;
+          // 1) silent GET
+          network.silent(getUrl, function (html) {
+            handleHtml(html, q, 'silent-get');
+            if (combined.length) { doneOne(); return; }
+            // 2) native GET
+            try {
+              if (network.native) {
+                network.native(getUrl2, function (html2) {
+                  handleHtml(html2, q, 'native-get');
+                  if (combined.length) { doneOne(); return; }
+                  // 3) POST fullsearch
+                  pending++;
+                  doneOne();
+                  try {
+                    network.silent(site_host + '/index.php?do=search', function (html3) {
+                      handleHtml(html3, q, 'silent-post');
+                      doneOne();
+                    }, function (a, c) {
+                      try { stelsLog('zerx-search-fail', { q: q, via: 'silent-post', status: a && a.status, msg: network.errorDecode(a, c) }); } catch (e) {}
+                      doneOne();
+                    }, {
+                      story: q,
+                      subaction: 'search',
+                      do: 'search',
+                      titleonly: 0
+                    }, {
+                      dataType: 'text',
+                      timeout: 18000,
+                      headers: {
+                        'User-Agent': user_agent,
+                        'Accept': 'text/html,*/*',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Referer': site_host + '/',
+                        'Origin': site_host,
+                        'X-Requested-With': 'XMLHttpRequest'
+                      }
+                    });
+                  } catch (ePost) { doneOne(); }
+                }, function (a2, c2) {
+                  try { stelsLog('zerx-search-fail', { q: q, via: 'native-get', status: a2 && a2.status, msg: network.errorDecode(a2, c2) }); } catch (e) {}
+                  doneOne();
+                }, false, opts);
+                return;
+              }
+            } catch (eN) {}
+            doneOne();
+          }, function (a, c) {
+            try { stelsLog('zerx-search-fail', { q: q, via: 'silent-get', status: a && a.status, msg: network.errorDecode(a, c) }); } catch (e) {}
+            // native fallback on error
+            try {
+              if (network.native) {
+                network.native(getUrl, function (html2) {
+                  handleHtml(html2, q, 'native-get-err');
+                  doneOne();
+                }, function (a2, c2) {
+                  try { stelsLog('zerx-search-fail', { q: q, via: 'native-get-err', status: a2 && a2.status }); } catch (e2) {}
+                  doneOne();
+                }, false, opts);
+                return;
+              }
+            } catch (eN2) {}
+            doneOne();
+          }, false, opts);
+        }
+
+        queries.forEach(fetchSearch);
+        // safety timeout
+        setTimeout(function () { if (!finished) finish(); }, 22000);
       }
 
       this.search = function (_obj, data) {
