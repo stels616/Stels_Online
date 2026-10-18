@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.214';
+    var STELS_ONLINE_VERSION = '1.1.212';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5336,7 +5336,16 @@
         try { var om = String(player_referer || '').match(/^(https?:\/\/[^\/]+)/i); if (om) player_origin = om[1]; } catch (e) {}
         if (String(iframeUrl || '').indexOf('nextembed') >= 0 || (String(html || '').indexOf('seasons') >= 0 && String(html || '').indexOf('makePlayer') >= 0)) {
           var neItems = parseNextembedHtml(html, iframeUrl);
-          if (neItems && neItems.length) return neItems;
+          if (neItems && neItems.length) {
+            if (forcedSeason) {
+              var only = [];
+              for (var ni = 0; ni < neItems.length; ni++) {
+                if (neItems[ni].season == forcedSeason) only.push(neItems[ni]);
+              }
+              if (only.length) neItems = only;
+            }
+            return neItems;
+          }
         }
         var tokenInfo = zerxTokenInfo(iframeUrl || '');
         var mtoken = String(html || '').match(/token:\s*['"]([^'"]+)/i) || String(iframeUrl || '').match(/[?&]token=([^&]+)/i);
@@ -5443,16 +5452,6 @@
       function zerxProxyPlayableUrl(url) {
         url = cleanStreamUrl(url || '');
         if (!url) return '';
-        // api.ortified/ws іноді вже повертає готовий stream через apn.cfhttp/apn.watch.
-        // Повторний component.proxyStream робить URL виду apn.watch/http://apn.cfhttp...,
-        // через що плеєр відкривається, але потік не стартує.
-        if (/^https?:\/\/(?:apn\.cfhttp\.top|apn\.watch)\//i.test(url)) return url;
-        return component.proxyStream(url, 'zerx');
-      }
-      
-      function zerxProxyPlayableUrl(url) {
-        url = cleanStreamUrl(url || '');
-        if (!url) return '';
         // прибрати подвійний проксі apn.watch/https://...
         if (url.indexOf('apn.watch/http') >= 0 || url.indexOf('apn.cfhttp.top/http') >= 0) {
           var p = url.indexOf('http', url.indexOf('://') + 3);
@@ -5461,11 +5460,12 @@
         if (url.indexOf('https://apn.watch/') === 0 || url.indexOf('http://apn.watch/') === 0 || url.indexOf('https://apn.cfhttp.top/') === 0) {
           return url;
         }
-        // interkh CDN — напряму (як у робочому логу 1.1.212)
+        // interkh CDN з HAR — напряму (проксі ламає відтворення)
         if (url.indexOf('interkh.com') >= 0) return url;
         try { return component.proxyStream(url, 'zerx'); } catch (e) { return url; }
       }
-function parseHlsJson(json, voice) {
+
+      function parseHlsJson(json, voice) {
         if (typeof json == 'string') json = Lampa.Arrays.decodeJson(json, {});
         var list = json && json.hlsSource || [];
         var source = list.filter(function (s) { return voice && String(s.label || '').toLowerCase().indexOf(String(voice).toLowerCase()) >= 0; })[0] || list[0] || {};
@@ -5559,6 +5559,7 @@ function parseHlsJson(json, voice) {
           var ep = byEpisode[keys[ki]];
           var list = ep.list || [];
           if (!list.length) continue;
+          // обрана озвучка або перша
           var playItem = list[0];
           try {
             var pref = (choice && choice.voice_name) ? String(choice.voice_name) : '';
@@ -5593,7 +5594,7 @@ function parseHlsJson(json, voice) {
           if (viewed.indexOf(hash_file) !== -1) {
             item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
           }
-          item.on('hover:enter', function (el, tpl) {
+          item.on('hover:enter', function (el, tpl, dataItem) {
             return function () {
               if (el.loading) return;
               if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
@@ -5622,7 +5623,7 @@ function parseHlsJson(json, voice) {
                 Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
               });
             };
-          }(element, item));
+          }(element, item, playItem));
           component.append(item);
         }
         component.loading(false);
@@ -5721,10 +5722,6 @@ function parseHlsJson(json, voice) {
           }
           var combos = [];
           iframeVariants.forEach(function (variant, iframeIndex) {
-            if (/nextembed/i.test(variant.url || '')) {
-              combos.push({ iframe: variant.url, reason: variant.reason, iframeIndex: iframeIndex, attempt: { name: 'direct', raw: true, proxy: '', enc: '' } });
-              return;
-            }
             proxyAttempts.forEach(function (attempt) {
               combos.push({ iframe: variant.url, reason: variant.reason, iframeIndex: iframeIndex, attempt: attempt });
             });
