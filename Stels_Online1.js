@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.185';
+    var STELS_ONLINE_VERSION = '1.1.215';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5452,17 +5452,33 @@
       function zerxProxyPlayableUrl(url) {
         url = cleanStreamUrl(url || '');
         if (!url) return '';
-        // прибрати подвійний проксі apn.watch/https://...
+        // розгорнути помилкове подвійне проксування apn.watch/https://...
         if (url.indexOf('apn.watch/http') >= 0 || url.indexOf('apn.cfhttp.top/http') >= 0) {
           var p = url.indexOf('http', url.indexOf('://') + 3);
           if (p > 0) url = url.substring(p);
         }
-        if (url.indexOf('https://apn.watch/') === 0 || url.indexOf('http://apn.watch/') === 0 || url.indexOf('https://apn.cfhttp.top/') === 0) {
+        // вже один раз проксовано — не чіпаємо
+        if (url.indexOf('https://apn.watch/') === 0 || url.indexOf('http://apn.watch/') === 0 ||
+            url.indexOf('https://apn.cfhttp.top/') === 0 || url.indexOf('http://apn.cfhttp.top/') === 0) {
           return url;
         }
-        // interkh CDN з HAR — напряму (проксі ламає відтворення)
-        if (url.indexOf('interkh.com') >= 0) return url;
-        try { return component.proxyStream(url, 'zerx'); } catch (e) { return url; }
+        // 1.1.215: interkh HLS у вбудованому плеєрі Lampa дає fragLoadError (CORS на .ts),
+        // MX Player відкриває напряму. Якщо увімкнено stream proxy — проксуємо один раз.
+        var useProxy = true;
+        try {
+          if (Lampa.Storage.field('stels_online_use_stream_proxy') === false) useProxy = false;
+        } catch (eP) {}
+        if (!useProxy) return url;
+        try {
+          var proxed = component.proxyStream(url, 'zerx');
+          // захист від apn.watch/https://...
+          if (proxed && (proxed.indexOf('apn.watch/http') >= 0 || proxed.indexOf('apn.cfhttp.top/http') >= 0)) {
+            return url;
+          }
+          return proxed || url;
+        } catch (e) {
+          return url;
+        }
       }
 
       function parseHlsJson(json, voice) {
@@ -5484,15 +5500,29 @@
       }
       function getStream(element, call, error) {
         if (element.stream) {
-          element.stream = zerxProxyPlayableUrl(element.stream);
-          if (!element.headers) {
+          var rawStream = cleanStreamUrl(element.stream);
+          element.stream = zerxProxyPlayableUrl(rawStream);
+          var isProxied = /apn\.(watch|cfhttp)/i.test(element.stream || '');
+          // для проксованого URL Origin/Referer на CDN не потрібні і можуть заважати;
+          // для прямого interkh — nextembed referer як у HAR
+          if (isProxied) {
+            element.headers = element.headers || {
+              'User-Agent': player_browser_ua
+            };
+          } else if (!element.headers) {
             element.headers = {
               'User-Agent': player_browser_ua,
               'Referer': 'https://api.nextembed.ws/',
               'Origin': 'https://api.nextembed.ws'
             };
           }
-          stelsLog('zerx-stream-ready', { voice: element.voice, s: element.season, e: element.episode, stream: preview(element.stream, 120) });
+          stelsLog('zerx-stream-ready', {
+            voice: element.voice,
+            s: element.season,
+            e: element.episode,
+            proxied: isProxied,
+            stream: preview(element.stream, 140)
+          });
           return call(element);
         }
         if (!element.file_id || !player_token) return error && error();
