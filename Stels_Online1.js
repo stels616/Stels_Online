@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.208';
+    var STELS_ONLINE_VERSION = '1.1.209';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5046,7 +5046,7 @@
         var list = [];
         function add(url) {
           var raw = abs(component.decodeHtml(url || ''), ref);
-          if (!raw || !/(synthezoid|stloadi|allarknow|ortified)/i.test(raw)) return;
+          if (!raw || !/(synthezoid|stloadi|allarknow|ortified|nextembed)/i.test(raw)) return;
           var normalized = normalizePlayerUrl(raw);
           // Не викидаємо оригінальний allarknow: токен може бути прив'язаний саме до
           // цього домену. Далі пробуємо normalized stloadi як резервний варіант.
@@ -5382,7 +5382,6 @@
       }
       function getStream(element, call, error) {
         if (element.stream) return call(element);
-        // прямий URL з fileList (якщо був)
         if (element.direct_file) {
           element.stream = component.proxyStream(cleanStreamUrl(element.direct_file), 'zerx');
           element.qualitys = element.qualitys || false;
@@ -5393,12 +5392,17 @@
           stelsLog('zerx-stream-no-id', { voice: element.voice });
           return error && error();
         }
-        var preferred = player_origin || 'https://synthezoid-as.stloadi.live';
-        var origins = [preferred, 'https://synthezoid-as.stravers.live', 'https://blink.stloadi.live', 'https://synthezoid-as.stloadi.live', 'https://synthezoid-as.allarknow.online', 'https://mars.stravers.live'];
-        var uniqueOrigins = [];
-        origins.forEach(function (origin) { if (origin && uniqueOrigins.indexOf(origin) < 0) uniqueOrigins.push(origin); });
 
-        // різні варіанти тіла запиту (деякі дзеркала вимагають token_movie)
+        var preferred = player_origin || 'https://synthezoid-as.stloadi.live';
+        var origins = [];
+        function addOrigin(o) { if (o && origins.indexOf(o) < 0) origins.push(o); }
+        addOrigin(preferred);
+        addOrigin('https://synthezoid-as.stravers.live');
+        addOrigin('https://blink.stloadi.live');
+        addOrigin('https://synthezoid-as.stloadi.live');
+        addOrigin('https://synthezoid-as.allarknow.online');
+        addOrigin('https://mars.stravers.live');
+
         var tokenMovie = '';
         try {
           var tm = String(player_referer || element.stream_url || '').match(/[?&]token_movie=([^&]+)/i);
@@ -5407,36 +5411,120 @@
 
         var posts = [
           'token=' + encodeURIComponent(player_token || '') + '&av1=true&autoplay=0&audio=&subtitle=',
-          'token=' + encodeURIComponent(player_token || '') + '&av1=true&autoplay=0',
-          'token=' + encodeURIComponent(player_token || '') + (tokenMovie ? '&token_movie=' + encodeURIComponent(tokenMovie) : '') + '&av1=true&autoplay=0&audio=&subtitle='
+          'token=' + encodeURIComponent(player_token || '') + '&av1=true&autoplay=0'
         ];
-        var pathFns = [
+        if (tokenMovie) {
+          posts.push('token=' + encodeURIComponent(player_token || '') + '&token_movie=' + encodeURIComponent(tokenMovie) + '&av1=true&autoplay=0&audio=&subtitle=');
+        }
+
+        var paths = [
           function (o, id) { return o + '/bnsi/movies/' + encodeURIComponent(id); },
           function (o, id) { return o + '/bnsi/movie/' + encodeURIComponent(id); },
-          function (o, id) { return o + '/playlist/' + encodeURIComponent(id) + '.txt'; },
-          function (o, id) { return o + '/playlist/' + encodeURIComponent(id) + '.json'; }
+          function (o, id) { return o + '/playlist/' + encodeURIComponent(id) + '.txt'; }
         ];
 
+        // 1.1.209: Cloudflare/бан часто ріже raw XHR; пробуємо і direct, і cookie-proxy
+        // як для завантаження плеєра (zerxPlayerProxyAttempts).
+        var proxyAttempts = [];
+        try { proxyAttempts = zerxPlayerProxyAttempts() || []; } catch (ePa) { proxyAttempts = []; }
+        if (!proxyAttempts.length) proxyAttempts = [{ name: 'direct', raw: true, proxy: '', enc: '' }];
+
         var jobs = [];
-        uniqueOrigins.forEach(function (origin) {
-          pathFns.forEach(function (pf, pi) {
+        // спочатку preferred origin + direct + proxy, потім інші
+        origins.forEach(function (origin) {
+          paths.forEach(function (pf, pi) {
             posts.forEach(function (post, posti) {
-              jobs.push({ origin: origin, url: pf(origin, element.file_id), post: post, pi: pi, posti: posti });
+              proxyAttempts.forEach(function (pa) {
+                jobs.push({
+                  origin: origin,
+                  url: pf(origin, element.file_id),
+                  post: post,
+                  pi: pi,
+                  posti: posti,
+                  raw: !!pa.raw,
+                  proxy: pa.proxy || '',
+                  enc: pa.enc || '',
+                  via: pa.name || (pa.raw ? 'direct' : 'proxy')
+                });
+              });
             });
           });
         });
 
+        // обмеження: не більше ~36 спроб
+        if (jobs.length > 36) jobs = jobs.slice(0, 36);
+
         var jobIndex = 0;
+        var resolved = false;
+
+        function applyParsed(parsed, job) {
+          if (resolved || destroyed) return;
+          if (!parsed || !parsed.file) return false;
+          resolved = true;
+          element.stream = parsed.file;
+          element.qualitys = parsed.quality;
+          element.subtitles = parsed.subtitles || [];
+          element.headers = {
+            'User-Agent': player_browser_ua,
+            'Referer': player_referer || (job.origin + '/'),
+            'Origin': job.origin
+          };
+          stelsLog('zerx-stream-ok', {
+            origin: job.origin,
+            via: job.via,
+            path: job.pi,
+            file_id: element.file_id,
+            stream: preview(element.stream, 140)
+          });
+          call(element);
+          return true;
+        }
+
+        function parseAny(json, job) {
+          var parsed = parseHlsJson(json, element.voice);
+          if (parsed && parsed.file) return parsed;
+          if (typeof json === 'string') {
+            var text = String(json);
+            // Cloudflare / challenge
+            if (/cf-browser-verification|attention required|just a moment|cloudflare/i.test(text) && text.length < 30000) {
+              stelsLog('zerx-stream-cf', { origin: job.origin, via: job.via, len: text.length });
+              return null;
+            }
+            var m3 = text.match(/https?:\/\/[^\s"'<>]+m3u8[^\s"'<>]*/i);
+            if (m3) return { file: component.proxyStream(m3[0], 'zerx'), quality: false, subtitles: [] };
+            if (/#EXTM3U/i.test(text)) return { file: component.proxyStream(job.url, 'zerx'), quality: false, subtitles: [] };
+            try {
+              var obj = Lampa.Arrays.decodeJson(text, null);
+              if (obj) json = obj;
+            } catch (eJ) {}
+          }
+          if (json && typeof json === 'object') {
+            var cand = json.file || json.url || json.src || json.source || (json.data && (json.data.file || json.data.url));
+            if (cand) return { file: component.proxyStream(cleanStreamUrl(cand), 'zerx'), quality: false, subtitles: [] };
+            // повторний parseHlsJson після decode
+            parsed = parseHlsJson(json, element.voice);
+            if (parsed && parsed.file) return parsed;
+          }
+          return null;
+        }
+
         function failAll() {
-          stelsLog('zerx-stream-all-failed', { file_id: element.file_id, tried: jobs.length, token_len: (player_token || '').length });
+          if (resolved || destroyed) return;
+          stelsLog('zerx-stream-all-failed', {
+            file_id: element.file_id,
+            tried: jobIndex,
+            total: jobs.length,
+            token_len: (player_token || '').length,
+            origin: preferred
+          });
           error && error();
         }
+
         function tryJob() {
-          if (destroyed) return;
+          if (resolved || destroyed) return;
           if (jobIndex >= jobs.length) return failAll();
           var job = jobs[jobIndex++];
-          // пропускаємо POST-варіанти без token
-          if (!player_token && job.post.indexOf('token=') === 0) {
+          if (!player_token && /token=/.test(job.post)) {
             tryJob();
             return;
           }
@@ -5451,41 +5539,55 @@
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin'
           };
-          stelsLog('zerx-stream-try', { origin: job.origin, path: job.pi, post: job.posti, file_id: element.file_id, url: preview(job.url, 120) });
+          stelsLog('zerx-stream-try', {
+            origin: job.origin,
+            via: job.via,
+            path: job.pi,
+            post: job.posti,
+            file_id: element.file_id,
+            url: preview(job.url, 120)
+          });
           requestText(job.url, function (json) {
-            var parsed = parseHlsJson(json, element.voice);
-            // інколи приходить просто текст m3u8
-            if (!parsed.file && typeof json === 'string' && /#EXTM3U|m3u8/i.test(json)) {
-              var m3 = String(json).match(/https?:\/\/\S+m3u8[^\s"']*/i);
-              if (m3) parsed = { file: component.proxyStream(m3[0], 'zerx'), quality: false, subtitles: [] };
-              else if (/#EXTM3U/i.test(json)) {
-                // сам playlist — використати URL запиту
-                parsed = { file: component.proxyStream(job.url, 'zerx'), quality: false, subtitles: [] };
-              }
-            }
-            // інколи JSON іншої форми: {file:"..."}, {url:"..."}, {source:"..."}
-            if (!parsed.file && json && typeof json === 'object') {
-              var cand = json.file || json.url || json.src || json.source || (json.data && (json.data.file || json.data.url));
-              if (cand) parsed = { file: component.proxyStream(cleanStreamUrl(cand), 'zerx'), quality: false, subtitles: [] };
-            }
-            if (!parsed.file) {
-              stelsLog('zerx-stream-empty', { origin: job.origin, file_id: element.file_id, path: job.pi, attempt: jobIndex });
-              tryJob();
-              return;
-            }
-            element.stream = parsed.file;
-            element.qualitys = parsed.quality;
-            element.subtitles = parsed.subtitles || [];
-            element.headers = { 'User-Agent': player_browser_ua, 'Referer': player_referer || (job.origin + '/'), 'Origin': job.origin };
-            stelsLog('zerx-stream-ok', { origin: job.origin, path: job.pi, file_id: element.file_id, stream: preview(element.stream, 120) });
-            call(element);
-          }, function (message) {
-            stelsLog('zerx-stream-mirror-retry', { origin: job.origin, file_id: element.file_id, path: job.pi, attempt: jobIndex, message: preview(message, 180) });
+            if (applyParsed(parseAny(json, job), job)) return;
+            stelsLog('zerx-stream-empty', { origin: job.origin, via: job.via, path: job.pi, file_id: element.file_id });
             tryJob();
-          }, { kind: 'stream', post: job.post, headers: headers, raw: true, dataType: 'json', timeout: 10000 });
+          }, function (message) {
+            stelsLog('zerx-stream-mirror-retry', {
+              origin: job.origin,
+              via: job.via,
+              file_id: element.file_id,
+              path: job.pi,
+              attempt: jobIndex,
+              message: preview(message, 180)
+            });
+            tryJob();
+          }, {
+            kind: 'stream',
+            post: job.post,
+            headers: headers,
+            raw: job.raw,
+            proxy: job.proxy,
+            enc: job.enc || 'enc2t',
+            dataType: 'text',
+            timeout: 9000
+          });
         }
-        tryJob();
+
+        // Прогрів WebView/iframe cookie для player origin — як для allarknow
+        var warmUrl = element.stream_url || player_referer || (preferred + '/');
+        function startJobs() { tryJob(); }
+        try {
+          if (warmUrl && /synthezoid|allarknow|stloadi|stravers/i.test(warmUrl)) {
+            stelsLog('zerx-stream-warmup', { url: preview(warmUrl, 120) });
+            zerxWarmupBrowserIframe(warmUrl, startJobs);
+          } else {
+            startJobs();
+          }
+        } catch (eW) {
+          startJobs();
+        }
       }
+
       function appendEpisodeCards(items) {
         component.reset();
         var byEpisode = {};
