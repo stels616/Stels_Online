@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.204';
+    var STELS_ONLINE_VERSION = '1.1.205';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -1214,6 +1214,9 @@
     function stelsLog(event, data) {
       try {
         if (!stelsLogEnabled()) return;
+        // Не пишемо в діагностичний журнал сторонні події оформлення та глобальних UI-ефектів.
+        var eventName = String(event || 'event');
+        if (/^(?:global-voice-quality-|global-future-episodes|plugin-icon-observer-|interface-settings-|log-export-opened|advanced-settings-toggle|precheck-noty-|sources-hidden-updated|sources-order-updated)/i.test(eventName)) return;
         var list = Lampa.Storage.get(STELS_LOG_KEY, []);
         if (!Array.isArray(list)) list = [];
         var item = {
@@ -1224,7 +1227,7 @@
         list.push(item);
         if (list.length > STELS_LOG_MAX) list = list.slice(list.length - STELS_LOG_MAX);
         Lampa.Storage.set(STELS_LOG_KEY, list);
-        if (window.console && console.log) console.log('Stels_Online LOG', item);
+        // Не дублюємо кожен запис у консоль; журнал доступний через експорт налаштувань.
       } catch (e) {}
     }
 
@@ -4686,6 +4689,7 @@
       };
       var filter_items = {};
       var choice = { season: 0, voice: 0, voice_name: '' };
+      var selectedEpisode = 0; // 0 = список серій; >0 = озвучки вибраної серії
       var all_items = [];
       var player_token = '';
       var player_referer = 'https://synthezoid-as.stloadi.live/';
@@ -5330,6 +5334,16 @@
         }
         component.filter(filter_items, choice, items);
       }
+      function currentItems() {
+        var season = filter_items.season_num && filter_items.season_num[choice.season] || 0;
+        var voice = filter_items.voice && filter_items.voice[choice.voice] || '';
+        return all_items.filter(function (it) {
+          if (season && it.season != season) return false;
+          if (selectedEpisode && it.episode != selectedEpisode) return false;
+          if (selectedEpisode && voice && it.voice != voice) return false;
+          return true;
+        });
+      }
       function cleanStreamUrl(url) {
         url = String(url || '').replace(/\\\//g, '/').replace(/&amp;/g, '&').trim();
         if (url.indexOf(' or ') > -1) url = url.split(' or ')[0].trim();
@@ -5387,7 +5401,45 @@
           call(element);
         }, error, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 18000 });
       }
+      function appendEpisodeCards(items) {
+        component.reset();
+        var byEpisode = {};
+        (items || []).forEach(function (it) {
+          var sn = parseInt(it.season, 10) || 0;
+          var ep = parseInt(it.episode, 10) || 0;
+          if (!ep) return;
+          var key = sn + ':' + ep;
+          if (!byEpisode[key]) byEpisode[key] = { season: sn, episode: ep, voices: [] };
+          if (it.voice && byEpisode[key].voices.indexOf(it.voice) < 0) byEpisode[key].voices.push(it.voice);
+        });
+        var episodes = Object.keys(byEpisode).map(function (key) { return byEpisode[key]; });
+        episodes.sort(function (a, b) { return (a.season - b.season) || (a.episode - b.episode); });
+        episodes.forEach(function (ep) {
+          var element = { title: 'Сезон ' + ep.season + ' / Серія ' + ep.episode, season: ep.season, episode: ep.episode, quality: ep.voices.length + ' озвучок', info: ep.voices.length ? ' / ' + ep.voices.length + ' озвучок' : '' };
+          var hash = Lampa.Utils.hash([ep.season, ep.episode, object.movie.original_title || object.movie.original_name || object.movie.title].join(':'));
+          var view = Lampa.Timeline.view(hash);
+          var item = Lampa.Template.get('stels_online', element);
+          item.append(Lampa.Timeline.render(view));
+          item.on('hover:enter', function () {
+            selectedEpisode = ep.episode;
+            choice.voice = 0;
+            choice.voice_name = '';
+            buildFilters(all_items);
+            appendVoiceItems(currentItems());
+            component.saveChoice(choice);
+          });
+          component.append(item);
+        });
+        component.loading(false);
+        component.start(true);
+      }
       function append(items) {
+        if (isSerial() && !selectedEpisode) {
+          var season = filter_items.season_num && filter_items.season_num[choice.season] || 0;
+          appendEpisodeCards((items || all_items).filter(function (it) { return !season || it.season == season; }));
+        } else appendVoiceItems(items);
+      }
+      function appendVoiceItems(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = component.getLastEpisode(items);
@@ -5608,8 +5660,8 @@
         }, function () { finishOnce(function () { component.loading(false); component.emptyForQuery(select_title); }); });
       };
       this.extendChoice = function (saved) { Lampa.Arrays.extend(choice, saved, true); };
-      this.reset = function () { component.reset(); choice = { season: 0, voice: 0, voice_name: '' }; buildFilters(all_items); append(currentItems()); component.saveChoice(choice); };
-      this.filter = function (type, a, b) { choice[a.stype] = b.index; if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index]; component.reset(); append(currentItems()); component.saveChoice(choice); };
+      this.reset = function () { component.reset(); selectedEpisode = 0; choice = { season: 0, voice: 0, voice_name: '' }; buildFilters(all_items); append(currentItems()); component.saveChoice(choice); };
+      this.filter = function (type, a, b) { if (a.stype == 'season') selectedEpisode = 0; choice[a.stype] = b.index; if (a.stype == 'voice') choice.voice_name = filter_items.voice[b.index]; component.reset(); append(currentItems()); component.saveChoice(choice); };
       this.destroy = function () { destroyed = true; network.clear(); extract = []; };
     }
 
