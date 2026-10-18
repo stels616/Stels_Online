@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.204';
+    var STELS_ONLINE_VERSION = '1.1.205';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -4902,20 +4902,18 @@
 
 
     function zerx(component, _object) {
-      // 1.1.203: Zerx через api.nextembed.ws (як у HAR zerx.zip).
-      // Каталог той самий, що Lift (api.liftw.ws); embed — nextembed makePlayer.
-      // Рекламу (servetraff/VAST) не викликаємо — одразу HLS з playlist.
+      // 1.1.205: чистий Zerx за HAR zerx.zip — БЕЗ liftw.ws.
+      // Пошук: zerx.tv (DLE / o-card). Плеєр: api.nextembed.ws/embed/movie/{id} → makePlayer(playlist).
+      // Рекламу servetraff/VAST не викликаємо.
       var network = new Lampa.Reguest();
       var object = _object || {};
       var select_title = '';
-      var extract = { seasons: [], is_serial: false, title: '', quality: '', zerx_id: 0 };
+      var extract = { seasons: [], is_serial: false, title: '', quality: '', zerx_id: 0, page_url: '' };
       var filter_items = { season: [], season_num: [], voice: [] };
       var choice = { season: 0, voice: 0, voice_name: '' };
       var destroyed = false;
-      var self_ref = this;
-      var api_host = 'https://api.liftw.ws';
-      var embed_host = 'https://api.nextembed.ws';
       var site_host = 'https://zerx.tv';
+      var embed_host = 'https://api.nextembed.ws';
       var user_agent = Utils.baseUserAgent();
 
       function getUid() {
@@ -4935,25 +4933,71 @@
         return String(s || '').toLowerCase().replace(/[ё]/g, 'е').replace(/[^\w\u0400-\u04ff]+/g, ' ').replace(/\s+/g, ' ').trim();
       }
 
-      function scoreItem(item, qTitle, qOrig, year, wantSerial) {
+      function clean(str) {
+        return String(str || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+      }
+
+      function absUrl(u) {
+        u = String(u || '').trim();
+        if (!u) return '';
+        if (/^\/\//.test(u)) return 'https:' + u;
+        if (/^https?:\/\//i.test(u)) return u;
+        if (u.charAt(0) === '/') return site_host + u;
+        return site_host + '/' + u;
+      }
+
+      function parseSearchHtml(html) {
+        var list = [];
+        var seen = {};
+        html = String(html || '');
+        // o-card блоки
+        var re = /<div[^>]*class="[^"]*o-card[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
+        var m;
+        var chunks = html.split(/class="o-card[^"]*"/i);
+        for (var i = 1; i < chunks.length; i++) {
+          var block = chunks[i].slice(0, 2500);
+          var href = (block.match(/href="(https?:\/\/zerx\.tv\/[^"]+)"/i) || block.match(/href="(\/[^"]+\.html)"/i) || [])[1] || '';
+          var title = (block.match(/itemprop="name"[^>]*>([\s\S]*?)<\//i) || block.match(/o-card__title[^>]*>[\s\S]*?<span[^>]*>([\s\S]*?)<\//i) || [])[1] || '';
+          title = clean(title);
+          href = absUrl(href);
+          if (!href || !title) continue;
+          if (seen[href]) continue;
+          seen[href] = 1;
+          var year = 0;
+          var ym = title.match(/\b(19|20)\d{2}\b/);
+          if (ym) year = parseInt(ym[0], 10);
+          var idm = href.match(/\/(\d+)-/);
+          var page_id = idm ? idm[1] : '';
+          list.push({ title: title, link: href, year: year, page_id: page_id });
+        }
+        // fallback: прямі посилання на *.html з назвою
+        if (!list.length) {
+          var re2 = /href="((?:https?:\/\/zerx\.tv)?\/\d+-[^"]+\.html)"[^>]*>[\s\S]*?<span[^>]*itemprop="name"[^>]*>([\s\S]*?)<\/span>/gi;
+          while ((m = re2.exec(html))) {
+            var h2 = absUrl(m[1]);
+            var t2 = clean(m[2]);
+            if (!h2 || !t2 || seen[h2]) continue;
+            seen[h2] = 1;
+            var idm2 = h2.match(/\/(\d+)-/);
+            list.push({ title: t2, link: h2, year: 0, page_id: idm2 ? idm2[1] : '' });
+          }
+        }
+        return list;
+      }
+
+      function scoreResult(item, qTitle, qOrig, year) {
         var score = 0;
-        var nName = norm(item.name);
-        var nOrig = norm(item.origin_name || item.origin || '');
+        var nt = norm(item.title);
         var qt = norm(qTitle);
         var qo = norm(qOrig);
-        if (qt && nName === qt) score += 80;
-        else if (qt && nName.indexOf(qt) !== -1) score += 50;
-        else if (qt && qt.indexOf(nName) !== -1 && nName.length > 3) score += 30;
-        if (qo && nOrig === qo) score += 90;
-        else if (qo && nOrig.indexOf(qo) !== -1) score += 60;
-        else if (qo && qo.indexOf(nOrig) !== -1 && nOrig.length > 3) score += 40;
-        var y = parseInt(item.year, 10) || 0;
-        if (year && y && Math.abs(y - year) <= 1) score += 25;
-        else if (year && y && Math.abs(y - year) <= 2) score += 10;
-        var t = parseInt(item.type, 10) || 0;
-        var isSer = (t === 3 || t === 5 || t >= 3);
-        if (wantSerial && isSer) score += 15;
-        if (!wantSerial && (t === 1 || t === 2)) score += 15;
+        if (qt && nt === qt) score += 80;
+        else if (qt && nt.indexOf(qt) !== -1) score += 50;
+        else if (qt && qt.indexOf(nt) !== -1 && nt.length > 4) score += 30;
+        if (qo && nt.indexOf(qo) !== -1) score += 40;
+        if (year && item.year && Math.abs(item.year - year) <= 1) score += 20;
+        // прибрати «сезон» з порівняння
+        var base = nt.replace(/\s*\d+\s*сезон.*$/i, '').trim();
+        if (qt && base === qt) score += 25;
         return score;
       }
 
@@ -4961,45 +5005,32 @@
         html = String(html || '');
         var seasons = [];
         try {
-          // 1) Надійний bracket-match (нежадібний regex ламається на вкладених [])
-          var m = null;
           var idx = html.indexOf('seasons:[');
           if (idx < 0) idx = html.indexOf('seasons: [');
           if (idx < 0) idx = html.indexOf('"seasons":[');
           if (idx < 0) idx = html.indexOf('"seasons": [');
           if (idx >= 0) {
-            var start = html.indexOf('[', idx);
-            var depth = 0, end = -1;
-            for (var i = start; i < html.length && i < start + 900000; i++) {
-              var ch = html[i];
-              if (ch === '[') depth++;
-              else if (ch === ']') {
+            var startB = html.indexOf('[', idx);
+            var depth = 0, endB = -1;
+            for (var i = startB; i < html.length && i < startB + 900000; i++) {
+              if (html[i] === '[') depth++;
+              else if (html[i] === ']') {
                 depth--;
-                if (depth === 0) { end = i + 1; break; }
+                if (depth === 0) { endB = i + 1; break; }
               }
             }
-            if (end > start) m = [null, html.slice(start, end)];
-          }
-          if (!m) {
-            m = html.match(/seasons\s*:\s*(\[[\s\S]*?\])\s*(?:,\s*current|\}\s*,\s*ui|\}\s*\))/);
-          }
-          if (m && m[1]) {
-            // У nextembed/lift ключі вже в лапках — спочатку raw JSON
-            try { seasons = JSON.parse(m[1]); } catch (eParse) {
-              try {
-                var jsonStr = m[1]
-                  .replace(/(\{|,)\s*(\w+)\s*:/g, '$1"$2":')
-                  .replace(/'/g, '"')
-                  .replace(/,\s*]/g, ']')
-                  .replace(/,\s*\}/g, '}');
-                seasons = JSON.parse(jsonStr);
-              } catch (e2) { seasons = []; }
+            if (endB > startB) {
+              var raw = html.slice(startB, endB);
+              try { seasons = JSON.parse(raw); } catch (e1) {
+                try {
+                  var fixed = raw.replace(/(\{|,)\s*(\w+)\s*:/g, '$1"$2":').replace(/'/g, '"');
+                  seasons = JSON.parse(fixed);
+                } catch (e2) { seasons = []; }
+              }
             }
           }
         } catch (e) { seasons = []; }
-
         if (!seasons || !seasons.length) {
-          // fallback: gather hls urls
           var hlsAll = [];
           var re = /"hls"\s*:\s*"(https?:[^"]+master\.m3u8[^"]*)"/g;
           var mm;
@@ -5032,15 +5063,50 @@
         };
       }
 
+      function extractEmbedIdsFromPage(html, pageUrl) {
+        var ids = [];
+        var urls = [];
+        html = String(html || '');
+        var m;
+        var re1 = /api\.nextembed\.ws\/embed\/movie\/(\d+)/gi;
+        while ((m = re1.exec(html))) {
+          if (ids.indexOf(m[1]) === -1) ids.push(m[1]);
+          urls.push(embed_host + '/embed/movie/' + m[1]);
+        }
+        var re2 = /data-videoframe=["']([^"']+)["']/gi;
+        while ((m = re2.exec(html))) {
+          var u = m[1];
+          if (/youtube\.com|youtu\.be/i.test(u)) continue;
+          urls.push(u);
+          var idm = u.match(/embed\/movie\/(\d+)/i);
+          if (idm && ids.indexOf(idm[1]) === -1) ids.push(idm[1]);
+        }
+        var re3 = /<iframe[^>]+src=["']([^"']+)["']/gi;
+        while ((m = re3.exec(html))) {
+          var u3 = m[1];
+          if (/youtube\.com|youtu\.be/i.test(u3)) continue;
+          urls.push(u3);
+          var idm3 = u3.match(/embed\/movie\/(\d+)/i);
+          if (idm3 && ids.indexOf(idm3[1]) === -1) ids.push(idm3[1]);
+        }
+        // інколи id в data-атрибутах плеєра
+        var re4 = /data-(?:movie|player|embed)[-_]?id=["'](\d+)["']/gi;
+        while ((m = re4.exec(html))) {
+          if (ids.indexOf(m[1]) === -1) ids.push(m[1]);
+        }
+        try { stelsLog('zerx-page-extract', { page: String(pageUrl || '').slice(0, 120), ids: ids.slice(0, 8), urls: urls.slice(0, 4).map(function (u) { return String(u).slice(0, 100); }) }); } catch (e) {}
+        return { ids: ids, urls: urls };
+      }
+
       function buildExtract(seasons, title, qualityHint, zerxId) {
         extract = {
           seasons: seasons || [],
           is_serial: !!(seasons && seasons.length && (seasons.length > 1 || (seasons[0].episodes && seasons[0].episodes.length > 1))),
           title: title || select_title,
           quality: qualityHint || '',
-          zerx_id: zerxId || 0
+          zerx_id: zerxId || 0,
+          page_url: extract.page_url || ''
         };
-        // voices from first season episodes audio.names
         var voices = [];
         (seasons || []).forEach(function (s) {
           (s.episodes || []).forEach(function (ep) {
@@ -5082,18 +5148,14 @@
           }
           return items;
         }
-        var sIdx = choice.season || 0;
-        var season = seasons[sIdx] || seasons[0];
+        var season = seasons[choice.season] || seasons[0];
         if (!season) return items;
         (season.episodes || []).forEach(function (ep) {
-          var names = (ep.audio && ep.audio.names) || [];
-          if (voiceName && voiceName !== 'Default' && names.length && names.indexOf(voiceName) === -1) {
-            // still allow — audio tracks are in HLS
-          }
           var u = streamUrl(ep);
           if (!u) return;
-          var sNum = parseInt(season.season, 10) || (sIdx + 1);
+          var sNum = parseInt(season.season, 10) || (choice.season + 1);
           var eNum = parseInt(ep.episode, 10) || 0;
+          var names = (ep.audio && ep.audio.names) || [];
           items.push({
             title: component.formatEpisodeTitle
               ? component.formatEpisodeTitle(sNum, eNum)
@@ -5110,23 +5172,18 @@
       }
 
       function filter() {
-        try {
-          component.filter(filter_items, choice, extract);
-        } catch (e) {
-          try { component.filter(filter_items, choice); } catch (e2) {}
-        }
+        try { component.filter(filter_items, choice, extract); }
+        catch (e) { try { component.filter(filter_items, choice); } catch (e2) {} }
       }
 
       function append(items) {
         component.reset();
         var viewed = Lampa.Storage.cache('online_view', 5000, []);
         var last_episode = 0;
-        try {
-          items.forEach(function (it) {
-            var e = parseInt(it.episode, 10) || 0;
-            if (e > last_episode) last_episode = e;
-          });
-        } catch (eLast) {}
+        items.forEach(function (it) {
+          var e = parseInt(it.episode, 10) || 0;
+          if (e > last_episode) last_episode = e;
+        });
         items.forEach(function (element) {
           if (element.season) {
             element.translate_episode_end = last_episode;
@@ -5152,17 +5209,14 @@
           item.on('hover:enter', function () {
             if (object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
             if (element.loading) return;
-            var media = element.media || {};
-            var url = streamUrl(media);
+            var url = streamUrl(element.media || {});
             if (!url) {
               Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
               return;
             }
             element.loading = true;
             var play = {
-              title: element.season
-                ? element.title
-                : ((extract.title || select_title) + (element.quality ? ' / ' + element.quality : '')),
+              title: element.season ? element.title : (extract.title || select_title),
               url: url,
               quality: false,
               timeline: view,
@@ -5185,17 +5239,16 @@
               }
             };
             try { stelsStripPlayAds(play); } catch (eAd) {}
-
-            try { stelsPlayLockAcquire('zerx', url); } catch (eLockOn) {}
-            try { stelsSuppressCubPreroll(true); } catch (eSup) {}
+            try { stelsPlayLockAcquire('zerx', url); } catch (eL) {}
+            try { stelsSuppressCubPreroll(true); } catch (eS) {}
             try {
               if (Lampa.Player && Lampa.Player.listener && Lampa.Player.listener.follow) {
-                var once = function (e) {
-                  var t = e && e.type;
+                var once = function (ev) {
+                  var t = ev && ev.type;
                   if (t === 'destroy' || t === 'ended' || t === 'error') {
-                    try { stelsPlayLockRelease(t || 'player-event'); } catch (eLk) {}
-                    try { stelsSuppressCubPreroll(false); } catch (eOff) {}
-                    try { Lampa.Player.listener.remove('destroy,ended,error', once); } catch (eRm) {}
+                    try { stelsPlayLockRelease(t); } catch (e1) {}
+                    try { stelsSuppressCubPreroll(false); } catch (e2) {}
+                    try { Lampa.Player.listener.remove('destroy,ended,error', once); } catch (e3) {}
                   }
                 };
                 Lampa.Player.listener.follow('destroy,ended,error', once);
@@ -5231,7 +5284,7 @@
             }
 
             element.loading = false;
-            try { stelsLog('zerx-play', { url: url.slice(0, 100), season: element.season, episode: element.episode, no_ad: true }); } catch (eP) {}
+            try { stelsLog('zerx-play', { url: url.slice(0, 100), season: element.season, episode: element.episode }); } catch (eP) {}
             try { stelsSaveWatchHistory(object.movie, 'zerx', 'Zerx', element, { voice: element.voice_name }); } catch (eH) {}
             Lampa.Player.play(play);
             try { setTimeout(function () { stelsSuppressCubPreroll(false); }, 180000); } catch (eT) {}
@@ -5255,8 +5308,8 @@
       }
 
       function doneShow() {
-        try { component.loading(false); } catch (eLd) {}
-        try { if (component.activity && component.activity.loader) component.activity.loader(false); } catch (eLd2) {}
+        try { component.loading(false); } catch (e1) {}
+        try { if (component.activity && component.activity.loader) component.activity.loader(false); } catch (e2) {}
         filter();
         var items = filtred();
         try { stelsLog('zerx-append', { items: items.length, is_serial: extract.is_serial, voices: (filter_items.voice || []).length }); } catch (eA) {}
@@ -5267,140 +5320,161 @@
         append(items);
       }
 
-      function loadEmbed(zerxId, title, qualityHint) {
-        // 1.1.204: nextembed часто віддає 410/порожньо з WebView — пробуємо lift embed
-        // (ті самі id каталогу), потім nextembed. silent → native fallback.
-        var urls = [
-          'https://embed.liftw.ws/embed/movie/' + encodeURIComponent(zerxId) + '?host=liftw.ws&season=1&episode=1',
-          'https://embed.liftw.ws/embed/movie/' + encodeURIComponent(zerxId) + '?host=zerx.tv&season=1&episode=1',
-          'https://embed.liftw.ws/embed/movie/' + encodeURIComponent(zerxId),
-          embed_host + '/embed/movie/' + encodeURIComponent(zerxId) + '?host=zerx.tv',
-          embed_host + '/embed/movie/' + encodeURIComponent(zerxId)
-        ];
-        try { stelsLog('zerx-embed', { id: zerxId, url: urls[0], mirrors: urls.length }); } catch (e) {}
-
-        function handleHtml(html, url, idx) {
-          if (destroyed) return;
-          html = String(html || '');
-          var seasons = parseSeasonsFromEmbed(html);
-          var epCount = 0;
-          seasons.forEach(function (s) { epCount += (s.episodes || []).length; });
-          try {
-            stelsLog('zerx-embed-parsed', {
-              id: zerxId,
-              url: String(url || '').slice(0, 120),
-              html_len: html.length,
-              seasons: seasons.length,
-              episodes: epCount,
-              season_nums: seasons.map(function (s) { return s.season; }),
-              sample_hls: seasons[0] && seasons[0].episodes && seasons[0].episodes[0] ? String(seasons[0].episodes[0].hls || '').slice(0, 80) : ''
-            });
-          } catch (eL) {}
-          if (!seasons.length || !epCount) {
-            tryUrl(idx + 1);
-            return;
-          }
-          buildExtract(seasons, title, qualityHint, zerxId);
-          doneShow();
+      function loadNextembed(ids, title) {
+        ids = (ids || []).filter(Boolean);
+        if (!ids.length) {
+          try { stelsLog('zerx-embed-empty', { reason: 'no-ids', title: title }); } catch (e) {}
+          component.loading(false);
+          component.emptyForQuery(select_title);
+          return;
         }
-
-        function tryUrl(idx) {
+        var idx = 0;
+        function tryOne() {
           if (destroyed) return;
-          if (idx >= urls.length) {
-            try { stelsLog('zerx-embed-empty', { id: zerxId, tried: urls.length }); } catch (e) {}
+          if (idx >= ids.length) {
+            try { stelsLog('zerx-embed-empty', { reason: 'all-failed', tried: ids.length }); } catch (e) {}
             component.loading(false);
             component.emptyForQuery(select_title);
             return;
           }
-          var url = urls[idx];
+          var id = ids[idx++];
+          var url = embed_host + '/embed/movie/' + encodeURIComponent(id) + '?host=zerx.tv';
+          try { stelsLog('zerx-embed', { id: id, url: url }); } catch (e) {}
           var opts = {
             dataType: 'text',
             timeout: 15000,
             headers: {
               'User-Agent': user_agent,
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Accept-Language': 'ru-RU,ru;q=0.9,uk-UA;q=0.8,en;q=0.7',
+              'Accept': 'text/html,application/xhtml+xml,*/*',
               'Referer': site_host + '/',
               'Origin': site_host,
               'Cookie': '_uid=' + getUid()
             }
           };
-          // спочатку silent, при помилці — native
-          network.silent(url, function (html) {
-            handleHtml(html, url, idx);
-          }, function (a, c) {
-            try { stelsLog('zerx-embed-fail', { id: zerxId, url: url.slice(0, 100), status: a && a.status, msg: network.errorDecode(a, c) }); } catch (e) {}
+          function onHtml(html) {
+            if (destroyed) return;
+            html = String(html || '');
+            var seasons = parseSeasonsFromEmbed(html);
+            var epCount = 0;
+            seasons.forEach(function (s) { epCount += (s.episodes || []).length; });
+            try {
+              stelsLog('zerx-embed-parsed', {
+                id: id,
+                html_len: html.length,
+                seasons: seasons.length,
+                episodes: epCount,
+                sample_hls: seasons[0] && seasons[0].episodes && seasons[0].episodes[0] ? String(seasons[0].episodes[0].hls || '').slice(0, 80) : ''
+              });
+            } catch (eL) {}
+            if (!seasons.length || !epCount) {
+              tryOne();
+              return;
+            }
+            buildExtract(seasons, title, '', id);
+            doneShow();
+          }
+          network.silent(url, onHtml, function (a, c) {
+            try { stelsLog('zerx-embed-fail', { id: id, status: a && a.status, msg: network.errorDecode(a, c) }); } catch (e) {}
             try {
               if (network.native) {
-                network.native(url, function (html2) {
-                  handleHtml(html2, url + '#native', idx);
-                }, function (a2, c2) {
-                  try { stelsLog('zerx-embed-fail-native', { id: zerxId, status: a2 && a2.status }); } catch (e2) {}
-                  tryUrl(idx + 1);
-                }, false, opts);
+                network.native(url, onHtml, function () { tryOne(); }, false, opts);
                 return;
               }
             } catch (eN) {}
-            tryUrl(idx + 1);
+            tryOne();
           }, false, opts);
         }
-        tryUrl(0);
+        tryOne();
       }
 
-      function searchApi(cb) {
+      function openPage(pageUrl, title) {
+        try { stelsLog('zerx-page', { url: pageUrl, title: title }); } catch (e) {}
+        extract.page_url = pageUrl;
+        network.silent(pageUrl, function (html) {
+          if (destroyed) return;
+          html = String(html || '');
+          var extracted = extractEmbedIdsFromPage(html, pageUrl);
+          var ids = extracted.ids.slice();
+          // якщо на сторінці лише трейлер — спробувати data-movie-id як candidate (іноді збігається)
+          var pageIds = [];
+          var pm;
+          var rePage = /data-movie-id=["'](\d+)["']/gi;
+          while ((pm = rePage.exec(html))) pageIds.push(pm[1]);
+          var pathId = (pageUrl.match(/\/(\d+)-/) || [])[1];
+          if (pathId) pageIds.push(pathId);
+          pageIds.forEach(function (pid) {
+            if (ids.indexOf(pid) === -1) ids.push(pid);
+          });
+          if (!ids.length) {
+            try { stelsLog('zerx-page-no-embed', { url: pageUrl, html_len: html.length }); } catch (e2) {}
+            component.loading(false);
+            component.emptyForQuery(select_title);
+            return;
+          }
+          loadNextembed(ids, title);
+        }, function (a, c) {
+          try { stelsLog('zerx-page-fail', { url: pageUrl, status: a && a.status, msg: network.errorDecode(a, c) }); } catch (e) {}
+          component.loading(false);
+          component.emptyForQuery(select_title);
+        }, false, {
+          dataType: 'text',
+          timeout: 15000,
+          headers: {
+            'User-Agent': user_agent,
+            'Accept': 'text/html,application/xhtml+xml,*/*',
+            'Referer': site_host + '/',
+            'Cookie': '_uid=' + getUid()
+          }
+        });
+      }
+
+      function searchSite(cb) {
         var year = 0;
         try {
           var y = (object.movie.release_date || object.movie.first_air_date || object.movie.year || '') + '';
           year = parseInt(y.slice(0, 4), 10) || 0;
         } catch (e) {}
-        var kp = object.movie.kinopoisk_id || object.movie.kp_id || '';
         var title = object.movie.title || object.movie.name || select_title || '';
         var orig = object.movie.original_title || object.movie.original_name || '';
-        var wantSerial = !!(object.movie.number_of_seasons || object.movie.seasons || (object.movie.type === 'tv') || (object.movie.media_type === 'tv'));
         var queries = [];
         if (title) queries.push(title);
         if (orig && norm(orig) !== norm(title)) queries.push(orig);
-        // Russian title variants often work better on liftw catalog
-        try { stelsLog('zerx-search', { q: title, year: year, kp: kp, queries: queries }); } catch (e) {}
+        try { stelsLog('zerx-search', { q: title, year: year, queries: queries }); } catch (e) {}
 
         var combined = [];
         var left = queries.length || 1;
+        if (!queries.length) { cb([], year); return; }
 
         function finish() {
-          // unique by id
           var map = {};
           combined.forEach(function (it) {
-            if (!it || !it.id) return;
-            var sc = scoreItem(it, title, orig, year, wantSerial);
-            if (!map[it.id] || map[it.id].score < sc) map[it.id] = { item: it, score: sc };
+            if (!it || !it.link) return;
+            var sc = scoreResult(it, title, orig, year);
+            if (!map[it.link] || map[it.link].score < sc) map[it.link] = { item: it, score: sc };
           });
           var ranked = Object.keys(map).map(function (k) { return map[k]; });
           ranked.sort(function (a, b) { return b.score - a.score; });
-          cb(ranked, year, kp, wantSerial);
+          cb(ranked, year);
         }
 
-        if (!queries.length) { cb([], year, kp, wantSerial); return; }
-
         queries.forEach(function (q) {
-          network.silent(api_host + '/search?q=' + encodeURIComponent(q), function (json) {
-            try {
-              var items = (json && json.items) || (Array.isArray(json) ? json : []);
-              try { stelsLog('zerx-search-results', { q: q, count: items.length, top: items.slice(0, 3).map(function (it) { return { id: it.id, name: it.name, origin: it.origin_name, year: it.year, type: it.type, score: scoreItem(it, title, orig, year, wantSerial) }; }) }); } catch (e) {}
-              items.forEach(function (it) { combined.push(it); });
-            } catch (e2) {}
+          var url = site_host + '/index.php?do=search&subaction=search&story=' + encodeURIComponent(q);
+          network.silent(url, function (html) {
+            var list = parseSearchHtml(html);
+            try { stelsLog('zerx-search-results', { q: q, count: list.length, sample: list.slice(0, 3) }); } catch (e) {}
+            list.forEach(function (it) { combined.push(it); });
             left--;
             if (left <= 0) finish();
           }, function () {
             left--;
             if (left <= 0) finish();
           }, false, {
-            dataType: 'json',
-            timeout: 12000,
+            dataType: 'text',
+            timeout: 15000,
             headers: {
               'User-Agent': user_agent,
-              'Accept': 'application/json, */*',
-              'Referer': site_host + '/',
-              'Origin': site_host
+              'Accept': 'text/html,*/*',
+              'Referer': site_host + '/'
             }
           });
         });
@@ -5409,86 +5483,39 @@
       this.search = function (_obj, data) {
         object = _obj || object;
         select_title = (object.movie && (object.movie.title || object.movie.name)) || '';
-        // similars path
-        if (data && data[0] && (data[0].is_zerx || data[0].zerx_id)) {
-          return loadEmbed(data[0].zerx_id, data[0].title || select_title, data[0].quality || '');
+        if (data && data[0] && data[0].is_zerx && data[0].link) {
+          component.loading(true);
+          return openPage(data[0].link, data[0].title || select_title);
         }
         component.loading(true);
-        searchApi(function (ranked, year, kp, wantSerial) {
+        searchSite(function (ranked) {
           if (destroyed) return;
           if (!ranked.length) {
             component.loading(false);
             component.emptyForQuery(select_title);
             return;
           }
-          // KP exact match via /info
-          function pickAndLoad(best) {
-            if (!best || !best.item) {
-              component.loading(false);
-              component.emptyForQuery(select_title);
-              return;
-            }
-            // if several close scores — similars
-            var top = ranked.filter(function (r) { return r.score >= 35 && r.score >= (best.score - 25); }).slice(0, 10);
-            if (top.length > 1 && best.score < 100) {
-              var similars = top.map(function (r) {
-                return {
-                  title: r.item.name + (r.item.year ? ' (' + r.item.year + ')' : ''),
-                  original_title: r.item.origin_name || '',
-                  year: r.item.year,
-                  quality: r.item.quality || '',
-                  is_zerx: true,
-                  zerx_id: r.item.id,
-                  img: r.item.poster || ''
-                };
-              });
-              try { stelsLog('zerx-similars', { count: similars.length, best: best.score }); } catch (e) {}
-              component.loading(false);
-              component.similars(similars);
-              return;
-            }
-            loadEmbed(best.item.id, best.item.name, best.item.quality);
-          }
-
           var best = ranked[0];
-          if (kp && best && best.item) {
-            // verify KP via info for top candidates
-            var cands = ranked.slice(0, 5);
-            var left = cands.length;
-            var matched = null;
-            cands.forEach(function (r) {
-              network.silent(api_host + '/info/' + r.item.id, function (info) {
-                var kid = '';
-                try { kid = String((info && info.info && info.info.id) || (info && info.id) || ''); } catch (e) {}
-                try { stelsLog('zerx-kp-check', { id: r.item.id, kp_info: kid, want: String(kp) }); } catch (e) {}
-                if (String(kid) === String(kp)) matched = r;
-                left--;
-                if (left <= 0) pickAndLoad(matched || best);
-              }, function () {
-                left--;
-                if (left <= 0) pickAndLoad(matched || best);
-              }, false, { dataType: 'json', timeout: 10000, headers: { 'User-Agent': user_agent, 'Accept': 'application/json', 'Referer': site_host + '/' } });
-            });
-            return;
-          }
-          if (best && best.score >= 35) pickAndLoad(best);
-          else {
-            // show similars for weak matches
-            var similars = ranked.slice(0, 10).map(function (r) {
+          var top = ranked.filter(function (r) { return r.score >= 30 && r.score >= (best.score - 30); }).slice(0, 12);
+          if (top.length > 1 && best.score < 90) {
+            var similars = top.map(function (r) {
               return {
-                title: r.item.name + (r.item.year ? ' (' + r.item.year + ')' : ''),
-                original_title: r.item.origin_name || '',
-                year: r.item.year,
-                quality: r.item.quality || '',
+                title: r.item.title,
+                original_title: '',
+                year: r.item.year || '',
+                quality: '',
                 is_zerx: true,
-                zerx_id: r.item.id,
-                img: r.item.poster || ''
+                link: r.item.link,
+                page_id: r.item.page_id,
+                img: ''
               };
             });
+            try { stelsLog('zerx-similars', { count: similars.length, best: best.score }); } catch (e) {}
             component.loading(false);
-            if (similars.length) component.similars(similars);
-            else component.emptyForQuery(select_title);
+            component.similars(similars);
+            return;
           }
+          openPage(best.item.link, best.item.title);
         });
       };
 
@@ -5513,7 +5540,7 @@
       this.destroy = function () {
         destroyed = true;
         network.clear();
-        extract = { seasons: [], is_serial: false, title: '', quality: '', zerx_id: 0 };
+        extract = { seasons: [], is_serial: false, title: '', quality: '', zerx_id: 0, page_url: '' };
       };
     }
 
@@ -28996,10 +29023,10 @@ var q = qualityMapFromAlloha(json);
       }, {
         name: 'zerx',
         title: 'Zerx',
-        // 1.1.203: api.nextembed.ws embed + api.liftw.ws search (без реклами servetraff)
+        // 1.1.205: чистий Zerx — пошук zerx.tv, embed api.nextembed.ws (без liftw.ws)
         source: new zerx(this, object),
         search: true,
-        kp: true,
+        kp: false,
         imdb: false
       }, {
         name: 'eneyida',
