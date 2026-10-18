@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.215';
+    var STELS_ONLINE_VERSION = '1.1.206';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5046,7 +5046,7 @@
         var list = [];
         function add(url) {
           var raw = abs(component.decodeHtml(url || ''), ref);
-          if (!raw || !/(synthezoid|stloadi|allarknow|ortified|nextembed)/i.test(raw)) return;
+          if (!raw || !/(synthezoid|stloadi|allarknow|ortified)/i.test(raw)) return;
           var normalized = normalizePlayerUrl(raw);
           // Не викидаємо оригінальний allarknow: токен може бути прив'язаний саме до
           // цього домену. Далі пробуємо normalized stloadi як резервний варіант.
@@ -5055,15 +5055,13 @@
         }
         String(html || '').replace(/data-videoframe=["']([^"']+)["']/gi, function (all, url) { add(url); return all; });
         String(html || '').replace(/<iframe[^>]+src=["']([^"']+)["']/gi, function (all, url) { add(url); return all; });
-        String(html || '').replace(/https?:\/\/api\.nextembed\.ws\/embed\/(?:movie|tv|serial)\/\d+/gi, function (url) { add(url); return url; });
         list.sort(function (a, b) {
           function rank(u) {
             u = String(u || '');
-            if (/nextembed/i.test(u)) return 0;
-            if (/allarknow/i.test(u)) return 1;
-            if (/stloadi/i.test(u)) return 2;
-            if (/synthezoid/i.test(u)) return 3;
-            if (/ortified/i.test(u)) return 4;
+            if (/allarknow/i.test(u)) return 0;
+            if (/stloadi/i.test(u)) return 1;
+            if (/synthezoid/i.test(u)) return 2;
+            if (/ortified/i.test(u)) return 3;
             return 9;
           }
           return rank(a) - rank(b);
@@ -5247,106 +5245,9 @@
         return [item];
       }
 
-
-      function parseNextembedHtml(html, embedUrl) {
-        html = String(html || '');
-        var items = [];
-        if (html.indexOf('seasons') < 0) return items;
-        var seasonsRaw = '';
-        var sm = html.match(/seasons\s*:\s*(\[)/);
-        if (sm) {
-          var start = sm.index + sm[0].length - 1;
-          var depth = 0;
-          for (var j = start; j < html.length; j++) {
-            var ch = html.charAt(j);
-            if (ch === '[') depth++;
-            else if (ch === ']') {
-              depth--;
-              if (depth === 0) {
-                seasonsRaw = html.slice(start, j + 1);
-                break;
-              }
-            }
-          }
-        }
-        if (!seasonsRaw) {
-          stelsLog('zerx-nextembed-no-seasons', { embed: preview(embedUrl), html_len: html.length });
-          return items;
-        }
-        var seasons = [];
-        try { seasons = JSON.parse(seasonsRaw); } catch (e1) {
-          stelsLog('zerx-nextembed-json-fail', { err: String(e1 && e1.message || e1) });
-          return items;
-        }
-        var origin = 'https://api.nextembed.ws';
-        try {
-          var om = String(embedUrl || '').match(/^(https?:\/\/[^\/]+)/i);
-          if (om) origin = om[1];
-        } catch (eO) {}
-        var headers = {
-          'User-Agent': player_browser_ua,
-          'Referer': origin + '/',
-          'Origin': origin
-        };
-        for (var si = 0; si < seasons.length; si++) {
-          var seasonObj = seasons[si];
-          if (!seasonObj || seasonObj.blocked) continue;
-          var seasonNum = parseInt(seasonObj.season, 10) || 0;
-          var eps = seasonObj.episodes || [];
-          if (!eps || !eps.length) continue;
-          for (var ei = 0; ei < eps.length; ei++) {
-            var ep = eps[ei];
-            if (!ep) continue;
-            var episodeNum = parseInt(ep.episode, 10) || 0;
-            var hls = ep.hls || ep.dash || '';
-            if (!hls) continue;
-            var stream = zerxProxyPlayableUrl(hls);
-            var voices = ['Zerx'];
-            if (ep.audio && ep.audio.names && ep.audio.names.length) voices = ep.audio.names;
-            var subs = [];
-            if (ep.cc && ep.cc.length) {
-              for (var ci = 0; ci < ep.cc.length; ci++) {
-                if (ep.cc[ci] && ep.cc[ci].url) subs.push({ label: ep.cc[ci].name || 'sub', url: ep.cc[ci].url });
-              }
-            }
-            for (var vi = 0; vi < voices.length; vi++) {
-              var voice = voices[vi];
-              if (!voice || String(voice).toLowerCase() === 'delete') continue;
-              items.push({
-                title: episodeNum ? ('Сезон ' + seasonNum + ' / Серія ' + episodeNum) : (voice || select_title),
-                season: seasonNum,
-                episode: episodeNum,
-                voice: voice,
-                file_id: ep.id || ep.videoKey || '',
-                quality: 'HLS',
-                stream: stream,
-                stream_url: embedUrl,
-                subtitles: subs,
-                headers: headers
-              });
-            }
-          }
-        }
-        stelsLog('zerx-nextembed-parsed', { embed: preview(embedUrl), seasons: seasons.length, items: items.length });
-        return items;
-      }
-
       function parsePlayerHtml(html, iframeUrl, forcedSeason) {
         player_referer = normalizePlayerUrl(iframeUrl || player_referer);
         try { var om = String(player_referer || '').match(/^(https?:\/\/[^\/]+)/i); if (om) player_origin = om[1]; } catch (e) {}
-        if (String(iframeUrl || '').indexOf('nextembed') >= 0 || (String(html || '').indexOf('seasons') >= 0 && String(html || '').indexOf('makePlayer') >= 0)) {
-          var neItems = parseNextembedHtml(html, iframeUrl);
-          if (neItems && neItems.length) {
-            if (forcedSeason) {
-              var only = [];
-              for (var ni = 0; ni < neItems.length; ni++) {
-                if (neItems[ni].season == forcedSeason) only.push(neItems[ni]);
-              }
-              if (only.length) neItems = only;
-            }
-            return neItems;
-          }
-        }
         var tokenInfo = zerxTokenInfo(iframeUrl || '');
         var mtoken = String(html || '').match(/token:\s*['"]([^'"]+)/i) || String(iframeUrl || '').match(/[?&]token=([^&]+)/i);
         player_token = mtoken ? decodeURIComponent(mtoken[1]) : (tokenInfo.token || '');
@@ -5452,35 +5353,12 @@
       function zerxProxyPlayableUrl(url) {
         url = cleanStreamUrl(url || '');
         if (!url) return '';
-        // розгорнути помилкове подвійне проксування apn.watch/https://...
-        if (url.indexOf('apn.watch/http') >= 0 || url.indexOf('apn.cfhttp.top/http') >= 0) {
-          var p = url.indexOf('http', url.indexOf('://') + 3);
-          if (p > 0) url = url.substring(p);
-        }
-        // вже один раз проксовано — не чіпаємо
-        if (url.indexOf('https://apn.watch/') === 0 || url.indexOf('http://apn.watch/') === 0 ||
-            url.indexOf('https://apn.cfhttp.top/') === 0 || url.indexOf('http://apn.cfhttp.top/') === 0) {
-          return url;
-        }
-        // 1.1.215: interkh HLS у вбудованому плеєрі Lampa дає fragLoadError (CORS на .ts),
-        // MX Player відкриває напряму. Якщо увімкнено stream proxy — проксуємо один раз.
-        var useProxy = true;
-        try {
-          if (Lampa.Storage.field('stels_online_use_stream_proxy') === false) useProxy = false;
-        } catch (eP) {}
-        if (!useProxy) return url;
-        try {
-          var proxed = component.proxyStream(url, 'zerx');
-          // захист від apn.watch/https://...
-          if (proxed && (proxed.indexOf('apn.watch/http') >= 0 || proxed.indexOf('apn.cfhttp.top/http') >= 0)) {
-            return url;
-          }
-          return proxed || url;
-        } catch (e) {
-          return url;
-        }
+        // api.ortified/ws іноді вже повертає готовий stream через apn.cfhttp/apn.watch.
+        // Повторний component.proxyStream робить URL виду apn.watch/http://apn.cfhttp...,
+        // через що плеєр відкривається, але потік не стартує.
+        if (/^https?:\/\/(?:apn\.cfhttp\.top|apn\.watch)\//i.test(url)) return url;
+        return component.proxyStream(url, 'zerx');
       }
-
       function parseHlsJson(json, voice) {
         if (typeof json == 'string') json = Lampa.Arrays.decodeJson(json, {});
         var list = json && json.hlsSource || [];
@@ -5499,32 +5377,7 @@
         return { file: file, quality: Object.keys(quality).length ? quality : false, subtitles: [] };
       }
       function getStream(element, call, error) {
-        if (element.stream) {
-          var rawStream = cleanStreamUrl(element.stream);
-          element.stream = zerxProxyPlayableUrl(rawStream);
-          var isProxied = /apn\.(watch|cfhttp)/i.test(element.stream || '');
-          // для проксованого URL Origin/Referer на CDN не потрібні і можуть заважати;
-          // для прямого interkh — nextembed referer як у HAR
-          if (isProxied) {
-            element.headers = element.headers || {
-              'User-Agent': player_browser_ua
-            };
-          } else if (!element.headers) {
-            element.headers = {
-              'User-Agent': player_browser_ua,
-              'Referer': 'https://api.nextembed.ws/',
-              'Origin': 'https://api.nextembed.ws'
-            };
-          }
-          stelsLog('zerx-stream-ready', {
-            voice: element.voice,
-            s: element.season,
-            e: element.episode,
-            proxied: isProxied,
-            stream: preview(element.stream, 140)
-          });
-          return call(element);
-        }
+        if (element.stream) return call(element);
         if (!element.file_id || !player_token) return error && error();
         var preferred = player_origin || 'https://synthezoid-as.stloadi.live';
         // Zerx rotates player backend domains. A stale mirror may serve the page but 404 the stream API.
@@ -5567,95 +5420,33 @@
       }
       function appendEpisodeCards(items) {
         component.reset();
-        var viewed = Lampa.Storage.cache('online_view', 5000, []);
-        var pool = items || all_items || [];
         var byEpisode = {};
-        for (var i = 0; i < pool.length; i++) {
-          var it = pool[i];
+        (items || []).forEach(function (it) {
           var sn = parseInt(it.season, 10) || 0;
-          var epn = parseInt(it.episode, 10) || 0;
-          if (!epn) continue;
-          var key = sn + ':' + epn;
-          if (!byEpisode[key]) byEpisode[key] = { season: sn, episode: epn, list: [] };
-          byEpisode[key].list.push(it);
-        }
-        var keys = Object.keys(byEpisode);
-        keys.sort(function (a, b) {
-          var A = byEpisode[a];
-          var B = byEpisode[b];
-          return (A.season - B.season) || (A.episode - B.episode);
+          var ep = parseInt(it.episode, 10) || 0;
+          if (!ep) return;
+          var key = sn + ':' + ep;
+          if (!byEpisode[key]) byEpisode[key] = { season: sn, episode: ep, voices: [] };
+          if (it.voice && byEpisode[key].voices.indexOf(it.voice) < 0) byEpisode[key].voices.push(it.voice);
         });
-        for (var ki = 0; ki < keys.length; ki++) {
-          var ep = byEpisode[keys[ki]];
-          var list = ep.list || [];
-          if (!list.length) continue;
-          // обрана озвучка або перша
-          var playItem = list[0];
-          try {
-            var pref = (choice && choice.voice_name) ? String(choice.voice_name) : '';
-            if (pref) {
-              for (var li = 0; li < list.length; li++) {
-                if (String(list[li].voice || '').toLowerCase() === pref.toLowerCase()) {
-                  playItem = list[li];
-                  break;
-                }
-              }
-            }
-          } catch (ePref) {}
-          var element = {
-            title: 'Сезон ' + ep.season + ' / Серія ' + ep.episode,
-            season: ep.season,
-            episode: ep.episode,
-            voice: playItem.voice || '',
-            quality: playItem.quality || 'HLS',
-            stream: playItem.stream,
-            file_id: playItem.file_id,
-            headers: playItem.headers,
-            subtitles: playItem.subtitles || [],
-            stream_url: playItem.stream_url,
-            qualitys: playItem.qualitys || false
-          };
+        var episodes = Object.keys(byEpisode).map(function (key) { return byEpisode[key]; });
+        episodes.sort(function (a, b) { return (a.season - b.season) || (a.episode - b.episode); });
+        episodes.forEach(function (ep) {
+          var element = { title: 'Сезон ' + ep.season + ' / Серія ' + ep.episode, season: ep.season, episode: ep.episode, quality: ep.voices.length + ' озвучок', info: ep.voices.length ? ' / ' + ep.voices.length + ' озвучок' : '' };
           var hash = Lampa.Utils.hash([ep.season, ep.episode, object.movie.original_title || object.movie.original_name || object.movie.title].join(':'));
           var view = Lampa.Timeline.view(hash);
           var item = Lampa.Template.get('stels_online', element);
-          var hash_file = Lampa.Utils.hash((element.file_id || element.title || '') + ':zerx');
-          element.timeline = view;
           item.append(Lampa.Timeline.render(view));
-          if (viewed.indexOf(hash_file) !== -1) {
-            item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
-          }
-          item.on('hover:enter', function (el, tpl, dataItem) {
-            return function () {
-              if (el.loading) return;
-              if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100);
-              el.loading = true;
-              getStream(el, function (got) {
-                el.loading = false;
-                var first = {
-                  url: component.getDefaultQuality(got.qualitys, got.stream),
-                  quality: component.renameQualityMap(got.qualitys),
-                  subtitles: got.subtitles || [],
-                  timeline: el.timeline,
-                  title: el.title,
-                  headers: got.headers || false
-                };
-                Lampa.Player.play(first);
-                Lampa.Player.playlist([first]);
-                try { stelsSaveWatchHistory(object.movie, 'zerx', 'Zerx', el, { voice: el.voice }); } catch (eH) {}
-                if (viewed.indexOf(hash_file) == -1) {
-                  viewed.push(hash_file);
-                  tpl.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>');
-                  Lampa.Storage.set('online_view', viewed);
-                }
-              }, function () {
-                el.loading = false;
-                try { component.start(true); } catch (eS) {}
-                Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink'));
-              });
-            };
-          }(element, item, playItem));
+          item.on('hover:enter', function () {
+            selectedEpisode = ep.episode;
+            choice.voice = 0;
+            choice.voice_name = '';
+            buildFilters(all_items);
+            appendVoiceItems(currentItems());
+            component.saveChoice(choice);
+          });
           component.append(item);
-        }
+        });
         component.loading(false);
         component.start(true);
       }
@@ -5704,7 +5495,7 @@
               } else Lampa.Player.playlist([first]);
               stelsSaveWatchHistory(object.movie, 'zerx', 'Zerx', element, { voice: element.voice });
               if (viewed.indexOf(hash_file) == -1) { viewed.push(hash_file); item.append('<div class="torrent-item__viewed">' + Lampa.Template.get('icon_star', {}, true) + '</div>'); Lampa.Storage.set('online_view', viewed); }
-            }, function () { element.loading = false; try { component.start(true); } catch (eS) {} Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
+            }, function () { element.loading = false; Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); });
           });
           component.append(item);
           component.contextmenu({ item: item, view: view, viewed: viewed, hash_file: hash_file, element: element, file: function (call) { getStream(element, function (element) { call({ file: element.stream, quality: element.qualitys, headers: element.headers || false }); }, function () { Lampa.Noty.show(Lampa.Lang.translate('stels_online_nolink')); }); }});
