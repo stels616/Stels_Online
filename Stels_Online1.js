@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.212';
+    var STELS_ONLINE_VERSION = '1.1.213';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -4956,7 +4956,7 @@
           if (year) add('FROM ' + year);
           add('Ззовні');
           if (year) add('Ззовні ' + year);
-          return arr.filter(Boolean).slice(0, 8);
+          return arr.filter(Boolean).slice(0, 4);
         }
 
         var known = zerxKnownAliases();
@@ -4964,7 +4964,7 @@
         known.forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
         collectTitleAliases().forEach(add);
         collectTitleAliases().forEach(function (t) { if (year && !/\b(19|20)\d{2}\b/.test(String(t || ''))) add(t + ' ' + year); });
-        return arr.filter(Boolean).slice(0, 10);
+        return arr.filter(Boolean).slice(0, 4);
       }
       function mergeResultList(acc, list) {
         var seen = {};
@@ -4993,13 +4993,16 @@
         }
         function next() { searchAll(hash, variants, index + 1, acc, callback, fail); }
         function maybeFastFinish() {
-          // Важливо: не завершуємося після одного AJAX. У 1.1.04 саме це ламало Zerx:
-          // AJAX по "Извне" повертав лише сезонні сторінки 3/4, а повний DLE-пошук
-          // уже не запускався. Тепер спершу об'єднуємо AJAX + DLE для цього запиту.
           var merged = filterGoodResults(acc);
           merged.sort(function (a, b) { return scoreResult(b) - scoreResult(a); });
           var best = merged[0];
-          if (best && scoreResult(best) >= 165 && !isSeasonResult(best)) {
+          // 1.1.213: швидший вихід — повна серія (не сезонна) зі score>=120
+          if (best && scoreResult(best) >= 120 && !isSeasonResult(best)) {
+            callback(merged);
+            return true;
+          }
+          // або вже є кілька сезонів і хороший score
+          if (best && scoreResult(best) >= 140 && sameSeasonSeriesResults(merged)) {
             callback(merged);
             return true;
           }
@@ -5309,14 +5312,17 @@
                 if (ep.cc[ci] && ep.cc[ci].url) subs.push({ label: ep.cc[ci].name || 'sub', url: ep.cc[ci].url });
               }
             }
+            var order = (ep.audio && ep.audio.order && ep.audio.order.length) ? ep.audio.order : null;
             for (var vi = 0; vi < voices.length; vi++) {
               var voice = voices[vi];
               if (!voice || String(voice).toLowerCase() === 'delete') continue;
+              var audioIndex = order && order[vi] != null ? parseInt(order[vi], 10) : vi;
               items.push({
                 title: episodeNum ? ('Сезон ' + seasonNum + ' / Серія ' + episodeNum) : (voice || select_title),
                 season: seasonNum,
                 episode: episodeNum,
                 voice: voice,
+                audio_index: audioIndex,
                 file_id: ep.id || ep.videoKey || '',
                 quality: 'HLS',
                 stream: stream,
@@ -5336,14 +5342,17 @@
         try { var om = String(player_referer || '').match(/^(https?:\/\/[^\/]+)/i); if (om) player_origin = om[1]; } catch (e) {}
         if (String(iframeUrl || '').indexOf('nextembed') >= 0 || (String(html || '').indexOf('seasons') >= 0 && String(html || '').indexOf('makePlayer') >= 0)) {
           var neItems = parseNextembedHtml(html, iframeUrl);
+          // 1.1.213: nextembed уже містить УСІ сезони — не обрізаємо forcedSeason
           if (neItems && neItems.length) {
-            if (forcedSeason) {
-              var only = [];
-              for (var ni = 0; ni < neItems.length; ni++) {
-                if (neItems[ni].season == forcedSeason) only.push(neItems[ni]);
-              }
-              if (only.length) neItems = only;
-            }
+            stelsLog('zerx-nextembed-keep-all-seasons', {
+              forced: forcedSeason || 0,
+              items: neItems.length,
+              seasons: (function () {
+                var a = [];
+                neItems.forEach(function (it) { if (a.indexOf(it.season) == -1) a.push(it.season); });
+                return a;
+              })()
+            });
             return neItems;
           }
         }
@@ -5410,9 +5419,9 @@
           }
         }
         if (forcedSeason) {
-          var uniq = [];
-          items.forEach(function (it) { if (uniq.indexOf(it.season) == -1) uniq.push(it.season); });
-          if (uniq.length <= 1) items.forEach(function (it) { it.season = forcedSeason; if (it.episode) it.title = 'Сезон ' + forcedSeason + ' / Серія ' + it.episode; });
+          var allZero = true;
+          items.forEach(function (it) { if (it.season) allZero = false; });
+          if (allZero) items.forEach(function (it) { it.season = forcedSeason; if (it.episode) it.title = 'Сезон ' + forcedSeason + ' / Серія ' + it.episode; });
         }
         stelsLog('zerx-normalized', { count: items.length, forced_season: forcedSeason || 0, sample: items.slice(0, 8) });
         return items;
@@ -5577,6 +5586,7 @@
             season: ep.season,
             episode: ep.episode,
             voice: playItem.voice || '',
+            audio_index: playItem.audio_index,
             quality: playItem.quality || 'HLS',
             stream: playItem.stream,
             file_id: playItem.file_id,
@@ -5607,8 +5617,39 @@
                   subtitles: got.subtitles || [],
                   timeline: el.timeline,
                   title: el.title,
-                  headers: got.headers || false
+                  headers: got.headers || false,
+                  translate: el.voice || '',
+                  voice: el.voice || '',
+                  audio: el.voice || '',
+                  audio_track: (got.audio_index != null ? got.audio_index : el.audio_index)
                 };
+                // спроба виставити аудіодоріжку після старту (multi-audio HLS)
+                try {
+                  var want = el.voice || '';
+                  var aidx = got.audio_index != null ? got.audio_index : el.audio_index;
+                  if (want || aidx != null) {
+                    setTimeout(function () {
+                      try {
+                        var video = document.querySelector('video.player-video__video, video');
+                        if (video && video.audioTracks && video.audioTracks.length) {
+                          var tracks = video.audioTracks;
+                          var found = -1;
+                          for (var ti = 0; ti < tracks.length; ti++) {
+                            var lab = String(tracks[ti].label || tracks[ti].language || '');
+                            if (want && lab && lab.toLowerCase().indexOf(String(want).toLowerCase().slice(0, 6)) >= 0) { found = ti; break; }
+                          }
+                          if (found < 0 && aidx != null && aidx >= 0 && aidx < tracks.length) found = aidx;
+                          if (found >= 0) {
+                            for (var tj = 0; tj < tracks.length; tj++) tracks[tj].enabled = (tj === found);
+                            stelsLog('zerx-audio-track-set', { want: want, index: found, total: tracks.length });
+                          } else {
+                            stelsLog('zerx-audio-track-miss', { want: want, aidx: aidx, total: tracks.length });
+                          }
+                        }
+                      } catch (eAud) {}
+                    }, 1200);
+                  }
+                } catch (eAud2) {}
                 Lampa.Player.play(first);
                 Lampa.Player.playlist([first]);
                 try { stelsSaveWatchHistory(object.movie, 'zerx', 'Zerx', el, { voice: el.voice }); } catch (eH) {}
@@ -5659,7 +5700,31 @@
             element.loading = true;
             getStream(element, function (element) {
               element.loading = false;
-              var first = { url: component.getDefaultQuality(element.qualitys, element.stream), quality: component.renameQualityMap(element.qualitys), subtitles: element.subtitles, timeline: element.timeline, title: element.season ? element.title : select_title, headers: element.headers || false };
+              var first = { url: component.getDefaultQuality(element.qualitys, element.stream), quality: component.renameQualityMap(element.qualitys), subtitles: element.subtitles, timeline: element.timeline, title: element.season ? element.title : select_title, headers: element.headers || false, translate: element.voice || '', voice: element.voice || '', audio: element.voice || '', audio_track: element.audio_index };
+              try {
+                var wantV = element.voice || '';
+                var aidxV = element.audio_index;
+                if (wantV || aidxV != null) {
+                  setTimeout(function () {
+                    try {
+                      var video = document.querySelector('video.player-video__video, video');
+                      if (video && video.audioTracks && video.audioTracks.length) {
+                        var tracks = video.audioTracks;
+                        var found = -1;
+                        for (var ti = 0; ti < tracks.length; ti++) {
+                          var lab = String(tracks[ti].label || tracks[ti].language || '');
+                          if (wantV && lab && lab.toLowerCase().indexOf(String(wantV).toLowerCase().slice(0, 6)) >= 0) { found = ti; break; }
+                        }
+                        if (found < 0 && aidxV != null && aidxV >= 0 && aidxV < tracks.length) found = aidxV;
+                        if (found >= 0) {
+                          for (var tj = 0; tj < tracks.length; tj++) tracks[tj].enabled = (tj === found);
+                          stelsLog('zerx-audio-track-set', { want: wantV, index: found, total: tracks.length });
+                        }
+                      }
+                    } catch (eA) {}
+                  }, 1200);
+                }
+              } catch (eA2) {}
               Lampa.Player.play(first);
               if (element.season && Lampa.Platform.version) {
                 var playlist = [];
@@ -5722,6 +5787,11 @@
           }
           var combos = [];
           iframeVariants.forEach(function (variant, iframeIndex) {
+            // nextembed — лише direct (швидше, HLS уже в HTML)
+            if (/nextembed/i.test(variant.url || '')) {
+              combos.push({ iframe: variant.url, reason: variant.reason, iframeIndex: iframeIndex, attempt: { name: 'direct', raw: true, proxy: '', enc: '' } });
+              return;
+            }
             proxyAttempts.forEach(function (attempt) {
               combos.push({ iframe: variant.url, reason: variant.reason, iframeIndex: iframeIndex, attempt: attempt });
             });
@@ -5781,38 +5851,87 @@
         var pages = [];
         var seen = {};
         var maxSeason = expectedMaxSeason();
+        var fullPages = [];
         (results || []).forEach(function (r) {
-          var season = seasonOfResult(r);
+          var season = seasonOfResult(r) || 0;
           var url = r && (r.url || r.link);
-          if (!season || !url) return;
-          if (maxSeason && season > maxSeason) return;
+          if (!url) return;
+          if (season && maxSeason && season > maxSeason) return;
           if (seen[url]) return;
           seen[url] = true;
-          pages.push({ url: url, season: season, title: r.title || '' });
+          var entry = { url: url, season: season, title: r.title || '', score: scoreResult(r) };
+          // повні сторінки серіалу (без «N сезон» у назві) — пріоритет
+          if (!season) fullPages.push(entry);
+          else pages.push(entry);
         });
+        // 1.1.213: спершу повні сторінки, потім сезони (макс 3 сезони для швидкості)
+        fullPages.sort(function (a, b) { return (b.score || 0) - (a.score || 0); });
         pages.sort(function (a, b) { return a.season - b.season; });
-        stelsLog('zerx-season-pages', { count: pages.length, max_season: maxSeason, sample: pages.slice(0, 8) });
-        if (!pages.length) { component.loading(false); component.emptyForQuery(select_title); return; }
+        if (pages.length > 3) pages = pages.slice(0, 3);
+        var queue = fullPages.length ? fullPages.slice(0, 2).concat(pages) : pages;
+        stelsLog('zerx-season-pages', {
+          count: queue.length,
+          full: fullPages.length,
+          seasons: pages.length,
+          max_season: maxSeason,
+          sample: queue.slice(0, 8).map(function (p) { return { s: p.season, t: p.title, url: p.url }; })
+        });
+        if (!queue.length) { component.loading(false); component.emptyForQuery(select_title); return; }
         var merged = [];
         var keys = {};
-        var left = pages.length;
+        var left = queue.length;
+        var gotMultiSeason = false;
         function addItems(items) {
           (items || []).forEach(function (it) {
-            var key = [it.season, it.episode, it.voice, it.file_id].join('|');
+            var key = [it.season, it.episode, it.voice, it.file_id || it.stream].join('|');
             if (!keys[key]) { keys[key] = true; merged.push(it); }
           });
         }
-        function done() {
-          left--;
-          if (left > 0) return;
-          all_items = merged.sort(function (a, b) { return (a.season - b.season) || (a.episode - b.episode) || String(a.voice || '').localeCompare(String(b.voice || '')); });
-          stelsLog('zerx-season-merged', { count: all_items.length, seasons: (function(){ var a=[]; all_items.forEach(function(it){ if(a.indexOf(it.season)==-1) a.push(it.season); }); return a; })(), sample: all_items.slice(0, 12) });
+        function seasonsIn(list) {
+          var a = [];
+          (list || []).forEach(function (it) { if (it.season && a.indexOf(it.season) == -1) a.push(it.season); });
+          return a;
+        }
+        function finishMerge() {
+          all_items = merged.sort(function (a, b) {
+            return (a.season - b.season) || (a.episode - b.episode) || String(a.voice || '').localeCompare(String(b.voice || ''));
+          });
+          stelsLog('zerx-season-merged', { count: all_items.length, seasons: seasonsIn(all_items), sample: all_items.slice(0, 12) });
           if (!all_items.length) { component.loading(false); component.emptyForQuery(select_title); return; }
           buildFilters(all_items);
+          // якщо є кілька сезонів — стартуємо з 1-го
+          try {
+            if (filter_items.season_num && filter_items.season_num.length) {
+              var idx0 = filter_items.season_num.indexOf(1);
+              if (idx0 >= 0) choice.season = idx0;
+              else choice.season = 0;
+            }
+          } catch (eCh) {}
           append(currentItems());
         }
-        pages.forEach(function (p) {
-          parsePlayerPage(p.url, p.season, function (items) { addItems(items); done(); }, function () { stelsLog('zerx-season-page-fail', { url: p.url, season: p.season }); done(); });
+        function done(items) {
+          if (items && items.length) {
+            addItems(items);
+            var ss = seasonsIn(items);
+            if (ss.length >= 2) gotMultiSeason = true;
+          }
+          left--;
+          // якщо вже є повний nextembed з кількома сезонами — не чекаємо решту довго
+          if (gotMultiSeason && merged.length > 0) {
+            left = 0;
+          }
+          if (left > 0) return;
+          finishMerge();
+        }
+        queue.forEach(function (p) {
+          // forcedSeason=0 для повних сторінок; для сезонних теж 0 щоб nextembed не різався
+          parsePlayerPage(p.url, 0, function (items) {
+            stelsLog('zerx-season-page-ok', { url: p.url, season_hint: p.season, items: (items || []).length, seasons: seasonsIn(items) });
+            done(items);
+          }, function () {
+            stelsLog('zerx-season-page-fail', { url: p.url, season: p.season });
+            done(null);
+          });
         });
       }
 
@@ -5826,10 +5945,10 @@
           if (finished || destroyed) return;
           finished = true;
           try { network.clear(); } catch (e) {}
-          stelsLog('zerx-search-watchdog', { title: select_title, timeout: 26000 });
+          stelsLog('zerx-search-watchdog', { title: select_title, timeout: 16000 });
           component.loading(false);
           component.emptyForQuery(select_title);
-        }, 26000);
+        }, 16000);
         function finishOnce(fn) {
           if (finished || destroyed) return;
           finished = true;
