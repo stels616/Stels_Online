@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.205';
+    var STELS_ONLINE_VERSION = '1.1.206';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -5271,8 +5271,9 @@
           if (!id || seen[[season, episode, voice, id].join('|')]) return;
           seen[[season, episode, voice, id].join('|')] = true;
           items.push({
-            title: episode ? ('Сезон ' + (forcedSeason || season || 0) + ' / Серія ' + episode) : (voice || select_title),
-            season: forcedSeason || season || 0,
+            title: episode ? ('Сезон ' + (season || forcedSeason || 0) + ' / Серія ' + episode) : (voice || select_title),
+            // fileList.all містить ключі всіх сезонів; forcedSeason — лише запасне значення.
+            season: season || forcedSeason || 0,
             episode: episode || 0,
             voice: voice || '',
             file_id: id,
@@ -5378,28 +5379,44 @@
       function getStream(element, call, error) {
         if (element.stream) return call(element);
         if (!element.file_id || !player_token) return error && error();
-        var baseOrigin = player_origin || 'https://synthezoid-as.stloadi.live';
-        var url = baseOrigin + '/bnsi/movies/' + encodeURIComponent(element.file_id);
+        var preferred = player_origin || 'https://synthezoid-as.stloadi.live';
+        // Zerx rotates player backend domains. A stale mirror may serve the page but 404 the stream API.
+        var origins = [preferred, 'https://synthezoid-as.stravers.live', 'https://blink.stloadi.live', 'https://synthezoid-as.stloadi.live', 'https://synthezoid-as.allarknow.online'];
+        var uniqueOrigins = [];
+        origins.forEach(function (origin) { if (origin && uniqueOrigins.indexOf(origin) < 0) uniqueOrigins.push(origin); });
         var post = 'token=' + encodeURIComponent(player_token) + '&av1=true&autoplay=0&audio=&subtitle=';
-        var headers = {
-          'User-Agent': player_browser_ua,
-          'Accept': '*/*',
-          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Origin': baseOrigin,
-          'Referer': player_referer,
-          'Sec-Fetch-Dest': 'empty',
-          'Sec-Fetch-Mode': 'cors',
-          'Sec-Fetch-Site': 'same-origin'
-        };
-        requestText(url, function (json) {
-          var parsed = parseHlsJson(json, element.voice);
-          if (!parsed.file) { error && error(); return; }
-          element.stream = parsed.file;
-          element.qualitys = parsed.quality;
-          element.subtitles = parsed.subtitles || [];
-          element.headers = { 'User-Agent': player_browser_ua, 'Referer': player_referer, 'Origin': baseOrigin };
-          call(element);
-        }, error, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 18000 });
+        function tryOrigin(index) {
+          if (index >= uniqueOrigins.length) { error && error(); return; }
+          var origin = uniqueOrigins[index];
+          var url = origin + '/bnsi/movies/' + encodeURIComponent(element.file_id);
+          var headers = {
+            'User-Agent': player_browser_ua,
+            'Accept': '*/*',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Origin': origin,
+            'Referer': player_referer,
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin'
+          };
+          requestText(url, function (json) {
+            var parsed = parseHlsJson(json, element.voice);
+            if (!parsed.file) {
+              stelsLog('zerx-stream-empty', { origin: origin, file_id: element.file_id, voice: element.voice, attempt: index });
+              tryOrigin(index + 1);
+              return;
+            }
+            element.stream = parsed.file;
+            element.qualitys = parsed.quality;
+            element.subtitles = parsed.subtitles || [];
+            element.headers = { 'User-Agent': player_browser_ua, 'Referer': player_referer, 'Origin': origin };
+            call(element);
+          }, function (message) {
+            stelsLog('zerx-stream-mirror-retry', { origin: origin, file_id: element.file_id, attempt: index, message: preview(message, 180) });
+            tryOrigin(index + 1);
+          }, { kind: 'stream', post: post, headers: headers, raw: true, dataType: 'json', timeout: 18000 });
+        }
+        tryOrigin(0);
       }
       function appendEpisodeCards(items) {
         component.reset();
