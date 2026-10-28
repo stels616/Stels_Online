@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.224';
+    var STELS_ONLINE_VERSION = '1.1.225';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -20712,9 +20712,7 @@ var q = qualityMapFromAlloha(json);
         }
 
         var url = Lampa.Utils.addUrlComponent(embed + atob('cGxheWxpc3Q/cHViPTEyJmFnZ3I9a3A='), 'id=' + kinopoisk_id);
-        network.clear();
-        network.timeout(10000);
-        network["native"](component.proxyLink(url, prox, prox_enc), function (json) {
+        cdnApiRequest('search', network, url, function (json) {
           parse(json);
         }, function (a, c) {
           if (a.status == 500 && !a.responseText || a.status == 0 && a.statusText !== 'timeout') {
@@ -20722,6 +20720,65 @@ var q = qualityMapFromAlloha(json);
           } else component.empty(network.errorDecode(a, c));
         });
       };
+
+      // Мережева діагностика для CDNVideoHub/Vokino.
+      function cdnNetInfo() {
+        var info = {};
+        try { info.online = navigator.onLine; } catch (e) {}
+        try {
+          var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+          if (conn) {
+            info.conn_type = conn.type || '';
+            info.effective = conn.effectiveType || '';
+            info.downlink = conn.downlink;
+            info.rtt = conn.rtt;
+          }
+        } catch (e) {}
+        return info;
+      }
+
+      // Ланцюжок: напряму -> proxy('cdnvideohub') -> публічні CORS-проксі плагіна.
+      // Без VPN plapi.cdnvideohub.com напряму недоступний, тому раніше пошук Vokino
+      // мовчки закінчувався порожнім результатом.
+      function cdnApiChain() {
+        var chain = [''];
+        var seen = { '': true };
+        function add(p) {
+          p = p || '';
+          if (seen[p]) return;
+          seen[p] = true;
+          chain.push(p);
+        }
+        add(prox);
+        try {
+          add(component.proxy('cookie'));
+          add(component.proxy('cookie2'));
+          add(component.proxy('cookie3'));
+        } catch (e) {}
+        return chain;
+      }
+
+      function cdnApiRequest(tag, req, url, onOk, onFail, attempt, chain) {
+        attempt = attempt || 0;
+        chain = chain || cdnApiChain();
+        var use_prox = chain[attempt] || '';
+        var enc = use_prox ? (prox_enc || ('param/User-Agent=' + encodeURIComponent(user_agent) + '/')) : '';
+        var started = Date.now();
+        var host = (String(url).match(/^https?:\/\/[^\/?#]+/i) || [''])[0];
+        stelsLog('cdnvideohub-net-try', { source: cdnSourceTitle, tag: tag, attempt: attempt, of: chain.length, proxy: use_prox ? 'yes' : 'direct', proxy_host: (use_prox || '').slice(0, 60), host: host, net: cdnNetInfo() });
+        req.clear();
+        req.timeout(10000);
+        req["native"](component.proxyLink(url, use_prox, enc), function (json) {
+          stelsLog('cdnvideohub-net-ok', { source: cdnSourceTitle, tag: tag, attempt: attempt, proxy: use_prox ? 'yes' : 'direct', ms: Date.now() - started, type: typeof json, items: json && json.items && json.items.length || 0 });
+          onOk(json);
+        }, function (a, c) {
+          var message = '';
+          try { message = req.errorDecode(a, c) || ''; } catch (e) {}
+          stelsLog('cdnvideohub-net-error', { source: cdnSourceTitle, tag: tag, attempt: attempt, proxy: use_prox ? 'yes' : 'direct', proxy_host: (use_prox || '').slice(0, 60), host: host, status: a && a.status || 0, status_text: a && a.statusText || '', message: message, response_len: a && a.responseText ? String(a.responseText).length : 0, ms: Date.now() - started, net: cdnNetInfo() });
+          if (attempt + 1 < chain.length) cdnApiRequest(tag, req, url, onOk, onFail, attempt + 1, chain);
+          else onFail(a, c);
+        });
+      }
 
       this.extendChoice = function (saved) {
         Lampa.Arrays.extend(choice, saved, true);
@@ -21119,9 +21176,7 @@ var q = qualityMapFromAlloha(json);
         if (element.stream) return call(element);
         if (!element.data_id) return error();
         var url = embed + 'video/' + element.data_id;
-        network.clear();
-        network.timeout(10000);
-        network["native"](component.proxyLink(url, prox, prox_enc), function (json) {
+        cdnApiRequest('video', new Lampa.Reguest(), url, function (json) {
           if (json && json.sources) {
             var file = '',
                 quality = false;
