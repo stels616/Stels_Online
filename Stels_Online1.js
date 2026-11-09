@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.225';
+    var STELS_ONLINE_VERSION = '1.1.224';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -6722,6 +6722,8 @@
               qualitys: false, // заповнимо з master.m3u8 асинхронно в getStream
               quality: '4K',
               audio_index: orderIdx,
+              audio_names: audioNames,
+              audio_order: audioOrder,
               subtitles: subtitles,
               headers: headers,
               stream_url: iframeUrl
@@ -6762,13 +6764,26 @@
         if (!streamUrl || !/\.m3u8/i.test(streamUrl)) return callback(false);
         requestText(streamUrl, function (txt) {
           var quality = {};
+          var media = [];
+          var dump = [];
           var base = streamUrl.replace(/\/[^\/]*$/, '/');
           try {
             var lines = String(txt || '').split(/\r?\n/);
             for (var i = 0; i < lines.length; i++) {
               var line = lines[i];
+              if (/#EXT-X-MEDIA/i.test(line) && /TYPE=AUDIO/i.test(line)) {
+                media.push({
+                  name: (line.match(/NAME="([^"]*)"/i) || [])[1] || '',
+                  lang: (line.match(/LANGUAGE="([^"]*)"/i) || [])[1] || '',
+                  group: (line.match(/GROUP-ID="([^"]*)"/i) || [])[1] || '',
+                  def: /DEFAULT=YES/i.test(line)
+                });
+                if (dump.length < 24) dump.push(line.slice(0, 160));
+              }
               if (/#EXT-X-STREAM-INF/i.test(line)) {
+                if (dump.length < 24) dump.push(line.slice(0, 160) + ' => ' + String(lines[i + 1] || '').slice(0, 80));
                 var res = (line.match(/RESOLUTION=(\d+)x(\d+)/i) || [])[2];
+                if (!res) res = (line.match(/NAME="?(\d{3,4})p?"?/i) || [])[1];
                 var next = lines[i + 1] || '';
                 if (!res || !next || /^#/.test(next)) continue;
                 var q = parseInt(res, 10);
@@ -6789,8 +6804,8 @@
             }
           } catch (eP) {}
           var keys = Object.keys(quality);
-          stelsLog('zerx4k-master-quality', { count: keys.length, keys: keys.slice(0, 10) });
-          callback(keys.length ? quality : false);
+          stelsLog('zerx4k-master-quality', { count: keys.length, keys: keys.slice(0, 10), audio_media: media.length, master_lines: dump });
+          callback(keys.length ? quality : false, media);
         }, function () { callback(false); }, {
           kind: 'master-m3u8',
           headers: headers || { 'User-Agent': player_browser_ua, 'Referer': 'https://api.nextembed.ws/' },
@@ -7076,6 +7091,41 @@
         try { return component.proxyStream(url, 'zerx'); } catch (e) { return url; }
       }
 
+      // Назви озвучок у меню аудіодоріжок плеєра: Lampa показує «N / rus0», «N / rus1»...
+      // (NAME/LANGUAGE з #EXT-X-MEDIA master). Реєструємо відповідність «сирий підпис -> назва озвучки»,
+      // а наявний DOM-патчер (stelsPatchVisibleVoiceQualityFromMap) підміняє текст у рядках меню.
+      function zerxRegisterTrackNames(element, media) {
+        try {
+          var names = (element && element.audio_names) || [];
+          if (!names.length) return;
+          var order = (element.audio_order && element.audio_order.length === names.length) ? element.audio_order : null;
+          var raws = [], disp = [];
+          function add(raw, display) {
+            raw = String(raw == null ? '' : raw).trim();
+            if (!raw || !display) return;
+            raws.push(raw); disp.push(display);
+          }
+          names.forEach(function (name, idx) {
+            if (!name || String(name).toLowerCase() === 'delete') return;
+            var t = order ? parseInt(order[idx], 10) : idx;
+            if (isNaN(t)) t = idx;
+            ['rus', 'ukr', 'eng', 'und', 'en', 'ru', 'uk'].forEach(function (lg) {
+              add(lg + t, name); add(lg + ' ' + t, name);
+            });
+            add('Track ' + (t + 1), name);
+            var m = media && media[t];
+            if (m) {
+              add(m.name, name); add(m.lang, name);
+              add((m.lang || '') + t, name); add((m.lang || '') + ' ' + t, name);
+              add((m.name || '') + ' ' + t, name);
+            }
+          });
+          stelsRememberVoiceQualityDisplayMap(raws, disp, 'zerx4k');
+          stelsLog('zerx4k-track-names', { names: names.slice(0, 12), order: order ? order.slice(0, 12) : null, media: (media || []).slice(0, 12), registered: raws.length });
+          try { stelsPatchVisibleVoiceQualityFromMap('zerx4k-track-names'); } catch (eP) {}
+        } catch (e) {}
+      }
+
       // master.m3u8 містить і відео, і аудіо-доріжки (#EXT-X-MEDIA TYPE=AUDIO).
       // Окремий variant (index-v1.m3u8) = лише відео -> відсутній звук.
       function zerxMasterUrl(url) {
@@ -7160,8 +7210,9 @@
             element._path = element._path || 'cached';
             return finish(element);
           }
-          return enrichQualityFromMaster(element.stream, element.headers, function (qmap) {
+          return enrichQualityFromMaster(element.stream, element.headers, function (qmap, media) {
             if (qmap) element.qualitys = qmap;
+            zerxRegisterTrackNames(element, media);
             element._path = element._path || 'cached-master';
             finish(element);
           });
@@ -7287,8 +7338,9 @@
                 try { stelsRememberVoiceQualityDisplayMap(audioNames, audioNames, 'zerx4k'); } catch (eM) {}
               }
               // quality з master (може бути 360/720; 4K лише з bnsi)
-              enrichQualityFromMaster(hls, element.headers, function (qmap) {
+              enrichQualityFromMaster(hls, element.headers, function (qmap, media) {
                 if (qmap) element.qualitys = qmap;
+                zerxRegisterTrackNames(element, media);
                 finish(element);
               });
             }, function () { nextJob(); }, {
