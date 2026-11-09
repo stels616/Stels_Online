@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.224';
+    var STELS_ONLINE_VERSION = '1.1.225';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -7076,6 +7076,16 @@
         try { return component.proxyStream(url, 'zerx'); } catch (e) { return url; }
       }
 
+      // master.m3u8 містить і відео, і аудіо-доріжки (#EXT-X-MEDIA TYPE=AUDIO).
+      // Окремий variant (index-v1.m3u8) = лише відео -> відсутній звук.
+      function zerxMasterUrl(url) {
+        url = String(url || '');
+        if (!url) return url;
+        try { url = url.replace(/\/index-v\d+(?:a\d+)?\.m3u8/i, '/master.m3u8'); } catch (e) {}
+        try { if (/\.m3u8$/i.test(url)) url += '?'; } catch (e2) {}
+        return url;
+      }
+
       function parseHlsJson(json, voice) {
         if (typeof json == 'string') json = Lampa.Arrays.decodeJson(json, {});
         var list = (json && json.hlsSource) || [];
@@ -7381,8 +7391,8 @@
               getStream(el, function (got) {
                 el.loading = false;
                 var first = {
-                  url: component.getDefaultQuality(got.qualitys, got.stream),
-                  quality: component.renameQualityMap(got.qualitys),
+                  url: zerxMasterUrl(got.stream),
+                  quality: false,
                   subtitles: got.subtitles || [],
                   timeline: el.timeline,
                   title: el.title,
@@ -7438,14 +7448,14 @@
             element.loading = true;
             getStream(element, function (element) {
               element.loading = false;
-              var first = { url: component.getDefaultQuality(element.qualitys, element.stream), quality: component.renameQualityMap(element.qualitys), subtitles: element.subtitles, timeline: element.timeline, title: element.season ? element.title : select_title, headers: element.headers || false };
+              var first = { url: zerxMasterUrl(element.stream), quality: false, subtitles: element.subtitles, timeline: element.timeline, title: element.season ? element.title : select_title, headers: element.headers || false };
               Lampa.Player.play(first);
               if (element.season && Lampa.Platform.version) {
                 var playlist = [];
                 items.forEach(function (elem) {
                   if (elem == element) playlist.push(first);
                   else {
-                    var cell = { url: function (ready) { getStream(elem, function (elem) { cell.url = component.getDefaultQuality(elem.qualitys, elem.stream); cell.quality = component.renameQualityMap(elem.qualitys); cell.subtitles = elem.subtitles; cell.headers = elem.headers || false; ready(); }, function () { cell.url = ''; ready(); }); }, timeline: elem.timeline, title: elem.title };
+                    var cell = { url: function (ready) { getStream(elem, function (elem) { cell.url = zerxMasterUrl(elem.stream); cell.quality = false; cell.subtitles = elem.subtitles; cell.headers = elem.headers || false; ready(); }, function () { cell.url = ''; ready(); }); }, timeline: elem.timeline, title: elem.title };
                     playlist.push(cell);
                   }
                 });
