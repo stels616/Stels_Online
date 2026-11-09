@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.224';
+    var STELS_ONLINE_VERSION = '1.1.225';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -6603,12 +6603,13 @@
         out.sort(function (a, b) {
           function rank(v) {
             var u = String(v.url || ''), r = String(v.reason || '');
-            if (r === 'page') return 0;
+            if (r === 'page') return /nextembed/i.test(u) ? 6 : 0;
             if (r === 'token-same-origin') return 1;
             if (r === 'token-same-origin-domain') return 2;
             if (/stloadi/i.test(u)) return 3;
             if (/allarknow/i.test(u)) return 4;
             if (/ortified/i.test(u)) return 9;
+            if (/nextembed/i.test(u)) return 6; // 4K (bnsi) раніше, nextembed — надійний запасний
             return 5;
           }
           return rank(a) - rank(b);
@@ -7105,20 +7106,22 @@
             if (!raw || !display) return;
             raws.push(raw); disp.push(display);
           }
+          // Номер доріжки = позиція в audio.names (rus0 -> names[0], rus1 -> names[1] ...).
+          // audio.order — лише порядок показу в інтерфейсі сайту, а не індекс доріжки.
+          function trailNum(str) { var m = String(str || '').match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : -1; }
           names.forEach(function (name, idx) {
             if (!name || String(name).toLowerCase() === 'delete') return;
-            var t = order ? parseInt(order[idx], 10) : idx;
-            if (isNaN(t)) t = idx;
             ['rus', 'ukr', 'eng', 'und', 'en', 'ru', 'uk'].forEach(function (lg) {
-              add(lg + t, name); add(lg + ' ' + t, name);
+              add(lg + idx, name); add(lg + ' ' + idx, name);
             });
-            add('Track ' + (t + 1), name);
-            var m = media && media[t];
-            if (m) {
-              add(m.name, name); add(m.lang, name);
-              add((m.lang || '') + t, name); add((m.lang || '') + ' ' + t, name);
-              add((m.name || '') + ' ' + t, name);
-            }
+            add('Track ' + (idx + 1), name);
+          });
+          (media || []).forEach(function (m, k) {
+            var n = trailNum(m.name); if (n < 0) n = trailNum(m.lang); if (n < 0) n = k;
+            var nm = names[n];
+            if (!nm || String(nm).toLowerCase() === 'delete') return;
+            add(m.name, nm); add((m.name || '') + ' ' + n, nm);
+            if (m.lang) { add(m.lang + n, nm); add(m.lang + ' ' + n, nm); }
           });
           stelsRememberVoiceQualityDisplayMap(raws, disp, 'zerx4k');
           stelsLog('zerx4k-track-names', { names: names.slice(0, 12), order: order ? order.slice(0, 12) : null, media: (media || []).slice(0, 12), registered: raws.length });
@@ -7128,6 +7131,21 @@
 
       // master.m3u8 містить і відео, і аудіо-доріжки (#EXT-X-MEDIA TYPE=AUDIO).
       // Окремий variant (index-v1.m3u8) = лише відео -> відсутній звук.
+      // Параметри для Lampa.Player:
+      //  - bnsi (stravers): quality-map {2160p..360p}, кожен URL — самодостатній master з вшитою озвучкою
+      //    (у HAR перемикання якості = просто заміна URL на сусідній з map). Тому віддаємо map у плеєр.
+      //  - nextembed: один master з аудіо-групами + hls.js levels -> map не потрібен.
+      function zerxPlayParams(el) {
+        var hasMap = !!(el && el._bnsi && el.qualitys && Object.keys(el.qualitys).length > 1);
+        if (hasMap) {
+          return {
+            url: component.getDefaultQuality(el.qualitys, el.stream),
+            quality: component.renameQualityMap(el.qualitys),
+            keep: true
+          };
+        }
+        return { url: zerxMasterUrl(el.stream), quality: false, keep: false };
+      }
       function zerxMasterUrl(url) {
         url = String(url || '');
         if (!url) return url;
@@ -7136,18 +7154,63 @@
         return url;
       }
 
+      // Підбір запису hlsSource (bnsi) під назву озвучки з fileList.
+      // fileList: «Дублированный», «HDrezka Studio. 18+», «Чадов», «Укр. Дуб (777.UA Studio)»
+      // hlsSource: «(Russian) Профессиональный (полное дублирование) - Пифагор», «(Ukrainian) DVO | 777 UA Studio» ...
+      function zerxVoiceTokens(str) {
+        var t = String(str || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-яіїєґ0-9+]+/g, ' ').trim().split(/\s+/);
+        var stop = { russian: 1, ukrainian: 1, english: 1, профессиональный: 1, закадровый: 1, одноголосый: 1, двухголосый: 1, полное: 1, st: 1, studio: 0, mvo: 1, dvo: 1, укр: 0 };
+        var out = [];
+        t.forEach(function (w) {
+          if (!w || stop[w] === 1) return;
+          if (w === 'украинский' || w === 'укр') w = 'ukrainian';
+          if (w === 'оригинальный') w = 'english';
+          if (w === 'михаил') return;
+          if (w === 'дубляж' || w === 'дублирование' || w === 'дублированный' || w === 'дуб') w = 'дубл';
+          if (w === 'многоголосый') w = 'многоголос';
+          if (out.indexOf(w) < 0) out.push(w);
+        });
+        return out;
+      }
+      function zerxPickHlsSource(list, voice) {
+        if (!list || !list.length) return null;
+        var v = String(voice || '').toLowerCase();
+        // точний збіг підпису (substring не використовуємо: «HDrezka Studio» входить у «... HDRezka Studio 18+»)
+        for (var i = 0; i < list.length; i++) {
+          if (String(list[i].label || '').toLowerCase() === v) return list[i];
+        }
+        function byLang(re) {
+          for (var k = 0; k < list.length; k++) if (re.test(String(list[k].label || ''))) return list[k];
+          return null;
+        }
+        if (/субтитр/i.test(v)) return null;
+        if (/^укр(аинск\S*|\.)?\s*$/i.test(v)) return byLang(/^\(Ukrainian\)/i);
+        if (/^оригинал/i.test(v)) return byLang(/^\(English\)/i);
+        var vt = zerxVoiceTokens(voice);
+        if (!vt.length) return null;
+        var best = null, bestScore = 0;
+        list.forEach(function (it, idx) {
+          var lt = zerxVoiceTokens(it.label);
+          var common = 0;
+          vt.forEach(function (w) { if (lt.indexOf(w) >= 0) common++; });
+          if (!common) return;
+          // повнота збігу: частка токенів озвучки + штраф за зайві токени підпису
+          var score = common * 10 - Math.abs(lt.length - vt.length) + (vt.indexOf('дубл') >= 0 && lt.indexOf('дубл') >= 0 ? 3 : 0) - (vt.indexOf('дубл') < 0 && lt.indexOf('дубл') >= 0 ? 3 : 0);
+          if (score > bestScore) { bestScore = score; best = it; }
+        });
+        if (best) return best;
+        // «Дублированный» без уточнення = основний (default) дубляж
+        if (/^дублирован/i.test(String(voice || ''))) {
+          for (var d = 0; d < list.length; d++) if (list[d] && list[d].default) return list[d];
+        }
+        return null;
+      }
+
       function parseHlsJson(json, voice) {
         if (typeof json == 'string') json = Lampa.Arrays.decodeJson(json, {});
         var list = (json && json.hlsSource) || [];
         if (!list.length) return null;
-        var source = null;
-        if (voice) {
-          var vl = String(voice).toLowerCase();
-          for (var i = 0; i < list.length; i++) {
-            var lab = String(list[i].label || '').toLowerCase();
-            if (lab.indexOf(vl) >= 0 || vl.indexOf(lab.slice(0, 12)) >= 0) { source = list[i]; break; }
-          }
-        }
+        var source = voice ? zerxPickHlsSource(list, voice) : null;
         if (!source) {
           source = list.filter(function (s) { return s && s.default; })[0] || list[0];
         }
@@ -7251,6 +7314,7 @@
                 'Origin': origin
               };
               element._path = 'bnsi-av1';
+              element._bnsi = true; // кожна якість = окремий готовий потік з вшитою озвучкою
               finish(element);
             }, function () { nextJob(); }, {
               kind: 'bnsi',
@@ -7442,9 +7506,11 @@
               el.loading = true;
               getStream(el, function (got) {
                 el.loading = false;
+                var pp = zerxPlayParams(got);
                 var first = {
-                  url: zerxMasterUrl(got.stream),
-                  quality: false,
+                  url: pp.url,
+                  quality: pp.quality,
+                  _stels_keep_quality: pp.keep,
                   subtitles: got.subtitles || [],
                   timeline: el.timeline,
                   title: el.title,
@@ -7500,14 +7566,14 @@
             element.loading = true;
             getStream(element, function (element) {
               element.loading = false;
-              var first = { url: zerxMasterUrl(element.stream), quality: false, subtitles: element.subtitles, timeline: element.timeline, title: element.season ? element.title : select_title, headers: element.headers || false };
+              var pp = zerxPlayParams(element); var first = { url: pp.url, quality: pp.quality, _stels_keep_quality: pp.keep, subtitles: element.subtitles, timeline: element.timeline, title: element.season ? element.title : select_title, headers: element.headers || false };
               Lampa.Player.play(first);
               if (element.season && Lampa.Platform.version) {
                 var playlist = [];
                 items.forEach(function (elem) {
                   if (elem == element) playlist.push(first);
                   else {
-                    var cell = { url: function (ready) { getStream(elem, function (elem) { cell.url = zerxMasterUrl(elem.stream); cell.quality = false; cell.subtitles = elem.subtitles; cell.headers = elem.headers || false; ready(); }, function () { cell.url = ''; ready(); }); }, timeline: elem.timeline, title: elem.title };
+                    var cell = { url: function (ready) { getStream(elem, function (elem) { var pe = zerxPlayParams(elem); cell.url = pe.url; cell.quality = pe.quality; cell._stels_keep_quality = pe.keep; cell.subtitles = elem.subtitles; cell.headers = elem.headers || false; ready(); }, function () { cell.url = ''; ready(); }); }, timeline: elem.timeline, title: elem.title };
                     playlist.push(cell);
                   }
                 });
