@@ -7165,10 +7165,16 @@
         Lampa.Controller.toggle('stels_zerx_site');
         stelsLog('zerx4k-site-player-fullscreen', { url: preview(url), direct: !!site_player_url });
       }
-      function zerxSingleCardMode() { return !isSerial() && !!site_player_url; }
+      function zerxSingleCardMode() { return !!site_player_url; }
       function appendSingleCard() {
         component.reset();
         var title = select_title || (object.movie && (object.movie.title || object.movie.name)) || 'Фільм';
+        try {
+          if (isSerial()) {
+            var sn = filter_items.season_num && filter_items.season_num[choice.season] || 0;
+            if (sn) title += ' · Сезон ' + sn;
+          }
+        } catch (eSn) {}
         var item = Lampa.Template.get('stels_online', { title: title, quality: '4K · плеєр сайту (вибір озвучки та якості в плеєрі)', info: '' });
         item.on('hover:enter', function () {
           try { if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100); } catch (eF) {}
