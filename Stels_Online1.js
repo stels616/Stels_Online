@@ -7133,6 +7133,53 @@
 
       // master.m3u8 містить і відео, і аудіо-доріжки (#EXT-X-MEDIA TYPE=AUDIO).
       // Окремий variant (index-v1.m3u8) = лише відео -> відсутній звук.
+      // ---- Режим «одна картка»: фільм = одна картка, натискання відкриває прямий плеєр сайту на весь екран ----
+      function zerxOpenSiteFullscreen() {
+        var url = site_player_url || site_page_url;
+        if (!url) { Lampa.Noty.show('Плеєр сайту недоступний'); return; }
+        var controller = Lampa.Controller.enabled().name;
+        var wrap = $('<div class="stels-zerx-fs" style="position:fixed;left:0;top:0;right:0;bottom:0;z-index:99999;background:#000"></div>');
+        var fr = document.createElement('iframe');
+        fr.src = url;
+        fr.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+        fr.setAttribute('allowfullscreen', 'true');
+        if (site_player_url) fr.setAttribute('referrerpolicy', 'origin');
+        fr.style.cssText = 'width:100%;height:100%;border:0;background:#000';
+        var closeBtn = $('<div class="selector" style="position:absolute;top:.5em;right:.5em;z-index:2;padding:.35em .8em;border-radius:.4em;background:rgba(0,0,0,.55);color:#fff;font-size:1.4em;opacity:.75;cursor:pointer">✕</div>');
+        wrap.append(fr).append(closeBtn);
+        $('body').append(wrap);
+        try {
+          var el = wrap[0];
+          var rf = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+          if (rf) { var pr = rf.call(el); if (pr && pr.catch) pr.catch(function () {}); }
+        } catch (eFs) {}
+        function close() {
+          try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (e1) {}
+          try { wrap.remove(); } catch (e2) {}
+          try { Lampa.Controller.toggle(controller); } catch (e3) {}
+        }
+        closeBtn.on('hover:enter click', close);
+        Lampa.Controller.add('stels_zerx_site', {
+          toggle: function () { Lampa.Controller.collectionSet(wrap); Lampa.Controller.collectionFocus(closeBtn[0], wrap); },
+          up: function () {}, down: function () {}, left: function () {}, right: function () {},
+          back: close
+        });
+        Lampa.Controller.toggle('stels_zerx_site');
+        stelsLog('zerx4k-site-player-fullscreen', { url: preview(url), direct: !!site_player_url });
+      }
+      function zerxSingleCardMode() { return !isSerial() && !!site_player_url; }
+      function appendSingleCard() {
+        component.reset();
+        var title = select_title || (object.movie && (object.movie.title || object.movie.name)) || 'Фільм';
+        var item = Lampa.Template.get('stels_online', { title: title, quality: '4K · плеєр сайту (вибір озвучки та якості в плеєрі)', info: '' });
+        item.on('hover:enter', function () {
+          try { if (object.movie && object.movie.id) Lampa.Favorite.add('history', object.movie, 100); } catch (eF) {}
+          zerxOpenSiteFullscreen();
+        });
+        component.append(item);
+        component.loading(false);
+        component.start(true);
+      }
       // ---- Плеєр сайту (4K): офіційний плеєр сам робить підписані запити, тож 2160p доступний у його меню ----
       function zerxOpenExternal(url) {
         try {
@@ -7600,6 +7647,7 @@
         component.start(true);
       }
       function append(items) {
+        if (zerxSingleCardMode()) { appendSingleCard(); return; }
         if (isSerial() && !selectedEpisode) {
           var season = filter_items.season_num && filter_items.season_num[choice.season] || 0;
           appendEpisodeCards((items || all_items).filter(function (it) { return !season || it.season == season; }));
