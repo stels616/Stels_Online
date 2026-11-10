@@ -7145,8 +7145,7 @@
         fr.setAttribute('allowfullscreen', 'true');
         if (site_player_url) fr.setAttribute('referrerpolicy', 'origin');
         fr.style.cssText = 'width:100%;height:100%;border:0;background:#000';
-        var closeBtn = $('<div class="selector" style="position:absolute;top:.5em;right:.5em;z-index:2;padding:.35em .8em;border-radius:.4em;background:rgba(0,0,0,.55);color:#fff;font-size:1.4em;opacity:.75;cursor:pointer">✕</div>');
-        wrap.append(fr).append(closeBtn);
+        wrap.append(fr);
         $('body').append(wrap);
         try {
           var el = wrap[0];
@@ -7158,9 +7157,8 @@
           try { wrap.remove(); } catch (e2) {}
           try { Lampa.Controller.toggle(controller); } catch (e3) {}
         }
-        closeBtn.on('hover:enter click', close);
         Lampa.Controller.add('stels_zerx_site', {
-          toggle: function () { Lampa.Controller.collectionSet(wrap); Lampa.Controller.collectionFocus(closeBtn[0], wrap); },
+          toggle: function () { Lampa.Controller.collectionSet(wrap); Lampa.Controller.collectionFocus(false, wrap); },
           up: function () {}, down: function () {}, left: function () {}, right: function () {},
           back: close
         });
