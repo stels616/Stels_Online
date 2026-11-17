@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.189';
+    var STELS_ONLINE_VERSION = '1.1.226';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -36,6 +36,54 @@
       return /(?:неможливо\s+отримати\s+посилання|не\s+вдалося\s+(?:отримати|завантажити|знайти|витягти)|не\s+удалось|не\s+удалося|не\s+получилось|failed\s+to\s+(?:fetch|load|get|extract)|failed\s+link|unable\s+to\s+(?:get|fetch|load|extract)|could\s+not\s+(?:get|fetch|load|extract)|no\s+(?:file|link|stream)|online_mod_nolink|stels_online_nolink)/i.test(text);
     }
 
+    // 1.1.226: JS-помилки самого плагіна (ReferenceError/TypeError у Stels_Online.js) не показуємо користувачу —
+    // вони пишуться лише в лог плагіна. Помилки інших плагінів/Lampa не чіпаємо.
+    var stelsHiddenErrorCount = 0;
+
+    function stelsIsOwnScriptErrorText(text) {
+      text = String(text || '');
+      if (!text) return false;
+      return /\b(?:Reference|Type|Range|Syntax|Eval|URI)Error\b|is not defined|is not a function|Cannot read propert|Cannot set propert|of undefined|of null/i.test(text) && /stels/i.test(text);
+    }
+
+    function stelsLogHiddenError(kind, text) {
+      try {
+        if (++stelsHiddenErrorCount > 40) return;
+        stelsLog('hidden-js-error', { kind: kind, text: String(text || '').replace(/\s+/g, ' ').slice(0, 400) });
+      } catch (e) {}
+    }
+
+    function stelsInstallHiddenErrorGuards() {
+      try {
+        if (window.__stels_hidden_error_guard) return;
+        window.__stels_hidden_error_guard = true;
+        // capture-фаза на window спрацьовує раніше за bubble-слухачі Lampa, тому stopImmediatePropagation
+        // не дає внутрішньому обробнику Lampa показати попап з помилкою плагіна.
+        window.addEventListener('error', function (e) {
+          try {
+            var stack = e && e.error && e.error.stack || '';
+            var text = (e && e.message || '') + ' ' + (e && e.filename || '') + ' ' + stack;
+            if (/stels/i.test((e && e.filename || '') + ' ' + stack) && stelsIsOwnScriptErrorText(text + ' stels')) {
+              stelsLogHiddenError('window-error', text);
+              e.preventDefault();
+              e.stopImmediatePropagation();
+            }
+          } catch (e2) {}
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) {
+          try {
+            var r = e && e.reason;
+            var text = (r && (r.stack || r.message)) || String(r || '');
+            if (stelsIsOwnScriptErrorText(text)) {
+              stelsLogHiddenError('unhandled-rejection', text);
+              e.preventDefault();
+              e.stopImmediatePropagation();
+            }
+          } catch (e2) {}
+        }, true);
+      } catch (e) {}
+    }
+
     function stelsPrecheckNotyMuted() {
       return stelsPrecheckSilentNoty > 0 || Date.now() < stelsPrecheckSilentUntil;
     }
@@ -59,6 +107,13 @@
         stelsOriginalNotyShow = current && current._stels_precheck_guard_wrapped && stelsOriginalNotyShow ? stelsOriginalNotyShow : current;
         stelsPrecheckNotyGuardFn = function () {
           try {
+            var ownErrText = stelsNotyMessageToText(arguments[0]);
+            if (stelsIsOwnScriptErrorText(ownErrText)) {
+              stelsLogHiddenError('noty', ownErrText);
+              return;
+            }
+          } catch (eown) {}
+          try {
             if (stelsPrecheckNotyMuted() && stelsIsPrecheckNoiseMessage(arguments[0])) {
               try {
                 stelsLog('precheck-noty-suppressed', {
@@ -77,6 +132,14 @@
         Lampa.Noty._stels_precheck_guard = true;
       } catch (e) {}
     }
+
+    (function stelsBootErrorGuards() {
+      stelsInstallHiddenErrorGuards();
+      stelsInstallPrecheckNotyGuard(true);
+      [1500, 6000, 15000].forEach(function (ms) {
+        setTimeout(function () { stelsInstallPrecheckNotyGuard(true); }, ms);
+      });
+    })();
 
     function stelsPrecheckNotyMuteOn(reason) {
       try {
@@ -3213,7 +3276,7 @@
             element.loading = true;
             getStream(element, function (element) {
               element.loading = false;
-              var firstTracks = allohaVoiceovers(element, element.voice) || [];
+              var firstTracks = (typeof allohaVoiceovers === 'function' ? allohaVoiceovers(element, element.voice) : null) || [];
               var first = stelsSanitizeAndroidPlayable({
                 url: component.getDefaultQuality(element.qualitys, element.stream),
                 quality: component.renameQualityMap(element.qualitys),
@@ -8428,7 +8491,7 @@
       function loadIframe(list, index) {
         if (index >= list.length) { component.emptyForQuery(select_title); return; }
         var iframe = list[index];
-        log('player-iframe-request', { iframe: preview(iframe), proxy: !!prox2, referer: ref, ua: mars_user_agent, sec_fetch_dest: player_headers['Sec-Fetch-Dest'] || '' });
+        try { stelsLog('kinoukr-player-iframe-request', { iframe: String(iframe || '').slice(0, 160) }); } catch (elogif) {}
         requestText(iframe, function (html) {
           var nodes = parsePlayerFiles(html);
           if (nodes && nodes.length) {
@@ -23661,7 +23724,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           var raw_len = raw_type === 'string' ? json.length : 0;
           var raw_preview = raw_type === 'string' ? json.slice(0, 500) : '';
           if (typeof json === 'string') json = Lampa.Arrays.decodeJson(json, null);
-          stelsLog('zetflixnet-video-response', { data_id: element.data_id, direct: !!force_direct, ok: true, raw_type: raw_type, raw_len: raw_len, raw_preview: raw_preview, json_keys: json ? Object.keys(json) : [], unitedVideoId: json && json.unitedVideoId || '', duration: json && json.duration || 0, has_sources: !!(json && json.sources), source_summary: json && json.sources ? zlogSourceSummary(json.sources) : null, referer: api_headers.Referer || '' });
+          stelsLog('zetflixnet-video-response', { data_id: element.data_id, direct: !use_prox, ok: true, raw_type: raw_type, raw_len: raw_len, raw_preview: raw_preview, json_keys: json ? Object.keys(json) : [], unitedVideoId: json && json.unitedVideoId || '', duration: json && json.duration || 0, has_sources: !!(json && json.sources), source_summary: json && json.sources ? zlogSourceSummary(json.sources) : null, referer: api_headers.Referer || '' });
           if (json && json.sources) {
             var file = '', quality = false;
             var items = extractItems(json.sources, { data_id: element.data_id });
@@ -29784,7 +29847,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         var name = stelsNormalizeSourceKey(entry && entry.name);
         var engine = stelsNormalizeSourceKey(entry && (entry.engine || entry.name));
         try {
-          if (name === 'uaflix' || engine === 'lampaua-uaflix') return new lampauaRemoteSource(fake, object, ['uaflix', 'uaflixnet', 'ua flix', 'lme_uaflix'], 'UaFlix');
+          if (name === 'uaflix' || engine === 'uaflix' || engine === 'lampaua-uaflix') return new uaflix(fake, object);
+          if (name === 'uafilm' || engine === 'uafilm') return new uafilm(fake, object);
+          if (name === 'kinotron' || engine === 'kinotron') return new kinotron(fake, object);
           if (name === 'klonfun' || engine === 'lampaua-klonfun') return new lampauaRemoteSource(fake, object, ['klonfun', 'klon fun', 'lme_klonfun'], 'KlonFun', { movieVoiceFilter: true });
           if (name === 'batkomakhno' || engine === 'lampaua-batkomakhno') return new lampauaRemoteSource(fake, object, ['batkomakhno', 'batko makhno', 'batkomahno', 'makhno', 'lme_makhno'], 'BatkoMakhno', { movieVoiceFilter: true });
           if (name === 'jacktor' || engine === 'lampaua-jacktor') return new lampauaRemoteSource(fake, object, ['jacktor', 'jack tor', 'lme_jacktor'], 'JackTor');
@@ -29934,7 +29999,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               doneByTimeout = true;
               try { if (probe && probe.destroy) probe.destroy(); } catch (e) {}
               probePack.finish('empty', 'timeout');
-            }, 7000);
+            }, ['uaflix', 'uaserials', 'eneyida', 'uafilm', 'kinotron'].indexOf(stelsNormalizeSourceKey(entry && entry.name)) !== -1 ? 16000 : 7000);
             var originalFinish = probePack.finish;
             probePack.finish = function (status, message) {
               if (!doneByTimeout) clearTimeout(timeout);
