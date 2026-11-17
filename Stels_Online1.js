@@ -13512,20 +13512,29 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         var api = Lampa.Api && Lampa.Api.sources && Lampa.Api.sources.tmdb;
         if (!tmdbId || !api || typeof api.get !== 'function') { settled = true; clearTimeout(search_timer); component.empty(NAME + ': для українського пошуку потрібна картка TMDB'); return; }
         var apiPath = (tv ? 'tv/' : 'movie/') + encodeURIComponent(tmdbId);
+        function failUkrainianTitle(reason) {
+          if (settled || destroyed) return;
+          settled = true;
+          clearTimeout(search_timer);
+          try { stelsLog(id + '-ukrainian-tmdb-title-fail', { tmdb_id: tmdbId, reason: reason || '' }); } catch (e) {}
+          component.empty(NAME + ': TMDB не має української назви для пошуку');
+        }
         try {
-          api.get(apiPath, { language: 'uk-UA' }, function (info) {
+          api.get(apiPath + '/translations', {}, function (response) {
             if (settled || destroyed) return;
-            var title = info && (info.title || info.name) || '';
-            try { stelsLog(id + '-ukrainian-tmdb-title', { tmdb_id: tmdbId, title: title || '', language: 'uk-UA' }); } catch (e) {}
+            var translations = response && response.translations || [];
+            var uaTranslations = translations.filter(function (item) {
+              return String(item && item.iso_639_1 || '').toLowerCase() === 'uk';
+            }).sort(function (a, b) {
+              return (String(b.iso_3166_1 || '').toUpperCase() === 'UA' ? 1 : 0) - (String(a.iso_3166_1 || '').toUpperCase() === 'UA' ? 1 : 0);
+            });
+            var localized = uaTranslations[0] && uaTranslations[0].data || {};
+            var title = String(localized.title || localized.name || '').trim();
+            if (!title) return failUkrainianTitle('uk-translation-not-found');
+            try { stelsLog(id + '-ukrainian-tmdb-title', { tmdb_id: tmdbId, title: title, language: 'uk-UA', source: 'translations' }); } catch (e) {}
             searchWithTitle(title);
-          }, function (e) {
-            if (settled || destroyed) return;
-            settled = true; clearTimeout(search_timer);
-            try { stelsLog(id + '-ukrainian-tmdb-title-fail', { tmdb_id: tmdbId, error: e && (e.message || e.toString()) || '' }); } catch (e2) {}
-            component.empty(NAME + ': TMDB не повернув українську назву');
-          });
-        } catch (e) { settled = true; clearTimeout(search_timer); component.empty(NAME + ': не вдалося отримати українську назву з TMDB'); }
-      };
+          }, function (e) { failUkrainianTitle(e && (e.message || e.toString()) || 'translations-request-failed'); });
+        } catch (e) { failUkrainianTitle(e && (e.message || e.toString()) || 'translations-request-error'); }      };
 
       this.extendChoice = function (saved) {
         Lampa.Arrays.extend(choice, saved, true);
@@ -33495,6 +33504,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               <div class="settings-param__value"></div>
           </div>
         </div>`);
+      var stelsAdvancedSettingsStart = template.length;
       template += "\n        <div class=\"stels-online-advanced-settings\" style=\"display:none\">";
 
       if (Utils.isDebug()) {
@@ -33591,12 +33601,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_av1_support\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">#{stels_online_av1_support}</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       }
       template += "\n        </div>";
+      var stelsAdvancedSettingsHtml = template.slice(stelsAdvancedSettingsStart);
 
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
-      Lampa.Template.add('settings_stels_online_advanced_settings', '<div class="stels-online-advanced-page"></div>');
+      Lampa.Template.add('settings_stels_online_advanced_settings', '<div class=\"stels-online-advanced-page\">' + stelsAdvancedSettingsHtml + '</div>');
        Lampa.Template.add('settings_stels_online', template);
       if (window.appready) addSettingsOnlineMod();else {
         Lampa.Listener.follow('app', function (e) {
@@ -33697,10 +33708,39 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         }
       }
 
+      function stelsOpenAdvancedSettingsPanel(parent_body) {
+        var opened = false;
+        var errors = [];
+        stelsLog('advanced-settings-open-try', { mode: 'side', version: STELS_ONLINE_VERSION });
+        function tryOpen(name, fn) {
+          if (opened) return;
+          try {
+            if (fn()) { opened = true; stelsLog('advanced-settings-open-ok', { api: name }); }
+          } catch (err) { errors.push(name + ': ' + ((err && (err.message || err.toString())) || 'error')); }
+        }
+        tryOpen('Settings.create(component)', function () {
+          if (Lampa.Settings && typeof Lampa.Settings.create === 'function') { Lampa.Settings.create('stels_online_advanced_settings'); return true; }
+          return false;
+        });
+        tryOpen('Settings.open(component)', function () {
+          if (Lampa.Settings && typeof Lampa.Settings.open === 'function') { Lampa.Settings.open('stels_online_advanced_settings'); return true; }
+          return false;
+        });
+        tryOpen('Settings.main().create(component)', function () {
+          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().create === 'function') { Lampa.Settings.main().create('stels_online_advanced_settings'); return true; }
+          return false;
+        });
+        tryOpen('Settings.main().open(component)', function () {
+          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().open === 'function') { Lampa.Settings.main().open('stels_online_advanced_settings'); return true; }
+          return false;
+        });
+        if (!opened) { stelsLog('advanced-settings-open-fallback-modal', { errors: errors }); stelsOpenAdvancedSettingsModal(parent_body); }
+      }
+
       function stelsOpenAdvancedSettingsModal(parent_body) {
         try {
           var modal = $('<div class="stels-online-interface-modal settings"><div class="settings__content" style="padding:0 0 1em"></div></div>');
-          var rows = $('.stels-online-advanced-settings').children('.settings-param').clone(true, true).show();
+          var rows = $('.stels-online-advanced-settings > .settings-param, .settings-param[data-stels-advanced-setting="1"]').clone(true, true).show();
           rows.each(function () { try { Lampa.Params.update($(this), [], modal); } catch (e) {} });
           modal.find('.settings__content').append(rows);
           Lampa.Modal.open({ title: 'Розширені налаштування', html: modal, size: 'medium',
@@ -33835,17 +33875,16 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             stelsLog('log-export-opened', { location: (window.location && window.location.href) || '' });
             stelsOpenLogModal();
           });
+          e.body.find('.stels-online-advanced-settings > .settings-param').attr('data-stels-advanced-setting', '1');
           var stels_advanced_toggle = e.body.find('[data-name="stels_online_advanced_toggle"]');
           stels_advanced_toggle.unbind('hover:enter').on('hover:enter', function () {
-            try { Lampa.Settings.create('stels_online_advanced_settings'); Lampa.Settings.open('stels_online_advanced_settings'); }
-            catch (err) { stelsOpenAdvancedSettingsModal(e.body); }
+            stelsOpenAdvancedSettingsPanel(e.body);
           });
         }
         if (e.name == 'stels_online_advanced_settings') {
           try {
-            var advancedRows = $('.stels-online-advanced-settings').children('.settings-param').clone(true, true).show();
-            advancedRows.each(function () { try { Lampa.Params.update($(this), [], e.body); } catch (err) {} });
-            e.body.find('.stels-online-advanced-page').append(advancedRows);
+            var advancedBlock = e.body.find('.stels-online-advanced-settings').show();
+            advancedBlock.children('.settings-param').each(function () { try { Lampa.Params.update($(this), [], e.body); } catch (err) {} });
             var advancedLogin = e.body.find('[data-name="stels_online_rezka2_login"]');
             advancedLogin.unbind('hover:enter').on('hover:enter', function () {
               var status = advancedLogin.find('.settings-param__status').removeClass('active error wait').addClass('wait');
