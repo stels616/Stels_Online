@@ -33602,12 +33602,45 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       }
       template += "\n        </div>";
       var stelsAdvancedSettingsHtml = template.slice(stelsAdvancedSettingsStart);
+      var stelsServiceSettingsHtml = '';
+      function stelsTakeServiceSetting(html, key) {
+        var marker = 'data-name="' + key + '"';
+        var pos = html.indexOf(marker);
+        if (pos < 0) return { html: html, row: '' };
+        var start = html.lastIndexOf('<div', pos);
+        if (start < 0) return { html: html, row: '' };
+        var tags = /<\/?div\b[^>]*>/ig;
+        tags.lastIndex = start;
+        var depth = 0, end = -1, match;
+        while ((match = tags.exec(html))) {
+          if (/^<\/div/i.test(match[0])) depth--;
+          else if (!/\/>$/.test(match[0])) depth++;
+          if (depth === 0) { end = tags.lastIndex; break; }
+        }
+        if (end < 0) return { html: html, row: '' };
+        var row = html.slice(start, end).replace('<div ', '<div data-stels-service-setting="1" ');
+        return { html: html.slice(0, start) + html.slice(end), row: row };
+      }
+      [
+        'stels_online_proxy_filmix','stels_online_skip_kp_search','stels_online_rezka2_mirror',
+        'stels_online_rezka2_name','stels_online_rezka2_password','stels_online_rezka2_login',
+        'stels_online_rezka2_logout','stels_online_rezka2_prx_ukr','stels_online_proxy_rezka2',
+        'stels_online_proxy_rezka2_mirror'
+      ].forEach(function (key) {
+        var taken = stelsTakeServiceSetting(stelsAdvancedSettingsHtml, key);
+        stelsAdvancedSettingsHtml = taken.html;
+        if (taken.row) stelsServiceSettingsHtml += taken.row;
+      });
+      template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_service_settings_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Пошук та HDrezka</div>\n            <div class=\"settings-param__descr\">Проксі Filmix, пошук у КиноПоиск та параметри HDrezka</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
+
 
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_log_enabled\" data-type=\"toggle\">\n            <div class=\"settings-param__name\">Записувати лог Stels_Online</div>\n            <div class=\"settings-param__descr\">Вмикає або вимикає запис діагностичних подій. Експорт нижче копіює вже записаний лог.</div>\n            <div class=\"settings-param__value\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
-      template += "\n    </div>";
+             template += "\n        <div class=\"stels-online-service-settings-source\" style=\"display:none\">" + stelsServiceSettingsHtml + "\n        </div>";
+template += "\n    </div>";
       Lampa.Template.add('settings_stels_online_advanced_settings', '<div class=\"stels-online-advanced-page\">' + stelsAdvancedSettingsHtml + '</div>');
+       Lampa.Template.add('settings_stels_online_service_settings', '<div class=\"stels-online-service-page\">' + stelsServiceSettingsHtml + '</div>');
        Lampa.Template.add('settings_stels_online', template);
       if (window.appready) addSettingsOnlineMod();else {
         Lampa.Listener.follow('app', function (e) {
@@ -33705,6 +33738,74 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         } catch (err) {
           stelsLog('interface-settings-modal-error', { error: err && (err.message || err.toString()) || '' });
           Lampa.Noty.show('Не вдалося відкрити налаштування інтерфейсу');
+        }
+      }
+
+      function stelsBindServiceSettingsActions(body) {
+        var login = body.find('[data-name="stels_online_rezka2_login"]');
+        login.unbind('hover:enter').on('hover:enter', function () {
+          var status = login.find('.settings-param__status').removeClass('active error wait').addClass('wait');
+          rezka2Login(function () { status.removeClass('active error wait').addClass('active'); }, function () { status.removeClass('active error wait').addClass('error'); });
+        });
+        var logout = body.find('[data-name="stels_online_rezka2_logout"]');
+        logout.unbind('hover:enter').on('hover:enter', function () {
+          var status = logout.find('.settings-param__status').removeClass('active error wait').addClass('wait');
+          rezka2Logout(function () { status.removeClass('active error wait').addClass('active'); }, function () { status.removeClass('active error wait').addClass('error'); });
+        });
+      }
+
+      function stelsOpenServiceSettingsPanel(parent_body) {
+        var opened = false;
+        var errors = [];
+        stelsLog('service-settings-open-try', { mode: 'side', version: STELS_ONLINE_VERSION });
+        function tryOpen(name, fn) {
+          if (opened) return;
+          try { if (fn()) { opened = true; stelsLog('service-settings-open-ok', { api: name }); } }
+          catch (err) { errors.push(name + ': ' + ((err && (err.message || err.toString())) || 'error')); }
+        }
+        tryOpen('Settings.create(component)', function () {
+          if (Lampa.Settings && typeof Lampa.Settings.create === 'function') { Lampa.Settings.create('stels_online_service_settings'); return true; }
+          return false;
+        });
+        tryOpen('Settings.open(component)', function () {
+          if (Lampa.Settings && typeof Lampa.Settings.open === 'function') { Lampa.Settings.open('stels_online_service_settings'); return true; }
+          return false;
+        });
+        tryOpen('Settings.main().create(component)', function () {
+          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().create === 'function') { Lampa.Settings.main().create('stels_online_service_settings'); return true; }
+          return false;
+        });
+        tryOpen('Settings.main().open(component)', function () {
+          if (Lampa.Settings && Lampa.Settings.main && Lampa.Settings.main() && typeof Lampa.Settings.main().open === 'function') { Lampa.Settings.main().open('stels_online_service_settings'); return true; }
+          return false;
+        });
+        if (!opened) {
+          stelsLog('service-settings-open-fallback-modal', { errors: errors });
+          stelsOpenServiceSettingsModal(parent_body);
+        }
+      }
+
+      function stelsOpenServiceSettingsModal(parent_body) {
+        try {
+          var modal = $('<div class="stels-online-interface-modal settings"><div class="settings__content" style="padding:0 0 1em"></div></div>');
+          var rows = parent_body.find('[data-stels-service-setting="1"]').clone(true, true).show();
+          rows.each(function () { try { Lampa.Params.update($(this), [], modal); } catch (e) {} });
+          modal.find('.settings__content').append(rows);
+          stelsBindServiceSettingsActions(modal);
+          Lampa.Modal.open({ title: 'Пошук та HDrezka', html: modal, size: 'medium',
+            onBack: function () { Lampa.Modal.close(); setTimeout(function () { try { Lampa.Controller.toggle('settings_component'); } catch (e) {} }, 50); }
+          });
+          try {
+            Lampa.Controller.add('stels_service_settings_modal', {
+              toggle: function () { Lampa.Controller.collectionSet(modal); Lampa.Controller.collectionFocus(rows.filter('.selector').first()[0] || modal.find('.selector').first()[0], modal); },
+              back: function () { Lampa.Modal.close(); Lampa.Controller.toggle('settings_component'); }
+            });
+            Lampa.Controller.toggle('stels_service_settings_modal');
+          } catch (e2) {}
+          stelsLog('service-settings-modal-open', { rows: rows.length });
+        } catch (err) {
+          stelsLog('service-settings-modal-error', { error: err && (err.message || err.toString()) || '' });
+          Lampa.Noty.show('Не вдалося відкрити налаштування пошуку та HDrezka');
         }
       }
 
@@ -33870,6 +33971,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             stelsClearPluginCache();
             $('.settings-param__status', stels_clear_cache).removeClass('active error wait').addClass('active');
           });
+          var service_settings_button = e.body.find('[data-name="stels_online_service_settings_toggle"]');
+          service_settings_button.unbind('hover:enter').on('hover:enter', function () {
+            stelsOpenServiceSettingsPanel(e.body);
+          });
           var stels_export_log = e.body.find('[data-name="stels_online_export_log"]');
           stels_export_log.unbind('hover:enter').on('hover:enter', function () {
             stelsLog('log-export-opened', { location: (window.location && window.location.href) || '' });
@@ -33885,17 +33990,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           try {
             var advancedBlock = e.body.find('.stels-online-advanced-settings').show();
             advancedBlock.children('.settings-param').each(function () { try { Lampa.Params.update($(this), [], e.body); } catch (err) {} });
-            var advancedLogin = e.body.find('[data-name="stels_online_rezka2_login"]');
-            advancedLogin.unbind('hover:enter').on('hover:enter', function () {
-              var status = advancedLogin.find('.settings-param__status').removeClass('active error wait').addClass('wait');
-              rezka2Login(function () { status.removeClass('active error wait').addClass('active'); }, function () { status.removeClass('active error wait').addClass('error'); });
-            });
-            var advancedLogout = e.body.find('[data-name="stels_online_rezka2_logout"]');
-            advancedLogout.unbind('hover:enter').on('hover:enter', function () {
-              var status = advancedLogout.find('.settings-param__status').removeClass('active error wait').addClass('wait');
-              rezka2Logout(function () { status.removeClass('active error wait').addClass('active'); }, function () { status.removeClass('active error wait').addClass('error'); });
-            });
           } catch (advancedErr) { stelsLog('advanced-settings-page-error', { error: advancedErr && (advancedErr.message || advancedErr.toString()) || '' }); }
+        }
+        if (e.name == 'stels_online_service_settings') {
+          try {
+            e.body.find('.stels-online-service-page > .settings-param').each(function () { try { Lampa.Params.update($(this), [], e.body); } catch (err) {} });
+            stelsBindServiceSettingsActions(e.body);
+          } catch (serviceErr) { stelsLog('service-settings-page-error', { error: serviceErr && (serviceErr.message || serviceErr.toString()) || '' }); }
         }
         if (e.name == 'stels_online_source_hosts') {
           try {
@@ -33925,24 +34026,6 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           clear_watch_history.unbind('hover:enter').on('hover:enter', function () {
             stelsClearWatchHistory();
             $('.settings-param__status', clear_watch_history).removeClass('active error wait').addClass('active');
-          });
-          var rezka2_login = e.body.find('[data-name="stels_online_rezka2_login"]');
-          rezka2_login.unbind('hover:enter').on('hover:enter', function () {
-            var rezka2_login_status = $('.settings-param__status', rezka2_login).removeClass('active error wait').addClass('wait');
-            rezka2Login(function () {
-              rezka2_login_status.removeClass('active error wait').addClass('active');
-            }, function () {
-              rezka2_login_status.removeClass('active error wait').addClass('error');
-            });
-          });
-          var rezka2_logout = e.body.find('[data-name="stels_online_rezka2_logout"]');
-          rezka2_logout.unbind('hover:enter').on('hover:enter', function () {
-            var rezka2_logout_status = $('.settings-param__status', rezka2_logout).removeClass('active error wait').addClass('wait');
-            rezka2Logout(function () {
-              rezka2_logout_status.removeClass('active error wait').addClass('active');
-            }, function () {
-              rezka2_logout_status.removeClass('active error wait').addClass('error');
-            });
           });
           var rezka2_fill_cookie = e.body.find('[data-name="stels_online_rezka2_fill_cookie"]');
           rezka2_fill_cookie.unbind('hover:enter').on('hover:enter', function () {
