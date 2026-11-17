@@ -13474,36 +13474,57 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       this.search = function (_object) {
         object = _object || object;
         var movie = object.movie || {};
-        select_title = object.search || movie.title || movie.name || '';
         var tv = !!(movie.name || movie.number_of_seasons || movie.first_air_date);
         var date = movie.release_date || movie.first_air_date || '';
         var by_id = !object.clarification;
-        var query = {
-          title: by_id ? (movie.title || movie.name || select_title) : select_title,
-          original: /^ua/i.test(NAME) ? '' : (by_id ? (movie.original_title || movie.original_name || '') : ''),
-          year: by_id ? String(date).slice(0, 4) : '',
-          yearEnd: by_id ? String(movie.last_air_date || '').slice(0, 4) : '',
-          serial: tv,
-          titles: /^ua/i.test(NAME) ? [movie.title || movie.name || select_title].filter(Boolean) : []
-        };
+        var uaSource = /^ua/i.test(NAME);
         var settled = false;
         search_timer = setTimeout(function () {
           if (settled || destroyed) return;
           settled = true;
           component.empty(NAME + ': сайт не відповів вчасно');
         }, 25000);
-        stelsUakClient(id).online.findPages(query).then(function (pages) {
+        function searchWithTitle(title) {
           if (settled || destroyed) return;
-          settled = true;
-          clearTimeout(search_timer);
-          finishSearch(pages || [], '');
-        }, function (e) {
-          if (settled || destroyed) return;
-          settled = true;
-          clearTimeout(search_timer);
-          try { stelsLog(id + '-search-fail', { title: select_title, error: e && (e.message || e.toString()) || '' }); } catch (e2) {}
-          component.empty(NAME + ': ' + (e && e.message || 'помилка пошуку'));
-        });
+          title = String(title || '').trim();
+          if (!title) { settled = true; clearTimeout(search_timer); component.empty(NAME + ': не вдалося отримати українську назву з TMDB'); return; }
+          select_title = title;
+          var query = {
+            title: uaSource ? title : (by_id ? (movie.title || movie.name || title) : title),
+            original: uaSource ? '' : (by_id ? (movie.original_title || movie.original_name || '') : ''),
+            year: by_id ? String(date).slice(0, 4) : '',
+            yearEnd: by_id ? String(movie.last_air_date || '').slice(0, 4) : '',
+            serial: tv,
+            titles: uaSource ? [title] : []
+          };
+          stelsUakClient(id).online.findPages(query).then(function (pages) {
+            if (settled || destroyed) return;
+            settled = true; clearTimeout(search_timer); finishSearch(pages || [], '');
+          }, function (e) {
+            if (settled || destroyed) return;
+            settled = true; clearTimeout(search_timer);
+            try { stelsLog(id + '-search-fail', { title: select_title, error: e && (e.message || e.toString()) || '' }); } catch (e2) {}
+            component.empty(NAME + ': ' + (e && e.message || 'помилка пошуку'));
+          });
+        }
+        if (!uaSource) { searchWithTitle(object.search || (by_id ? (movie.title || movie.name || '') : '') || movie.title || movie.name || ''); return; }
+        var tmdbId = movie.tmdb_id || movie.id;
+        var api = Lampa.Api && Lampa.Api.sources && Lampa.Api.sources.tmdb;
+        if (!tmdbId || !api || typeof api.get !== 'function') { settled = true; clearTimeout(search_timer); component.empty(NAME + ': для українського пошуку потрібна картка TMDB'); return; }
+        var apiPath = (tv ? 'tv/' : 'movie/') + encodeURIComponent(tmdbId);
+        try {
+          api.get(apiPath, { language: 'uk-UA' }, function (info) {
+            if (settled || destroyed) return;
+            var title = info && (info.title || info.name) || '';
+            try { stelsLog(id + '-ukrainian-tmdb-title', { tmdb_id: tmdbId, title: title || '', language: 'uk-UA' }); } catch (e) {}
+            searchWithTitle(title);
+          }, function (e) {
+            if (settled || destroyed) return;
+            settled = true; clearTimeout(search_timer);
+            try { stelsLog(id + '-ukrainian-tmdb-title-fail', { tmdb_id: tmdbId, error: e && (e.message || e.toString()) || '' }); } catch (e2) {}
+            component.empty(NAME + ': TMDB не повернув українську назву');
+          });
+        } catch (e) { settled = true; clearTimeout(search_timer); component.empty(NAME + ': не вдалося отримати українську назву з TMDB'); }
       };
 
       this.extendChoice = function (saved) {
@@ -29770,7 +29791,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           // 1.1.149: запасний шлях для Eneyida. Якщо precheck знайшов робочі серії,
           // але жодна DOM/element-підказка не встигла потрапити в probe, показуємо
           // безпечний максимум джерела 1080p замість порожнього badge.
-          if (!qvalue && status === 'ok' && ['eneyida', 'hdvb', 'kinotochka', 'veoveo'].indexOf(stelsNormalizeSourceKey(sourceName)) !== -1) {
+          if (!qvalue && status === 'ok' && ['eneyida', 'hdvb', 'kinotochka', 'veoveo', 'uaserials', 'uafilm', 'kinotron'].indexOf(stelsNormalizeSourceKey(sourceName)) !== -1) {
             // Для цих джерел перевірка може підтвердити наявність контенту,
             // але endpoint не повертає quality-map/voice_quality. Відображаємо
             // консервативний 1080p badge замість порожнього місця; VeoVeo та
@@ -33575,7 +33596,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_export_log\" data-static=\"true\">\n            <div class=\"settings-param__name\">Експорт логу Stels_Online</div>\n            <div class=\"settings-param__descr\">Скопіювати діагностичний лог джерел, пошуку та зображень</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n        <div class=\"settings-param selector\" data-name=\"stels_online_advanced_toggle\" data-static=\"true\">\n            <div class=\"settings-param__name\">Розширені налаштування</div>\n            <div class=\"settings-param__descr\">Проксі, cookie, UAflix/ZetVideo, Rezka та інші службові параметри</div>\n            <div class=\"settings-param__status\"></div>\n        </div>";
       template += "\n    </div>";
-      Lampa.Template.add('settings_stels_online', template);
+      Lampa.Template.add('settings_stels_online_advanced_settings', '<div class="stels-online-advanced-page"></div>');
+       Lampa.Template.add('settings_stels_online', template);
       if (window.appready) addSettingsOnlineMod();else {
         Lampa.Listener.follow('app', function (e) {
           if (e.type == 'ready') addSettingsOnlineMod();
@@ -33673,6 +33695,26 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           stelsLog('interface-settings-modal-error', { error: err && (err.message || err.toString()) || '' });
           Lampa.Noty.show('Не вдалося відкрити налаштування інтерфейсу');
         }
+      }
+
+      function stelsOpenAdvancedSettingsModal(parent_body) {
+        try {
+          var modal = $('<div class="stels-online-interface-modal settings"><div class="settings__content" style="padding:0 0 1em"></div></div>');
+          var rows = $('.stels-online-advanced-settings').children('.settings-param').clone(true, true).show();
+          rows.each(function () { try { Lampa.Params.update($(this), [], modal); } catch (e) {} });
+          modal.find('.settings__content').append(rows);
+          Lampa.Modal.open({ title: 'Розширені налаштування', html: modal, size: 'medium',
+            onBack: function () { Lampa.Modal.close(); setTimeout(function () { try { Lampa.Controller.toggle('settings_component'); } catch (e) {} }, 50); }
+          });
+          try {
+            Lampa.Controller.add('stels_advanced_settings_modal', {
+              toggle: function () { Lampa.Controller.collectionSet(modal); Lampa.Controller.collectionFocus(rows.filter('.selector').first()[0] || modal.find('.selector').first()[0], modal); },
+              back: function () { Lampa.Modal.close(); Lampa.Controller.toggle('settings_component'); }
+            });
+            Lampa.Controller.toggle('stels_advanced_settings_modal');
+          } catch (e2) {}
+          stelsLog('advanced-settings-modal-open', { rows: rows.length });
+        } catch (err) { stelsLog('advanced-settings-modal-error', { error: err && (err.message || err.toString()) || '' }); Lampa.Noty.show('Не вдалося відкрити розширені налаштування'); }
       }
 
       function stelsOpenSourceHostsPanel(parent_body) {
@@ -33794,25 +33836,27 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             stelsOpenLogModal();
           });
           var stels_advanced_toggle = e.body.find('[data-name="stels_online_advanced_toggle"]');
-          var stels_advanced_block = e.body.find('.stels-online-advanced-settings');
-          if (stels_advanced_toggle.length && stels_advanced_block.length) {
-            stels_advanced_block.detach().insertAfter(stels_advanced_toggle).hide();
-            stels_advanced_toggle.unbind('hover:enter').on('hover:enter', function () {
-              var opened = !stels_advanced_block.is(':visible');
-              stels_advanced_block.toggle(opened);
-              stels_advanced_toggle.find('.settings-param__name').text(opened ? 'Сховати розширені налаштування' : 'Розширені налаштування');
-              stels_advanced_toggle.find('.settings-param__status').removeClass('active error wait').toggleClass('active', opened);
-              stelsLog('advanced-settings-toggle', { opened: opened });
-              if (opened) {
-                setTimeout(function () {
-                  try {
-                    var first = stels_advanced_block.find('.selector:visible')[0];
-                    if (first) Lampa.Controller.collectionFocus(first, e.body);
-                  } catch (err) {}
-                }, 50);
-              }
+          stels_advanced_toggle.unbind('hover:enter').on('hover:enter', function () {
+            try { Lampa.Settings.create('stels_online_advanced_settings'); Lampa.Settings.open('stels_online_advanced_settings'); }
+            catch (err) { stelsOpenAdvancedSettingsModal(e.body); }
+          });
+        }
+        if (e.name == 'stels_online_advanced_settings') {
+          try {
+            var advancedRows = $('.stels-online-advanced-settings').children('.settings-param').clone(true, true).show();
+            advancedRows.each(function () { try { Lampa.Params.update($(this), [], e.body); } catch (err) {} });
+            e.body.find('.stels-online-advanced-page').append(advancedRows);
+            var advancedLogin = e.body.find('[data-name="stels_online_rezka2_login"]');
+            advancedLogin.unbind('hover:enter').on('hover:enter', function () {
+              var status = advancedLogin.find('.settings-param__status').removeClass('active error wait').addClass('wait');
+              rezka2Login(function () { status.removeClass('active error wait').addClass('active'); }, function () { status.removeClass('active error wait').addClass('error'); });
             });
-          }
+            var advancedLogout = e.body.find('[data-name="stels_online_rezka2_logout"]');
+            advancedLogout.unbind('hover:enter').on('hover:enter', function () {
+              var status = advancedLogout.find('.settings-param__status').removeClass('active error wait').addClass('wait');
+              rezka2Logout(function () { status.removeClass('active error wait').addClass('active'); }, function () { status.removeClass('active error wait').addClass('error'); });
+            });
+          } catch (advancedErr) { stelsLog('advanced-settings-page-error', { error: advancedErr && (advancedErr.message || advancedErr.toString()) || '' }); }
         }
         if (e.name == 'stels_online_source_hosts') {
           try {
