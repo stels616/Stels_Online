@@ -199,7 +199,10 @@
       'veoveo',
       'tartuga',
       'vkmovie',
-      'fanserials'
+      'fanserials',
+      'uafilms-ashdi',
+      'uafilms-tortuga',
+      'uafilms-zetvideo'
     ];
 
     var STELS_SOURCE_TITLES = {
@@ -13569,6 +13572,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     function stelsUAFilmsProvider(component, _object, providerKey, displayName) {
       var object = _object || {};
       var destroyed = false;
+      var choice = { season: 0, voice: 0, voice_name: '' };
       var wanted = String(providerKey || '').toLowerCase();
       var display = displayName || providerKey || 'UAFilms';
       function api() { try { return window.__STELS_UAFILMS_API__ || null; } catch (e) { return null; } }
@@ -13635,6 +13639,17 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             search: movie.title || movie.name || object.search || '', page: 1,
             method: (movie.name || movie.number_of_seasons || movie.seasons) ? 'tv' : 'movie' });
         } catch (err) { component.empty(display + ': ' + (err && err.message || 'не вдалося відкрити джерело')); }
+      };
+      this.extendChoice = function (saved) {
+        try { Lampa.Arrays.extend(choice, saved || {}, true); } catch (e) {}
+      };
+      this.reset = function () {
+        choice = { season: 0, voice: 0, voice_name: '' };
+        if (component && component.saveChoice) component.saveChoice(choice);
+      };
+      this.filter = function (type, a, b) {
+        if (a && a.stype) choice[a.stype] = b && b.index != null ? b.index : 0;
+        if (component && component.saveChoice) component.saveChoice(choice);
       };
       this.destroy = function () { destroyed = true; };
     }
