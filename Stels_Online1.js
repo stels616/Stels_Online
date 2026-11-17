@@ -3,7 +3,7 @@
 (function () {
     'use strict';
 
-    var STELS_ONLINE_VERSION = '1.1.226';
+    var STELS_ONLINE_VERSION = '1.1.189';
     var STELS_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#00d36f"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><text x="64" y="77" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="800" fill="#fff">SO</text></svg>';
     var STELS_ICON_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(STELS_ICON_SVG);
     var STELS_ICON_HTML = '<img class="stels-online-plugin-icon" src="' + STELS_ICON_URL + '" style="width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0" alt="Stels_Online">';
@@ -13480,11 +13480,11 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         var by_id = !object.clarification;
         var query = {
           title: by_id ? (movie.title || movie.name || select_title) : select_title,
-          original: by_id ? (movie.original_title || movie.original_name || '') : '',
+          original: /^ua/i.test(NAME) ? '' : (by_id ? (movie.original_title || movie.original_name || '') : ''),
           year: by_id ? String(date).slice(0, 4) : '',
           yearEnd: by_id ? String(movie.last_air_date || '').slice(0, 4) : '',
           serial: tv,
-          titles: []
+          titles: /^ua/i.test(NAME) ? [movie.title || movie.name || select_title].filter(Boolean) : []
         };
         var settled = false;
         search_timer = setTimeout(function () {
@@ -29689,7 +29689,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
 
       function stelsIsDeepVoiceQualitySource(sourceName) {
         sourceName = stelsNormalizeSourceKey(sourceName || '');
-        return sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'vkmovie' || sourceName === 'getstv' || sourceName === 'hdvb' || sourceName === 'kinotochka' || sourceName === 'veoveo';
+        return sourceName === 'uaserials' || sourceName === 'uafilm' || sourceName === 'kinotron' || sourceName === 'makhno' || sourceName === 'starlight' || sourceName === 'zetflixnet' || sourceName === 'cdnvideohub' || sourceName === 'vokino' || sourceName === 'iptvonline' || sourceName === 'vkmovie' || sourceName === 'getstv' || sourceName === 'hdvb' || sourceName === 'kinotochka' || sourceName === 'veoveo';
       }
 
       function stelsMakeProbeComponent(sourceName, token, done) {
