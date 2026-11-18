@@ -17,6 +17,78 @@
     var stelsOriginalNotyShow = null;
     var stelsPrecheckNotyGuardFn = null;
 
+    // ===== 1.1.227-tizen: режим "low-end" (Tizen 4.0 / Chromium 56, webOS, старі WebView) =====
+    // На слабких ТВ-платформах важкі DOM-скани, часті записи в localStorage та перестворення <style>
+    // давали фризи. Тут лише визначення платформи і спільні допоміжні функції; поведінка Android/Windows
+    // (сучасний Chromium) лишається як була.
+    var STELS_UA_LC = (function () { try { return String((navigator && navigator.userAgent) || '').toLowerCase(); } catch (e) { return ''; } })();
+    var STELS_CHROME_MAJOR = (function () { try { var m = STELS_UA_LC.match(/chrome\/(\d+)/); return m ? parseInt(m[1], 10) || 0 : 0; } catch (e) { return 0; } })();
+    var STELS_IS_TIZEN = /tizen|smart-?tv|samsungbrowser|maple/.test(STELS_UA_LC) && STELS_UA_LC.indexOf('android') < 0;
+    var STELS_IS_WEBOS = /web0s|webos|netcast/.test(STELS_UA_LC);
+    var STELS_LOW_END = STELS_IS_TIZEN || STELS_IS_WEBOS || (STELS_CHROME_MAJOR > 0 && STELS_CHROME_MAJOR < 70);
+    // flex-gap з'явився в Chromium 84; на старіших рушіях потрібні margin-запасні варіанти
+    var STELS_NEEDS_GAP_FALLBACK = STELS_CHROME_MAJOR > 0 && STELS_CHROME_MAJOR < 84;
+
+    function stelsPerfDelay(base) { return STELS_LOW_END ? Math.round(base * 4) : base; }
+
+    // Журнал: пишемо у пам'ять, а в localStorage скидаємо рідко (раніше на КОЖНУ подію читався,
+    // парсився і перезаписувався весь масив до 1200 записів — на Tizen це давало фризи і забивало квоту).
+    var stelsLogBuffer = null;
+    var stelsLogDirty = false;
+    var stelsLogFlushTimer = null;
+    var stelsLogEnabledCache = { v: true, t: 0 };
+
+    function stelsOwnNodeClass(n) {
+      try {
+        var cls = n && typeof n.className === 'string' ? n.className : '';
+        return !!cls && /stels-(?:online|zetflixnet)-(?:voice-|plugin-icon|ua-flag|source-status|source-icon|thumb|progress|has-ua-flag)/.test(cls);
+      } catch (e) { return false; }
+    }
+
+    // true лише якщо додано елемент, який може містити рядки меню/селектбокса/плеєра/списку онлайн.
+    // Картки каталогу (card/items-line) та власні декорації плагіна ігноруємо — інакше кожен скрол списку
+    // запускав повний скан DOM.
+    function stelsMutationsMayAffectMenus(mutations) {
+      try {
+        if (!STELS_LOW_END) return true;
+        for (var i = 0; i < mutations.length; i++) {
+          var added = mutations[i] && mutations[i].addedNodes;
+          if (!added || !added.length) continue;
+          for (var j = 0; j < added.length; j++) {
+            var n = added[j];
+            if (!n || n.nodeType !== 1 || stelsOwnNodeClass(n)) continue;
+            var cls = typeof n.className === 'string' ? n.className : '';
+            var isMenuish = /selectbox|menu|player|modal|simple-button|settings|online|filter|explorer|torrent/.test(cls);
+            if (!isMenuish && /(?:^|\s)(?:card|items-line|full-person|full-review|timetable)(?:\s|$|-|_)/.test(cls)) continue;
+            if (isMenuish || /(?:^|\s)selector(?:\s|$)/.test(cls)) return true;
+            if (n.querySelector && n.querySelector('.selectbox-item,.selectbox__item,.online,.menu__item,.player-panel__item,.simple-button')) return true;
+          }
+        }
+        return false;
+      } catch (e) { return true; }
+    }
+
+    function stelsInstallCompatStyle() {
+      try {
+        if (!STELS_NEEDS_GAP_FALLBACK || !document || document.getElementById('stels-online-compat-style')) return;
+        var st = document.createElement('style');
+        st.id = 'stels-online-compat-style';
+        st.appendChild(document.createTextNode(
+          '.online.stels-online-with-thumb .online__quality>*+*{margin-left:.65em}' +
+          '.stels-online-episodes-2col .online__quality>*+*{margin-left:.5em}' +
+          '.stels-online-thumb-meta>*+*{margin-left:.4em}' +
+          '.stels-online-source-status-line>*+*{margin-left:.35em}' +
+          '.stels-online-source-arrows>*+*{margin-left:.45em}' +
+          '.stels-online-floating-source>*+*{margin-left:.55em}' +
+          '.stels-online-page-actions>*{margin:0 .55em .4em 0}' +
+          '[style*="display:flex;gap:.6em"]>*,[style*="flex-wrap:wrap;gap:.6em"]>*{margin:0 .6em .6em 0}' +
+          '[style*="justify-content:space-between;gap:1em"]>*+*{margin-left:1em}'
+        ));
+        (document.head || document.documentElement).appendChild(st);
+      } catch (e) {}
+    }
+    stelsInstallCompatStyle();
+
     function stelsNotyMessageToText(msg) {
       try {
         if (msg == null) return '';
@@ -996,9 +1068,10 @@
     function stelsInstallVoiceQualityColorObserver() {
       try {
         if (stelsVoiceQualityColorObserver || typeof MutationObserver === 'undefined' || !document.body) return;
-        stelsVoiceQualityColorObserver = new MutationObserver(function () {
+        stelsVoiceQualityColorObserver = new MutationObserver(function (mutations) {
+          if (!stelsMutationsMayAffectMenus(mutations)) return;
           clearTimeout(stelsVoiceQualityColorTimer);
-          stelsVoiceQualityColorTimer = setTimeout(function () { stelsColorizeVoiceQualityRows('mutation'); }, 80);
+          stelsVoiceQualityColorTimer = setTimeout(function () { stelsColorizeVoiceQualityRows('mutation'); }, stelsPerfDelay(80));
         });
         stelsVoiceQualityColorObserver.observe(document.body, { childList: true, subtree: true });
         try { stelsLog('global-voice-quality-color-observer-installed', { ok: true }); } catch (e) {}
@@ -1009,7 +1082,7 @@
       try {
         stelsInstallVoiceQualityColorStyle();
         stelsInstallVoiceQualityColorObserver();
-        [40, 160, 450, 900, 1600].forEach(function (delay) {
+        (STELS_LOW_END ? [200, 1000] : [40, 160, 450, 900, 1600]).forEach(function (delay) {
           setTimeout(function () { stelsColorizeVoiceQualityRows((reason || 'schedule') + '-' + delay); }, delay);
         });
       } catch (e) {}
@@ -1173,6 +1246,7 @@
         try {
           if (!el || !el.length || stelsIsSettingsFolderElement(el)) return;
           el.removeAttr('data-subtitle');
+          if (!/\d+\.\d+\.\d+/.test(el.text() || '')) return;
           el.find('.full-start__subtitle, .selector__subtitle, .source__subtitle, .extensions__subtitle, .menu__subtitle, .item__subtitle').filter(function () {
             return /^\s*\d+\.\d+\.\d+\s*$/.test(($(this).text() || '').trim());
           }).remove();
@@ -1255,14 +1329,39 @@
       }
 
       var patchTimer = null;
+      var patchRoots = [];
+      var patchFull = false;
       function schedule(root) {
+        // low-end: патчимо лише щойно додані вузли, а не весь document.body (раніше кожен скрол = повний скан .selector)
+        if (STELS_LOW_END && root && root !== document.body) {
+          if (patchRoots.length < 30) patchRoots.push(root); else patchFull = true;
+        } else patchFull = true;
         clearTimeout(patchTimer);
-        patchTimer = setTimeout(function () { patch(root); }, 80);
+        patchTimer = setTimeout(function () {
+          var roots = patchRoots, full = patchFull;
+          patchRoots = []; patchFull = false;
+          if (full || !roots.length) { patch(document.body); return; }
+          for (var r = 0; r < roots.length; r++) {
+            try { if (roots[r] && document.documentElement.contains(roots[r])) patch(roots[r]); } catch (er) {}
+          }
+        }, stelsPerfDelay(80));
       }
 
       try {
         patch();
         var observer = new MutationObserver(function (mutations) {
+          if (STELS_LOW_END) {
+            for (var a = 0; a < mutations.length; a++) {
+              var added = mutations[a] && mutations[a].addedNodes;
+              if (!added || !added.length) continue;
+              for (var b = 0; b < added.length; b++) {
+                var nn = added[b];
+                if (!nn || nn.nodeType !== 1 || stelsOwnNodeClass(nn)) continue;
+                schedule(nn);
+              }
+            }
+            return;
+          }
           for (var i = 0; i < mutations.length; i++) {
             if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
               schedule(document.body);
@@ -1278,9 +1377,55 @@
 
 
     function stelsLogEnabled() {
-      try { return Lampa.Storage.get('stels_online_log_enabled', true) !== false; }
+      try {
+        var now = Date.now();
+        if (now - stelsLogEnabledCache.t < 1500) return stelsLogEnabledCache.v;
+        stelsLogEnabledCache.v = Lampa.Storage.get('stels_online_log_enabled', true) !== false;
+        stelsLogEnabledCache.t = now;
+        return stelsLogEnabledCache.v;
+      }
       catch (e) { return true; }
     }
+
+    function stelsLogMax() { return STELS_LOW_END ? 300 : STELS_LOG_MAX; }
+
+    function stelsLogLoad() {
+      if (!stelsLogBuffer) {
+        try {
+          var stored = Lampa.Storage.get(STELS_LOG_KEY, []);
+          stelsLogBuffer = Array.isArray(stored) ? stored : [];
+        } catch (e) { stelsLogBuffer = []; }
+      }
+      return stelsLogBuffer;
+    }
+
+    function stelsLogFlush() {
+      try {
+        clearTimeout(stelsLogFlushTimer);
+        stelsLogFlushTimer = null;
+        if (!stelsLogDirty || !stelsLogBuffer) return;
+        stelsLogDirty = false;
+        var max = stelsLogMax();
+        if (stelsLogBuffer.length > max) stelsLogBuffer = stelsLogBuffer.slice(stelsLogBuffer.length - max);
+        try { Lampa.Storage.set(STELS_LOG_KEY, stelsLogBuffer); }
+        catch (e1) {
+          // квота localStorage: лишаємо половину і пробуємо ще раз, щоб не ламати збереження самої Lampa
+          stelsLogBuffer = stelsLogBuffer.slice(Math.floor(stelsLogBuffer.length / 2));
+          try { Lampa.Storage.set(STELS_LOG_KEY, stelsLogBuffer); } catch (e2) {}
+        }
+      } catch (e) {}
+    }
+
+    function stelsLogScheduleFlush() {
+      if (stelsLogFlushTimer) return;
+      stelsLogFlushTimer = setTimeout(stelsLogFlush, STELS_LOW_END ? 5000 : 1500);
+    }
+
+    try {
+      window.addEventListener('pagehide', stelsLogFlush);
+      window.addEventListener('beforeunload', stelsLogFlush);
+      document.addEventListener('visibilitychange', function () { if (document.hidden) stelsLogFlush(); });
+    } catch (eFlushInit) {}
 
     function stelsLog(event, data) {
       try {
@@ -1288,16 +1433,16 @@
         // Не пишемо в діагностичний журнал сторонні події оформлення та глобальних UI-ефектів.
         var eventName = String(event || 'event');
         if (/^(?:global-voice-quality-|global-future-episodes|plugin-icon-observer-|interface-settings-|log-export-opened|advanced-settings-toggle|precheck-noty-|sources-hidden-updated|sources-order-updated)/i.test(eventName)) return;
-        var list = Lampa.Storage.get(STELS_LOG_KEY, []);
-        if (!Array.isArray(list)) list = [];
+        var list = stelsLogLoad();
         var item = {
           time: new Date().toISOString(),
           event: event || 'event',
           data: data || {}
         };
         list.push(item);
-        if (list.length > STELS_LOG_MAX) list = list.slice(list.length - STELS_LOG_MAX);
-        Lampa.Storage.set(STELS_LOG_KEY, list);
+        if (list.length > stelsLogMax() + 50) stelsLogBuffer = list = list.slice(list.length - stelsLogMax());
+        stelsLogDirty = true;
+        stelsLogScheduleFlush();
         // Не дублюємо кожен запис у консоль; журнал доступний через експорт налаштувань.
       } catch (e) {}
     }
@@ -1405,13 +1550,16 @@
 
     function stelsReadLog() {
       try {
-        var list = Lampa.Storage.get(STELS_LOG_KEY, []);
+        stelsLogFlush();
+        var list = stelsLogLoad();
         return Array.isArray(list) ? list : [];
       } catch (e) { return []; }
     }
 
     function stelsClearLog() {
       try {
+        stelsLogBuffer = [];
+        stelsLogDirty = false;
         Lampa.Storage.set(STELS_LOG_KEY, []);
         Lampa.Noty.show('Лог очищено');
       } catch (e) {}
@@ -1659,8 +1807,13 @@
 
     function stelsInstallImageStyles() {
       try {
+        // 1.1.227-tizen: стиль ставимо один раз. Раніше <style> видалявся і додавався заново для КОЖНОЇ картки
+        // (stelsDecorateItemWithImage) — повний перерахунок стилів сторінки на кожну картку, дуже важко для Tizen.
+        var stelsStyleMark = STELS_ONLINE_VERSION + '-t4';
+        var stelsOldStyle = document.getElementById('stels-online-image-style');
+        if (stelsOldStyle && stelsOldStyle.getAttribute('data-stels-v') === stelsStyleMark) return;
         $('#stels-online-image-style').remove();
-        $('head').append('<style id="stels-online-image-style">' +
+        $('head').append('<style id="stels-online-image-style" data-stels-v="' + stelsStyleMark + '">' +
           '.online.stels-online-with-thumb{position:relative;min-height:9.95em;margin:.52em 0;padding:.74em .9em .74em 15.05em!important;box-sizing:border-box;display:flex;align-items:stretch;border:.16em solid rgba(255,255,255,.92);border-radius:.42em;background:rgba(77,66,35,.78);overflow:hidden;}' +
           '.online.stels-online-with-thumb.focus,.online.stels-online-with-thumb.selector:hover{border-color:#fff;background:rgba(90,79,43,.9);}' +
           '.online.stels-online-with-thumb .online__body{position:relative;z-index:2;width:100%;min-height:8.35em;display:flex;flex-direction:column;justify-content:flex-start;}' +
@@ -1670,7 +1823,7 @@
           '.stels-online-thumb{position:absolute;left:.72em;top:.72em;width:13.45em;height:8.1em;border-radius:.12em;overflow:hidden;background-color:rgba(255,255,255,.08);background-size:cover;background-position:center center;box-shadow:none;z-index:1;}' +
           '.stels-online-thumb img{width:100%;height:100%;object-fit:cover;display:block;opacity:1!important;visibility:visible!important;}' +
           '.stels-online-thumb--loaded img{opacity:1!important;visibility:visible!important;}' +
-          '.stels-online-thumb__loader{position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));pointer-events:none;}' +
+          '.stels-online-thumb__loader{position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.12),rgba(255,255,255,.03));pointer-events:none;}' +
           '.stels-online-episode-number{position:absolute;left:.32em;bottom:calc(-.18em + 5px);z-index:1;color:rgba(255,255,255,.4);font-size:3.1em;font-weight:800;line-height:1;pointer-events:none;text-shadow:0 .1em .3em rgba(0,0,0,.55);}' +
           '.stels-online-episode-index{position:absolute;right:.32em;bottom:calc(-.18em + 5px);z-index:1;color:rgba(255,255,255,.4);font-size:3.1em;font-weight:800;line-height:1;pointer-events:none;text-shadow:0 .1em .3em rgba(0,0,0,.55);}' +
           '.stels-online-thumb-meta{position:absolute;left:.4em;top:.28em;z-index:2;display:flex;gap:.4em;}' +
@@ -1698,17 +1851,20 @@
           '.stels-online-episodes-2col>.online.stels-online-with-thumb.stels-online-episode-card .online__body{position:static!important;width:100%!important;min-height:0!important;padding:.6em .75em .7em!important;display:block!important;}' +
           '.stels-online-episodes-2col>.online.stels-online-with-thumb.stels-online-episode-card .online__body>div[style*="position: absolute"]{display:none!important;}' +
           '.stels-online-episodes-2col .stels-online-thumb{position:relative!important;left:0!important;top:0!important;width:100%!important;height:0!important;padding-top:56.25%!important;border-radius:0!important;}' +
-          '.stels-online-episodes-2col .stels-online-thumb img{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;}' +
+          '.stels-online-episodes-2col .stels-online-thumb img{position:absolute!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;}' +
           '.stels-online-episodes-2col .online__title{padding-left:0!important;white-space:normal!important;line-height:1.2!important;font-size:1.08em!important;font-weight:600!important;margin:0 0 .4em 0!important;color:#fff!important;}' +
           '.stels-online-episodes-2col .online__quality{padding-left:0!important;opacity:1!important;display:flex!important;align-items:center!important;gap:.5em!important;margin-top:auto!important;font-size:.76em!important;white-space:nowrap!important;}' +
           '.stels-online-episodes-2col .stels-online-progress{margin:.4em 0 .5em 0!important;}' +
           '.stels-online-episodes-2col .stels-online-progress__percent{margin:-.42em 0 .5em 0!important;}' +
           '.stels-online-episodes-2col .torrent-item__viewed{left:auto!important;right:.4em!important;top:.4em!important;}' +
+          '@supports not (display:grid){.stels-online-episodes-2col{display:flex!important;flex-wrap:wrap!important;justify-content:space-between!important;align-items:flex-start!important;}.stels-online-episodes-2col>.online.stels-online-with-thumb.stels-online-episode-card{width:calc(50% - .35em)!important;margin:0 0 .7em 0!important;}}' +
+          '@media screen and (max-width:700px){@supports not (display:grid){.stels-online-episodes-2col>.online.stels-online-with-thumb.stels-online-episode-card{width:calc(50% - .25em)!important;margin-bottom:.5em!important;}}}' +
           '@media screen and (max-width:700px){.stels-online-episodes-2col{gap:.5em!important;}.stels-online-episodes-2col .online__title{font-size:.98em!important;}.stels-online-episodes-2col .online__quality{font-size:.7em!important;}}' +
           '.stels-online-plugin-icon{width:2.2em;height:2.2em;object-fit:contain;display:block;flex-shrink:0;margin-right:.65em;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"] .full-start__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] .selector__subtitle,.full-start__button.view--stels_online[data-stels-main-button="1"] [class*="subtitle"],.full-start__button.view--stels_online[data-stels-main-button="1"] .stels-online-version-under{display:none!important;}' +
           '.full-start__button.view--stels_online[data-stels-main-button="1"]:after{content:none!important;display:none!important;}' +
           '.settings-folder.stels-online-settings-folder{display:grid!important;grid-template-columns:2.35em auto!important;column-gap:.65em!important;align-items:center!important;justify-content:start!important;}' +
+          '@supports not (display:grid){.settings-folder.stels-online-settings-folder{display:flex!important;align-items:center!important;justify-content:flex-start!important;}.settings-folder.stels-online-settings-folder .settings-folder__icon{flex-shrink:0!important;}.settings-folder.stels-online-settings-folder .settings-folder__icon+.settings-folder__name{margin-left:.65em!important;}}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__icon,.stels-online-settings-icon{display:flex!important;align-items:center!important;justify-content:center!important;width:2.25em!important;height:2.25em!important;min-width:2.25em!important;max-width:2.25em!important;margin:0!important;padding:0!important;font-size:1rem!important;color:transparent!important;overflow:visible!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__name{margin:0!important;padding:0!important;left:auto!important;transform:none!important;}' +
           '.settings-folder.stels-online-settings-folder .settings-folder__icon img,.stels-online-settings-icon img{display:block!important;width:2.05em!important;height:2.05em!important;object-fit:contain!important;opacity:1!important;visibility:visible!important;font-size:1rem!important;}' +
@@ -1737,7 +1893,7 @@
           '.stels-online-nonblocking-loading .stels-online-loading-spinner{display:block!important;visibility:visible!important;opacity:1!important;}' +
           '@keyframes stels-online-loading-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}' +
           '.stels-online-advanced-settings{margin-top:.35em;border-top:1px solid rgba(255,255,255,.08);padding-top:.35em;}' +
-          '.online.stels-online-future-episode{opacity:.54!important;filter:grayscale(.45)!important;background:rgba(35,35,35,.72)!important;border-color:rgba(255,255,255,.35)!important;}' +
+          '.online.stels-online-future-episode{opacity:.54!important;' + (STELS_LOW_END ? '' : 'filter:grayscale(.45)!important;') + 'background:rgba(35,35,35,.72)!important;border-color:rgba(255,255,255,.35)!important;}' +
           '.online.stels-online-future-episode.focus,.online.stels-online-future-episode.selector:hover{opacity:.72!important;border-color:rgba(255,255,255,.62)!important;background:rgba(45,45,45,.82)!important;}' +
           '.stels-online-future-badge{position:absolute;right:.55em;bottom:.45em;z-index:4;font-size:.78em;font-weight:700;background:rgba(0,0,0,.58);color:#fff;padding:.25em .55em;border-radius:.3em;}' +
           '</style>');
@@ -23386,7 +23542,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         try {
           zetflixnetInstallVoiceQualityColorStyle();
           zetflixnetInstallVoiceQualityColorObserver();
-          [40, 160, 450, 900, 1600].forEach(function (delay) {
+          (STELS_LOW_END ? [200, 1000] : [40, 160, 450, 900, 1600]).forEach(function (delay) {
             setTimeout(function () { zetflixnetColorizeVoiceQualityRows((reason || 'schedule') + '-' + delay); }, delay);
           });
         } catch (e) {}
@@ -23395,9 +23551,10 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       function zetflixnetInstallVoiceQualityColorObserver() {
         try {
           if (zetflixnetVoiceQualityColorObserver || typeof MutationObserver === 'undefined' || !document.body) return;
-          zetflixnetVoiceQualityColorObserver = new MutationObserver(function () {
+          zetflixnetVoiceQualityColorObserver = new MutationObserver(function (mutations) {
+            if (!stelsMutationsMayAffectMenus(mutations)) return;
             clearTimeout(zetflixnetVoiceQualityColorTimer);
-            zetflixnetVoiceQualityColorTimer = setTimeout(function () { zetflixnetColorizeVoiceQualityRows('mutation'); }, 80);
+            zetflixnetVoiceQualityColorTimer = setTimeout(function () { zetflixnetColorizeVoiceQualityRows('mutation'); }, stelsPerfDelay(80));
           });
           zetflixnetVoiceQualityColorObserver.observe(document.body, { childList: true, subtree: true });
           stelsLog('zetflixnet-voice-quality-color-observer-installed', { ok: true });
